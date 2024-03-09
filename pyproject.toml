@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=51.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "phaser"
+version = "0.1"
+authors = [
+  {name = "Colin Gilgenbach", email = "hexane@mit.edu"}
+]
+description = "Weapon of choice for electron ptychographic reconstructions"
+readme = {file = "README.md", content-type = "text/markdown"}
+keywords = []
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Development Status :: 3 - Alpha",
+    "Typing :: Typed",
+]
+
+requires-python = ">=3.8"
+dependencies = [
+    "numpy>=1.22,<1.29",  # tested on 1.26
+    "scipy>=1.7.0,<1.14", # tested on 1.11
+    "matplotlib~=3.5",
+    "h5py~=3.8",
+    "pyyaml>=5.3.1",
+    "click~=8.1.0",
+    "rich~=12.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=6.2.4",
+]
+cuda = [
+    "cupy-wheel",
+    "pynvml>=11.0.0",
+]
+
+[tool.setuptools]
+packages = ["phaser"]
+
+[project.scripts]
+phaser = "phaser.main:main"
