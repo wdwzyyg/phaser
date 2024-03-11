@@ -8,7 +8,34 @@ import typing as t
 import numpy
 from numpy.typing import ArrayLike, DTypeLike, NDArray
 
-from .num import get_array_module, NumT
+from .num import get_array_module, to_real_dtype, NumT, ComplexT
+
+
+@t.overload
+def random_phase_object(shape: t.Tuple[int, int], mag: float = 1e-6, *, seed: t.Optional[t.Any] = None,
+                        dtype: t.Optional[ComplexT] = None, xp: t.Any = None) -> NDArray[ComplexT]:
+    ...
+
+@t.overload
+def random_phase_object(shape: t.Tuple[int, int], mag: float = 1e-6, *, seed: t.Optional[t.Any] = None,
+                        dtype: t.Optional[DTypeLike] = None, xp: t.Any = None) -> NDArray[numpy.complexfloating]:
+    ...
+
+def random_phase_object(shape: t.Tuple[int, int], mag: float = 1e-6, *, seed: t.Optional[t.Any] = None,
+                        dtype: t.Optional[DTypeLike] = None, xp: t.Any = None) -> NDArray[numpy.complexfloating]:
+    if xp is None or t.TYPE_CHECKING:
+        xp2 = numpy
+    else:
+        xp2 = xp
+
+    if isinstance(seed, numpy.random.RandomState):
+        rng = seed
+    else:
+        rng = numpy.random.RandomState(seed=seed)
+
+    real_dtype = to_real_dtype(dtype) if dtype is not None else numpy.float_
+    obj_angle = xp2.array(rng.normal(0., mag, shape, dtype=real_dtype), dtype=real_dtype)
+    return xp2.cos(obj_angle) + xp2.sin(obj_angle) * 1.j
 
 
 @dataclass(frozen=True, init=False)
@@ -99,8 +126,9 @@ class ObjectSampling:
         pos = numpy.array(pos)
         if pos.ndim == 1:
             return arr[self.slice_at_pos(pos, shape)]
-
-        out = numpy.empty((*pos.shape[:-1], *shape[-2:]), dtype=arr.dtype)
+        
+        xp = get_array_module(arr)
+        out = xp.empty((*pos.shape[:-1], *shape[-2:]), dtype=arr.dtype)
         for idx in numpy.ndindex(pos.shape[:-1]):
             out[*idx] = arr[self.slice_at_pos(pos[idx], shape)]
 

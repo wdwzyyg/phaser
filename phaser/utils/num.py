@@ -11,6 +11,8 @@ from numpy.typing import ArrayLike, DTypeLike, NDArray
 
 
 NumT = t.TypeVar('NumT', bound=numpy.number)
+FloatT = t.TypeVar('FloatT', bound=numpy.floating)
+ComplexT = t.TypeVar('ComplexT', bound=numpy.complexfloating)
 DTypeT = t.TypeVar('DTypeT', bound=numpy.generic)
 T = t.TypeVar('T')
 P = t.ParamSpec('P')
