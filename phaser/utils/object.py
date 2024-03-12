@@ -34,7 +34,7 @@ def random_phase_object(shape: t.Tuple[int, int], mag: float = 1e-6, *, seed: t.
         rng = numpy.random.RandomState(seed=seed)
 
     real_dtype = to_real_dtype(dtype) if dtype is not None else numpy.float_
-    obj_angle = xp2.array(rng.normal(0., mag, shape, dtype=real_dtype), dtype=real_dtype)
+    obj_angle = xp2.array(rng.normal(0., mag, shape), dtype=real_dtype)
     return xp2.cos(obj_angle) + xp2.sin(obj_angle) * 1.j
 
 

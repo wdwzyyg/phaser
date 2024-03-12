@@ -1,5 +1,8 @@
+import builtins
+from contextlib import contextmanager
 from itertools import chain
 import inspect
+import sys
 import typing as t
 
 import pytest
@@ -57,3 +60,60 @@ def get_backend_module(backend: str):
 
     import numpy
     return numpy
+
+
+def get_backend_scipy(backend: str):
+    """Get the scipy module associated with a compute backend"""
+    backend = backend.lower()
+    if backend not in ('cuda', 'cpu'):
+        raise ValueError(f"Unknown backend '{backend}'")
+
+    if backend == 'cuda' and not t.TYPE_CHECKING:
+        import cupyx.scipy
+        return cupyx.scipy
+
+    import scipy
+    return scipy
+
+
+_import = builtins.__import__
+
+
+class Importer:
+    def __init__(self, prevented: t.Iterable[str] = ()):
+        self.prevented: set[str] = set(prevented)
+
+    def __call__(self, name, globals, locals, fromlist, level):
+        if name in self.prevented:
+            raise ImportError(f"Mocked ImportError for '{name}'")
+        return _import(name, globals, locals, fromlist, level)
+
+
+@contextmanager
+def mock_importerror(*modulenames: t.Iterable[str]):
+    modules = set(chain.from_iterable((n,) if isinstance(n, str) else n for n in modulenames))
+
+    if not len(modules):
+        # just run the body and return
+        yield
+        return
+
+    # remove modules if they're already imported
+    for module in modules:
+        sys.modules.pop(module, None)
+
+    # replace __import__ with our copy
+    if not isinstance(builtins.__import__, Importer):
+        builtins.__import__ = Importer()
+    # and specify which modules to prevent
+    builtins.__import__.prevented.update(modules)
+
+    # run the context manager's body
+    yield
+
+    # un-prevent modules
+    builtins.__import__.prevented.difference_update(modules)
+
+    # if we're the last ones, change __import__ back
+    if not len(builtins.__import__.prevented):
+        builtins.__import__ = _import

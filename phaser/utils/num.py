@@ -54,7 +54,23 @@ def fuse(*args, **kwargs) -> t.Callable[[T], T]:
     return lambda x: x
 
 
+def to_numpy(arr: NDArray[DTypeT], stream=None) -> NDArray[DTypeT]:
+    """
+    Equivalent to `cupy.asnumpy`, if supported.
+    """
+    try:
+        import cupy
+    except ImportError:
+        pass
+    else:
+        if isinstance(arr, cupy.ndarray) and not t.TYPE_CHECKING:
+            return arr.get(stream)
+
+    return arr
+
+
 _COMPLEX_MAP: t.Dict[t.Type[numpy.floating], t.Type[numpy.complexfloating]] = {
+    numpy.floating: numpy.complexfloating,
     numpy.float_: numpy.complex_,
     numpy.float32: numpy.complex64,
     numpy.float64: numpy.complex128,
@@ -88,7 +104,8 @@ def to_complex_dtype(dtype: DTypeLike) -> t.Type[numpy.complexfloating]:
     Convert a floating point dtype to a complex version.
     """
 
-    dtype = numpy.dtype(dtype).type
+    if not (isinstance(dtype, type) and issubclass(dtype, numpy.generic)):
+        dtype = numpy.dtype(dtype).type
 
     if not isinstance(dtype, type) or not issubclass(dtype, (numpy.floating, numpy.complexfloating)):
         raise TypeError("Non-floating point datatype")
@@ -123,7 +140,8 @@ def to_real_dtype(dtype: DTypeLike) -> t.Type[numpy.floating]:
     Convert a complex dtype to a plain float version.
     """
 
-    dtype = numpy.dtype(dtype).type
+    if not (isinstance(dtype, type) and issubclass(dtype, numpy.generic)):
+        dtype = numpy.dtype(dtype).type
 
     if not isinstance(dtype, type) or not issubclass(dtype, (numpy.floating, numpy.complexfloating)):
         raise TypeError("Non-floating point datatype")
