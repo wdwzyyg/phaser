@@ -79,7 +79,7 @@ class Electron:
     @property
     def interaction_param(self) -> float:
         """Electron interaction parameter (sigma) [radians/V-angstrom]"""
-        m0_h2 = (C.e_rest_energy / C.hc**2)*1e-3  # RM/h^2 = RE/(hc)^2 [1/(eV angstrom^2)]
+        m0_h2 = (C.e_rest_energy / C.hc**2)  # RM/h^2 = RE/(hc)^2 [1/(eV angstrom^2)]
         return 2*math.pi * self.wavelength * (self.gamma * m0_h2)
 
 

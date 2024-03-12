@@ -43,3 +43,12 @@ packages = ["phaser"]
 
 [project.scripts]
 phaser = "phaser.main:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "cuda: Run on CUDA backend",
+    "cpu: Run on CPU backend",
+    "slow: mark a test as slow",
+]
+
