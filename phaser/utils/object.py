@@ -9,32 +9,41 @@ import numpy
 from numpy.typing import ArrayLike, DTypeLike, NDArray
 
 from .num import get_array_module, to_real_dtype, NumT, ComplexT
+from .misc import create_rng
 
 
 @t.overload
-def random_phase_object(shape: t.Tuple[int, int], mag: float = 1e-6, *, seed: t.Optional[t.Any] = None,
+def random_phase_object(shape: t.Iterable[int], sigma: float = 1e-6, *, seed: t.Optional[object] = None,
                         dtype: t.Optional[ComplexT] = None, xp: t.Any = None) -> NDArray[ComplexT]:
     ...
 
 @t.overload
-def random_phase_object(shape: t.Tuple[int, int], mag: float = 1e-6, *, seed: t.Optional[t.Any] = None,
+def random_phase_object(shape: t.Iterable[int], sigma: float = 1e-6, *, seed: t.Optional[object] = None,
                         dtype: t.Optional[DTypeLike] = None, xp: t.Any = None) -> NDArray[numpy.complexfloating]:
     ...
 
-def random_phase_object(shape: t.Tuple[int, int], mag: float = 1e-6, *, seed: t.Optional[t.Any] = None,
+def random_phase_object(shape: t.Iterable[int], sigma: float = 1e-6, *, seed: t.Optional[object] = None,
                         dtype: t.Optional[DTypeLike] = None, xp: t.Any = None) -> NDArray[numpy.complexfloating]:
+    """
+    Construct a random phase object of shape `shape`.
+
+    # Parameters
+
+      - `shape`: Shape of random phase object to generate
+      - `sigma`: Standard deviation of phase variation to create
+      - `seed`: Random seed or existing random number generator to use. See `create_rng` for more details.
+      - `dtype`: Output datatype of object. Must be complex. Defaults to `numpy.float_`
+      - `xp`: Array module to create object on.
+    """
     if xp is None or t.TYPE_CHECKING:
         xp2 = numpy
     else:
         xp2 = xp
 
-    if isinstance(seed, numpy.random.RandomState):
-        rng = seed
-    else:
-        rng = numpy.random.RandomState(seed=seed)
+    rng = create_rng(seed, 'random_phase_object')
 
     real_dtype = to_real_dtype(dtype) if dtype is not None else numpy.float_
-    obj_angle = xp2.array(rng.normal(0., mag, shape), dtype=real_dtype)
+    obj_angle = xp2.array(rng.normal(0., sigma, tuple(shape)), dtype=real_dtype)
     return xp2.cos(obj_angle) + xp2.sin(obj_angle) * 1.j
 
 
