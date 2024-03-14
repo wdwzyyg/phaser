@@ -373,16 +373,16 @@ class Sampling:
         """Return the bandwidth limit (in radians) for this sampling grid with the given wavelength."""
         return float(numpy.min(self.k_max) * 2./3. * wavelength)
 
-    def mpl_real_extent(self, center: bool = False) -> t.Tuple[float, float, float, float]:
+    def mpl_real_extent(self, center: bool = True) -> t.Tuple[float, float, float, float]:
         """
         Return the extent of real space, for use in matplotlib.
 
         Extent is returned as `(left, right, bottom, top)`.
-        If `center` is specified, samples correspond to the center of pixels.
-        Otherwise (the default), they correspond to the corners of pixels.
+        If `center` is specified (the default), samples correspond to the center of pixels.
+        Otherwise, they correspond to the corners of pixels.
         """
         # shift pixel corners to centers
-        shift = -self.extent/2. -self.sampling/2. * int(center)
+        shift = -self.extent/2. + self.sampling/2. * int(not center)
         return (shift[1], self.extent[1] + shift[1], self.extent[0] + shift[0], shift[0])
 
     def mpl_recip_extent(self, center: bool = True) -> t.Tuple[float, float, float, float]:
@@ -396,8 +396,6 @@ class Sampling:
         kmax = self.k_max
         hp = 1/(2. * self.extent)
         # for odd sampling, grid is shifted by 1/2 pixel
-        shift = hp * (self.shape % 2)  
-        # shift pixel corners to centers
-        if center:
-            shift -= hp
+        # also, shift pixel corners to centers
+        shift = hp * (self.shape % 2) - hp * int(center)
         return (-kmax[1] + shift[1], kmax[1] + shift[1], kmax[0] + shift[0], -kmax[0] + shift[0])

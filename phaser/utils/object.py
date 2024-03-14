@@ -61,33 +61,38 @@ class ObjectSampling:
 
     @property
     def min(self) -> NDArray[numpy.float_]:
+        """Minimum object pixel position (y, x). Alias for `corner`."""
         return self.corner
 
     @property
     def max(self) -> NDArray[numpy.float_]:
-        return self.corner + self.shape * self.sampling
+        """Maximum pixel position (y, x)."""
+        return self.corner + (self.shape - 1) * self.sampling
+
+    @property
+    def extent(self) -> NDArray[numpy.float_]:
+        return self.shape * self.sampling
 
     def __init__(self, shape: t.Tuple[int, int], sampling: ArrayLike, corner: t.Optional[ArrayLike] = None,
                  region_min: t.Optional[ArrayLike] = None, region_max: t.Optional[ArrayLike] = None):
         object.__setattr__(self, 'shape', numpy.broadcast_to(numpy.array(shape, dtype=numpy.int_), (2,)))
         object.__setattr__(self, 'sampling', numpy.broadcast_to(numpy.array(sampling, dtype=numpy.float_), (2,)))
-        object.__setattr__(self, 'region_min', numpy.broadcast_to(numpy.array(region_min, dtype=numpy.int_), (2,)) if region_min is not None else None)
-        object.__setattr__(self, 'region_max', numpy.broadcast_to(numpy.array(region_max, dtype=numpy.int_), (2,)) if region_max is not None else None)
+        object.__setattr__(self, 'region_min', numpy.broadcast_to(numpy.array(region_min, dtype=numpy.float_), (2,)) if region_min is not None else None)
+        object.__setattr__(self, 'region_max', numpy.broadcast_to(numpy.array(region_max, dtype=numpy.float_), (2,)) if region_max is not None else None)
 
         if corner is None:
-            extent = self.shape * self.sampling
-            # TODO is this strictly correct or off by a half pixel?
-            corner = -extent / 2.
+            corner = -self.extent / 2. + self.sampling/2. #* (self.shape % 2)
         else:
             corner = numpy.broadcast_to(numpy.array(corner, dtype=numpy.float_), (2,))
 
         object.__setattr__(self, 'corner', corner)
 
     @classmethod
-    def from_scan(cls: t.Type[t.Self], scan_positions: NDArray[numpy.floating], sampling: ArrayLike, pad: ArrayLike = 0.) -> t.Self:
-        """Create an ObjectSampling around the given scan positions, padded by a radius `pad` in y and x."""
+    def from_scan(cls: t.Type[t.Self], scan_positions: NDArray[numpy.floating], sampling: ArrayLike, pad: ArrayLike = 0) -> t.Self:
+        """Create an ObjectSampling around the given scan positions, padded by at least a radius `pad` in real-space."""
         sampling = numpy.array(sampling, dtype=numpy.float_)
-        pad = numpy.broadcast_to(pad, (2,))
+        pad = numpy.broadcast_to(pad, (2,)).astype(numpy.int_)
+
         y_min, y_max = numpy.nanmin(scan_positions[..., 0]), numpy.nanmax(scan_positions[:, 0])
         x_min, x_max = numpy.nanmin(scan_positions[..., 1]), numpy.nanmax(scan_positions[:, 1])
 
@@ -98,7 +103,12 @@ class ObjectSampling:
 
     def _pos_to_object_idx(self, pos: NDArray[numpy.float_], cutout_shape: t.Tuple[int, ...]) -> NDArray[numpy.float_]:
         """Return starting index for the cutout closest to centered around `pos` (`(y, x)`)"""
-        return (numpy.array(pos) - self.corner) / self.sampling - numpy.array(cutout_shape[-2:]) / 2.
+
+        # for a given cutout, shift to the top left pixel of that cutout
+        # e.g. a 2x2 cutout needs shifted by s/2
+        shift = -numpy.maximum(0., (numpy.array(cutout_shape[-2:]) - 1.)) / 2.
+
+        return (numpy.array(pos) - self.corner) / self.sampling + shift
 
     def slice_at_pos(self, pos: ArrayLike, cutout_shape: t.Tuple[int, ...]) -> t.Tuple[slice, slice]:
         """
@@ -114,6 +124,7 @@ class ObjectSampling:
         """
         pos = numpy.array(pos)
         (start_i, start_j) = numpy.round(self._pos_to_object_idx(pos, cutout_shape)).astype(numpy.int_)
+        assert start_i >= 0 and start_j >= 0
         return (
             slice(start_i, start_i + cutout_shape[-2]),
             slice(start_j, start_j + cutout_shape[-1]),
@@ -123,7 +134,7 @@ class ObjectSampling:
         """
         Get the subpixel shifts between `pos` and the cutout region around `pos`.
 
-        Returns the shift from the rounded position to the actual position.
+        Returns the shift from the rounded position towards the actual position.
         """
         pos = self._pos_to_object_idx(numpy.array(pos), cutout_shape)
         return pos - numpy.round(pos)
@@ -167,7 +178,7 @@ class ObjectSampling:
 
     def get_region_crop(self) -> t.Tuple[slice, slice]:
         if self.region_min is None:
-            min_i, min_j = 0, 0
+            min_i, min_j = None, None
         else:
             min_i, min_j = numpy.ceil(self._pos_to_object_idx(self.region_min, (0, 0))).astype(numpy.int_)
         if self.region_max is None:
@@ -197,7 +208,19 @@ class ObjectSampling:
         if dtype is None:
             dtype = numpy.common_type(self.sampling, self.corner)
 
-        ys = xp2.linspace(self.min[0], self.max[1], self.shape[0], endpoint=False, dtype=dtype)
-        xs = xp2.linspace(self.min[0], self.max[1], self.shape[1], endpoint=False, dtype=dtype)
+        ys = xp2.linspace(self.min[0], self.max[0], self.shape[0], endpoint=True, dtype=dtype)
+        xs = xp2.linspace(self.min[1], self.max[1], self.shape[1], endpoint=True, dtype=dtype)
 
         return tuple(xp2.meshgrid(ys, xs, indexing='ij'))  # type: ignore
+
+    def mpl_extent(self, center: bool = True) -> t.Tuple[float, float, float, float]:
+        """
+        Return the extent of the sampling grid, for use in matplotlib.
+
+        Extent is returned as `(left, right, bottom, top)`.
+        If `center` is specified (the default), samples correspond to the center of pixels.
+        Otherwise, they correspond to the corners of pixels.
+        """
+        # shift pixel corners to centers
+        shift = self.min - self.sampling/2. * int(center)
+        return (shift[1], self.extent[1] + shift[1], self.extent[0] + shift[0], shift[0])
