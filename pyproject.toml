@@ -50,5 +50,7 @@ markers = [
     "cuda: Run on CUDA backend",
     "cpu: Run on CPU backend",
     "slow: mark a test as slow",
+
+    "expected_filename: Filename to load expected result from",
 ]
 

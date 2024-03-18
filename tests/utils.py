@@ -2,14 +2,20 @@ import builtins
 from contextlib import contextmanager
 from itertools import chain
 import inspect
+from pathlib import Path
 import sys
 import typing as t
 
+import numpy
 import pytest
 
 CallableT = t.TypeVar('CallableT', bound=t.Callable)
 P = t.ParamSpec('P')
 T = t.TypeVar('T')
+
+EXPECTED_PATH = Path(__file__).parent / 'expected'
+ACTUAL_PATH = Path(__file__).parent / 'actual'
+OVERWRITE_EXPECTED = object()
 
 
 def _wrap_pytest(wrapper: CallableT, wrapped: t.Callable,
@@ -44,6 +50,74 @@ def with_backends(
             pytest.param(backend, marks=getattr(pytest.mark, backend))
             for backend in backends
         ])(f)
+
+    return decorator
+
+
+def read_array(path: Path) -> numpy.ndarray:
+    ext = path.suffix.lower()
+
+    try:
+        # load with tifffile
+        if ext in ('.tif', '.tiff'):
+            import tifffile
+            return numpy.asarray(tifffile.imread(path))
+        # load with numpy
+        elif ext in ('.npy',):
+            return numpy.load(path, allow_pickle=False)
+        raise ValueError(f"Don't know how to load file of type '{path.suffix}'")
+    except Exception as e:
+        raise RuntimeError(f"Unable to load file '{path.name}'") from e
+
+
+def write_array(path: Path, arr: numpy.ndarray):
+    ext = path.suffix.lower()
+
+    try:
+        if ext in ('.tif', '.tiff'):
+            import tifffile
+            tifffile.imwrite(path, arr)
+        elif ext in ('.npy',):
+            numpy.save(path, arr, allow_pickle=False)
+        else:
+            raise ValueError(f"Don't know how to save file of type '{path.suffix}'")
+    except Exception as e:
+        raise RuntimeError(f"Unable to save file '{path.name}'") from e
+
+
+def check_array_equals_file(name: str, *, out_name: t.Optional[str] = None, decimal: float = 6.) -> t.Callable[[t.Callable[..., numpy.ndarray]], t.Callable[..., None]]:
+    def decorator(f: t.Callable[..., numpy.ndarray]):
+        @pytest.mark.expected_filename(name)
+        def wrapper(*args, file_contents_array: numpy.ndarray, **kwargs):
+            from numpy.testing import assert_array_almost_equal
+            actual = f(*args, **kwargs)
+
+            # instead of comparing, overwrite expected path with the output
+            if file_contents_array is OVERWRITE_EXPECTED:
+                try:
+                    out_path = EXPECTED_PATH / name
+                    print(f"Overwriting expected result in '{out_path}'...")
+                    write_array(out_path, actual)
+                except Exception as e:
+                    raise RuntimeError("Failed to overwrite expected result") from e
+                return
+
+            if out_name is not None:
+                out_path = ACTUAL_PATH / out_name.format(*args, **kwargs)
+            else:
+                out_path = ACTUAL_PATH / name
+
+            try:
+                assert_array_almost_equal(actual, file_contents_array, decimal=decimal)
+            except AssertionError as e:
+                try:
+                    print(f"Saving actual result to '{out_path}'")
+                    write_array(out_path, actual)
+                except Exception:
+                    print("Failed to save result.")
+                raise
+
+        return _wrap_pytest(wrapper, f, lambda params: [*params, inspect.Parameter('file_contents_array', inspect.Parameter.KEYWORD_ONLY)])
 
     return decorator
 
