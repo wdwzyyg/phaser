@@ -5,7 +5,7 @@ import pytest
 
 from .utils import with_backends, get_backend_module, check_array_equals_file
 
-from phaser.utils.num import to_numpy
+from phaser.utils.num import to_numpy, abs2
 from phaser.utils.object import random_phase_object, ObjectSampling
 
 
@@ -118,17 +118,36 @@ def test_object_slicing():
     )
 
 
-
 @with_backends('cpu', 'cuda')
-@check_array_equals_file('object_add_views.tiff', out_name='object_add_views_{backend}.tiff')
-def test_add_view_at_pos(backend: str) -> numpy.ndarray:
+@pytest.mark.parametrize('dtype', ('float', 'complex', 'uint8'))
+@check_array_equals_file('object_add_views_{dtype}.tiff', out_name='object_add_views_{dtype}_{backend}.tiff', decimal=5)
+def test_add_view_at_pos(backend: str, dtype: str) -> numpy.ndarray:
     samp = ObjectSampling((200, 200), (1.0, 1.0))
     cutout_shape = (64, 64)
 
     xp = get_backend_module(backend)
 
-    obj = xp.zeros(samp.shape, dtype=numpy.uint8)
-    cutouts = xp.ones((30, *cutout_shape), dtype=numpy.uint8)
+    if dtype == 'uint8':
+        obj = xp.zeros(samp.shape, dtype=numpy.uint8)
+        cutouts = xp.full((30, *cutout_shape), 15, dtype=numpy.uint8)
+        mag = 15
+    elif dtype == 'float':
+        obj = xp.zeros(samp.shape, dtype=numpy.float32)
+        cutouts = xp.full((30, *cutout_shape), 10., dtype=numpy.uint8)
+        mag = 10.
+    elif dtype == 'complex':
+        obj = xp.zeros(samp.shape, dtype=numpy.complex64)
+        phases = xp.array([
+            4.30015617, 5.15367214, 6.13496658, 4.9268498 , 3.60960355,
+            0.42680191, 5.12820671, 1.3260991 , 2.2065813 , 5.1417133 ,
+            4.44775022, 3.78443706, 1.39529171, 4.85271223, 5.29254269,
+            0.16160692, 3.93409553, 3.30689481, 2.65883774, 5.58807904,
+            2.97826432, 5.74576854, 1.22940843, 2.79499453, 2.83189806,
+            5.41544805, 1.44714743, 4.48405743, 2.50836483, 3.31088288
+        ], dtype=numpy.float32)
+        cutouts = xp.full((30, *cutout_shape), 10., dtype=numpy.complex64) * xp.exp(1.j * phases[:, None, None])
+    else:
+        raise ValueError()
 
     pos = numpy.array([
        [ 50.60303087,  65.79992213],
@@ -165,6 +184,74 @@ def test_add_view_at_pos(backend: str) -> numpy.ndarray:
 
     samp.add_view_at_pos(obj, pos, cutouts)
 
-    assert xp.sum(to_numpy(obj)) == numpy.prod(cutouts.shape)
+    if dtype != 'complex':
+        assert numpy.sum(to_numpy(obj)) == mag * numpy.prod(cutouts.shape)
 
-    return obj
+    return to_numpy(obj)
+
+
+@with_backends('cpu', 'cuda')
+@pytest.mark.parametrize('dtype', ('float', 'complex', 'uint8'))
+@check_array_equals_file('object_set_views_{dtype}.tiff', out_name='object_set_views_{dtype}_{backend}.tiff')
+def test_set_view_at_pos(backend: str, dtype: str) -> numpy.ndarray:
+    samp = ObjectSampling((200, 200), (1.0, 1.0))
+    cutout_shape = (64, 64)
+
+    xp = get_backend_module(backend)
+
+    if dtype == 'uint8':
+        obj = xp.zeros(samp.shape, dtype=numpy.uint8)
+        cutouts = xp.full((30, *cutout_shape), 15, dtype=numpy.uint8)
+        mag = 15
+    elif dtype == 'float':
+        obj = xp.zeros(samp.shape, dtype=numpy.float32)
+        cutouts = xp.full((30, *cutout_shape), 10., dtype=numpy.uint8)
+        mag = 10.
+    elif dtype == 'complex':
+        obj = xp.zeros(samp.shape, dtype=numpy.complex64)
+        cutouts = xp.full((30, *cutout_shape), 10. + 15.j, dtype=numpy.complex64)
+        mag = abs2(10. + 15.j)
+    else:
+        raise ValueError()
+
+    pos = numpy.array([
+       [ 50.60303087,  65.79992213],
+       [ 55.29351178, -23.20535679],
+       [-24.55795797,  61.03108143],
+       [ 31.11937136, -15.76195155],
+       [ 28.01925522,  45.1035061 ],
+       [ 10.36488598,   2.55497549],
+       [-57.42025   ,  48.55254953],
+       [  4.08776065,  50.33652909],
+       [-15.73631518, -36.91599871],
+       [-25.16043481,  28.76977663],
+       [ 31.42525951,  10.31409966],
+       [-19.79372857,  55.79668508],
+       [-60.01548957,  26.95982136],
+       [-31.2433725 , -54.82789204],
+       [ 59.78674718,  40.56994336],
+       [-46.26502396, -38.71300405],
+       [-66.83498502,  -6.33424509],
+       [ 62.7652186 , -12.48322478],
+       [ -2.31684356,  -6.0558    ],
+       [-32.38632762,   5.55021944],
+       [-52.72306553, -19.39256228],
+       [ 13.48322753,  60.19354572],
+       [-30.44280284,  52.91061857],
+       [-43.27221074,  51.47703124],
+       [-24.6619304 ,  66.08921008],
+       [ 59.68745301,  43.99038992],
+       [-60.82051963, -42.56576538],
+       [-38.95303419, -38.40890994],
+       [-55.76325197, -55.0998433 ],
+       [ 48.4540186 ,  52.91460643]
+    ])
+
+    samp.set_view_at_pos(obj, pos, cutouts)
+
+    if dtype == 'complex':
+        assert numpy.max(to_numpy(abs2(obj))) == mag
+    else:
+        assert numpy.max(to_numpy(obj)) == mag
+
+    return to_numpy(obj)

@@ -1,6 +1,7 @@
 """
 Object & object cutout utilities
 """
+from __future__ import annotations
 
 from dataclasses import dataclass
 import typing as t
@@ -8,7 +9,7 @@ import typing as t
 import numpy
 from numpy.typing import ArrayLike, DTypeLike, NDArray
 
-from .num import get_array_module, to_real_dtype, NumT, ComplexT
+from .num import get_array_module, to_real_dtype, is_cupy, NumT, ComplexT, DTypeT
 from .misc import create_rng
 
 
@@ -139,42 +140,36 @@ class ObjectSampling:
         pos = self._pos_to_object_idx(numpy.array(pos), cutout_shape)
         return pos - numpy.round(pos)
 
+    @t.overload
+    def cutout(self, arr: NDArray[DTypeT], pos: ArrayLike, shape: t.Tuple[int, ...]) -> ObjectCutout[DTypeT]:
+        ...
+
+    @t.overload
+    def cutout(self, arr: numpy.ndarray, pos: ArrayLike, shape: t.Tuple[int, ...]) -> ObjectCutout[numpy.generic]:
+        ...
+
+    def cutout(self, arr: numpy.ndarray, pos: ArrayLike, shape: t.Tuple[int, ...]) -> ObjectCutout[t.Any]:
+        return ObjectCutout(self, arr, numpy.array(pos), shape)
+
     def get_view_at_pos(self, arr: NDArray[NumT], pos: ArrayLike, shape: t.Tuple[int, ...]) -> NDArray[NumT]:
         """
         Get cutout views of `arr` of shape `shape` around positions `pos`
         """
-        pos = numpy.array(pos)
-        if pos.ndim == 1:
-            return arr[self.slice_at_pos(pos, shape)]
-        
-        xp = get_array_module(arr)
-        out = xp.empty((*pos.shape[:-1], *shape[-2:]), dtype=arr.dtype)
-        for idx in numpy.ndindex(pos.shape[:-1]):
-            out[*idx] = arr[self.slice_at_pos(pos[idx], shape)]
-
-        return out
+        return self.cutout(arr, pos, shape).get()
 
     def set_view_at_pos(self, arr: numpy.ndarray, pos: ArrayLike, view: numpy.ndarray):
         """
         Set cutout views of `arr` of shape `shape` around positions `pos`
         """
-        pos = numpy.array(pos)
-        if pos.ndim == 1:
-            arr[self.slice_at_pos(pos, view.shape)] = view
-
-        for idx in numpy.ndindex(pos.shape[:-1]):
-            arr[self.slice_at_pos(pos[idx], view.shape)] = view[idx]
+        cutout = self.cutout(arr, pos, view.shape)
+        cutout.arr = view
 
     def add_view_at_pos(self, arr: numpy.ndarray, pos: ArrayLike, view: numpy.ndarray):
         """
         Add to cutout views of `arr` of shape `shape` around positions `pos`
         """
-        pos = numpy.array(pos)
-        if pos.ndim == 1:
-            arr[self.slice_at_pos(pos, view.shape)] += view
-
-        for idx in numpy.ndindex(pos.shape[:-1]):
-            arr[self.slice_at_pos(pos[idx], view.shape)] += view[idx]
+        cutout = self.cutout(arr, pos, view.shape)
+        cutout += view
 
     def get_region_crop(self) -> t.Tuple[slice, slice]:
         if self.region_min is None:
@@ -224,3 +219,64 @@ class ObjectSampling:
         # shift pixel corners to centers
         shift = self.min - self.sampling/2. * int(center)
         return (shift[1], self.extent[1] + shift[1], self.extent[0] + shift[0], shift[0])
+
+
+@dataclass
+class ObjectCutout(t.Generic[DTypeT]):
+    sampling: ObjectSampling
+    obj: NDArray[DTypeT]
+    pos: NDArray[numpy.floating]
+    shape: t.Tuple[int, ...]
+
+    def get(self) -> NDArray[DTypeT]:
+        if self.pos.ndim == 1:
+            return self.obj[self.sampling.slice_at_pos(self.pos, self.shape)]
+        
+        xp = get_array_module(self.obj)
+        out = xp.empty((*self.pos.shape[:-1], *self.shape[-2:]), dtype=self.obj.dtype)
+        for idx in numpy.ndindex(self.pos.shape[:-1]):
+            out[*idx] = self.obj[self.sampling.slice_at_pos(self.pos[idx], self.shape)]
+
+        return out
+
+    def set(self, view: NDArray[DTypeT]):
+        if self.pos.ndim == 1:
+            self.obj[self.sampling.slice_at_pos(self.pos, view.shape)] = view
+
+        for idx in numpy.ndindex(self.pos.shape[:-1]):
+            self.obj[self.sampling.slice_at_pos(self.pos[idx], view.shape)] = view[idx]
+
+    def add(self, view: NDArray[DTypeT]):
+        if self.pos.ndim == 1:
+            self.obj[self.sampling.slice_at_pos(self.pos, view.shape)] += view  # type: ignore
+
+        for idx in numpy.ndindex(self.pos.shape[:-1]):
+            self.obj[self.sampling.slice_at_pos(self.pos[idx], view.shape)] += view[idx]
+
+    @property
+    def arr(self) -> NDArray[DTypeT]:
+        return self.get()
+
+    @arr.setter
+    def arr(self, view: NDArray[DTypeT]):
+        self.set(view)
+
+    def __cupy_get_ndarray__(self) -> NDArray[DTypeT]:
+        if not is_cupy(self.obj):
+            raise AttributeError()
+        return self.get()
+
+    def __array__(self) -> NDArray[DTypeT]:
+        return self.get()
+
+    def __iadd__(self, other: NDArray[DTypeT]):
+        self.add(other)
+
+    def __isub__(self, other: NDArray[DTypeT]):
+        raise NotImplementedError()
+
+    def __ior__(self, other: NDArray[DTypeT]):
+        raise NotImplementedError()
+
+    def __iand__(self, other: NDArray[DTypeT]):
+        raise NotImplementedError()

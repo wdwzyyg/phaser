@@ -1,5 +1,6 @@
 
 import pytest
+from _pytest.fixtures import SubRequest
 import numpy
 
 BACKENDS: set[str] = set(('cpu', 'cuda'))
@@ -14,7 +15,7 @@ except ImportError:
 
 
 def pytest_addoption(parser: pytest.Parser):
-    parser.addoption("--save-expected", action="store_true", dest='save-result', default=False,
+    parser.addoption("--save-expected", action="store_true", dest='save-expected', default=False,
                      help="Overwrite expected files with the results of tests.")
 
 
@@ -38,6 +39,12 @@ def file_contents_array(request: pytest.FixtureRequest, pytestconfig: pytest.Con
         return OVERWRITE_EXPECTED  # type: ignore
 
     try:
+        params = request._pyfuncitem.callspec.params
+        name = name.format(**params)
+    except AttributeError:
+        pass
+
+    try:
         return read_array(EXPECTED_PATH / name)
     except Exception as e:
-        raise RuntimeError("Failed to load expected result") from e
+        raise RuntimeError("Failed to load expected result. Use --save-expected to overwrite expected result.") from e

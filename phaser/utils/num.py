@@ -59,7 +59,7 @@ def to_numpy(arr: NDArray[DTypeT], stream=None) -> NDArray[DTypeT]:
     Equivalent to `cupy.asnumpy`, if supported.
     """
     try:
-        import cupy
+        import cupy  # type: ignore
     except ImportError:
         pass
     else:
@@ -67,6 +67,14 @@ def to_numpy(arr: NDArray[DTypeT], stream=None) -> NDArray[DTypeT]:
             return arr.get(stream)
 
     return arr
+
+
+def is_cupy(arr: NDArray[DTypeT]) -> bool:
+    try:
+        import cupy  # type: ignore
+    except ImportError:
+        return False
+    return isinstance(arr, cupy.ndarray)
 
 
 _COMPLEX_MAP: t.Dict[t.Type[numpy.floating], t.Type[numpy.complexfloating]] = {

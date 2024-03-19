@@ -61,6 +61,15 @@ def read_array(path: Path) -> numpy.ndarray:
         # load with tifffile
         if ext in ('.tif', '.tiff'):
             import tifffile
+
+            mag_path = path.with_stem(path.stem + '_mag')
+            phase_path = path.with_stem(path.stem + '_phase')
+
+            if mag_path.exists() or phase_path.exists():
+                mag = numpy.asarray(tifffile.imread(mag_path))
+                phase = numpy.asarray(tifffile.imread(phase_path))
+                return mag * numpy.exp(1.j * phase)
+
             return numpy.asarray(tifffile.imread(path))
         # load with numpy
         elif ext in ('.npy',):
@@ -76,7 +85,15 @@ def write_array(path: Path, arr: numpy.ndarray):
     try:
         if ext in ('.tif', '.tiff'):
             import tifffile
-            tifffile.imwrite(path, arr)
+
+            if numpy.iscomplexobj(arr):
+                mag_path = path.with_stem(path.stem + '_mag')
+                phase_path = path.with_stem(path.stem + '_phase')
+
+                tifffile.imwrite(mag_path, numpy.abs(arr))
+                tifffile.imwrite(phase_path, numpy.angle(arr))
+            else:
+                tifffile.imwrite(path, arr)
         elif ext in ('.npy',):
             numpy.save(path, arr, allow_pickle=False)
         else:
@@ -85,7 +102,7 @@ def write_array(path: Path, arr: numpy.ndarray):
         raise RuntimeError(f"Unable to save file '{path.name}'") from e
 
 
-def check_array_equals_file(name: str, *, out_name: t.Optional[str] = None, decimal: float = 6.) -> t.Callable[[t.Callable[..., numpy.ndarray]], t.Callable[..., None]]:
+def check_array_equals_file(name: str, *, out_name: t.Optional[str] = None, decimal: int = 6) -> t.Callable[[t.Callable[..., numpy.ndarray]], t.Callable[..., None]]:
     def decorator(f: t.Callable[..., numpy.ndarray]):
         @pytest.mark.expected_filename(name)
         def wrapper(*args, file_contents_array: numpy.ndarray, **kwargs):
@@ -95,17 +112,14 @@ def check_array_equals_file(name: str, *, out_name: t.Optional[str] = None, deci
             # instead of comparing, overwrite expected path with the output
             if file_contents_array is OVERWRITE_EXPECTED:
                 try:
-                    out_path = EXPECTED_PATH / name
+                    out_path = EXPECTED_PATH / name.format(*args, **kwargs)
                     print(f"Overwriting expected result in '{out_path}'...")
                     write_array(out_path, actual)
                 except Exception as e:
                     raise RuntimeError("Failed to overwrite expected result") from e
                 return
 
-            if out_name is not None:
-                out_path = ACTUAL_PATH / out_name.format(*args, **kwargs)
-            else:
-                out_path = ACTUAL_PATH / name
+            out_path = ACTUAL_PATH / (out_name if out_name is not None else name).format(*args, **kwargs)
 
             try:
                 assert_array_almost_equal(actual, file_contents_array, decimal=decimal)
