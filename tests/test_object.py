@@ -191,6 +191,20 @@ def test_add_view_at_pos(backend: str, dtype: str) -> numpy.ndarray:
 
 
 @with_backends('cpu', 'cuda')
+def test_cutout_multidim(backend: str):
+    samp = ObjectSampling((200, 200), (1.0, 1.0))
+    cutout_shape = (64, 64)
+
+    xp = get_backend_module(backend)
+    obj = xp.zeros((2, 5, *samp.shape), dtype=numpy.float32)
+
+    cutouts = samp.cutout(obj, [[0., 0.], [2., 2.], [4., 4.], [-2., -2.]], cutout_shape)
+    assert cutouts.get().shape == (4, 2, 5, *cutout_shape)
+    cutouts += cutouts.get()
+    cutouts.arr = cutouts.get()
+
+
+@with_backends('cpu', 'cuda')
 @pytest.mark.parametrize('dtype', ('float', 'complex', 'uint8'))
 @check_array_equals_file('object_set_views_{dtype}.tiff', out_name='object_set_views_{dtype}_{backend}.tiff')
 def test_set_view_at_pos(backend: str, dtype: str) -> numpy.ndarray:

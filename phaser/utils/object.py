@@ -226,32 +226,36 @@ class ObjectCutout(t.Generic[DTypeT]):
     sampling: ObjectSampling
     obj: NDArray[DTypeT]
     pos: NDArray[numpy.floating]
-    shape: t.Tuple[int, ...]
+    cutout_shape: t.Tuple[int, ...]
+
+    @property
+    def shape(self) -> t.Tuple[int, ...]:
+        return (*self.pos.shape[:-1], *self.obj.shape[:-2], *self.cutout_shape[-2:])
 
     def get(self) -> NDArray[DTypeT]:
         if self.pos.ndim == 1:
-            return self.obj[self.sampling.slice_at_pos(self.pos, self.shape)]
-        
+            return self.obj[..., *self.sampling.slice_at_pos(self.pos, self.cutout_shape)]
+
         xp = get_array_module(self.obj)
-        out = xp.empty((*self.pos.shape[:-1], *self.shape[-2:]), dtype=self.obj.dtype)
+        out = xp.empty(self.shape, dtype=self.obj.dtype)
         for idx in numpy.ndindex(self.pos.shape[:-1]):
-            out[*idx] = self.obj[self.sampling.slice_at_pos(self.pos[idx], self.shape)]
+            out[*idx] = self.obj[..., *self.sampling.slice_at_pos(self.pos[idx], self.cutout_shape)]
 
         return out
 
     def set(self, view: NDArray[DTypeT]):
         if self.pos.ndim == 1:
-            self.obj[self.sampling.slice_at_pos(self.pos, view.shape)] = view
+            self.obj[..., *self.sampling.slice_at_pos(self.pos, view.shape)] = view
 
         for idx in numpy.ndindex(self.pos.shape[:-1]):
-            self.obj[self.sampling.slice_at_pos(self.pos[idx], view.shape)] = view[idx]
+            self.obj[..., *self.sampling.slice_at_pos(self.pos[idx], view.shape)] = view[idx]
 
     def add(self, view: NDArray[DTypeT]):
         if self.pos.ndim == 1:
-            self.obj[self.sampling.slice_at_pos(self.pos, view.shape)] += view  # type: ignore
+            self.obj[..., *self.sampling.slice_at_pos(self.pos, view.shape)] += view  # type: ignore
 
         for idx in numpy.ndindex(self.pos.shape[:-1]):
-            self.obj[self.sampling.slice_at_pos(self.pos[idx], view.shape)] += view[idx]
+            self.obj[..., *self.sampling.slice_at_pos(self.pos[idx], view.shape)] += view[idx]
 
     @property
     def arr(self) -> NDArray[DTypeT]:
@@ -269,14 +273,15 @@ class ObjectCutout(t.Generic[DTypeT]):
     def __array__(self) -> NDArray[DTypeT]:
         return self.get()
 
-    def __iadd__(self, other: NDArray[DTypeT]):
+    def __iadd__(self, other: NDArray[DTypeT]) -> t.Self:
         self.add(other)
+        return self
 
-    def __isub__(self, other: NDArray[DTypeT]):
+    def __isub__(self, other: NDArray[DTypeT]) -> t.Self:
         raise NotImplementedError()
 
-    def __ior__(self, other: NDArray[DTypeT]):
+    def __ior__(self, other: NDArray[DTypeT]) -> t.Self:
         raise NotImplementedError()
 
-    def __iand__(self, other: NDArray[DTypeT]):
+    def __iand__(self, other: NDArray[DTypeT]) -> t.Self:
         raise NotImplementedError()
