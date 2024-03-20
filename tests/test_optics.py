@@ -37,5 +37,5 @@ def test_fresnel_propagator(backend: str) -> numpy.ndarray:
     sampling = Sampling((1024, 1024), extent=(100., 100.))
 
     return to_numpy(xp.angle(
-        fresnel_propagator(*sampling.recip_grid(), 0.0251, 10., tilt=(8., 5.))
+        fresnel_propagator(*sampling.recip_grid(dtype=numpy.float64, xp=xp), 0.0251, 10., tilt=(8., 5.))
     ))
