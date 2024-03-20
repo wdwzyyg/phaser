@@ -3,7 +3,7 @@ Object & object cutout utilities
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import typing as t
 
 import numpy
@@ -228,6 +228,11 @@ class ObjectCutout(t.Generic[DTypeT]):
     pos: NDArray[numpy.floating]
     cutout_shape: t.Tuple[int, ...]
 
+    _start_idxs: NDArray[numpy.int_] = field(init=False)
+
+    def __post_init__(self):
+        self._start_idxs = numpy.round(self.sampling._pos_to_object_idx(self.pos, self.cutout_shape)).astype(numpy.int_)
+
     @property
     def shape(self) -> t.Tuple[int, ...]:
         return (*self.pos.shape[:-1], *self.obj.shape[:-2], *self.cutout_shape[-2:])
@@ -235,6 +240,13 @@ class ObjectCutout(t.Generic[DTypeT]):
     def get(self) -> NDArray[DTypeT]:
         if self.pos.ndim == 1:
             return self.obj[..., *self.sampling.slice_at_pos(self.pos, self.cutout_shape)]
+
+        if is_cupy(self.obj) and self.obj.ndim == 2:
+            try:
+                from ._kernels import get_cutouts, cupy
+                return get_cutouts(self.obj, cupy.array(self._start_idxs), self.cutout_shape)  # type: ignore
+            except ImportError:
+                pass
 
         xp = get_array_module(self.obj)
         out = xp.empty(self.shape, dtype=self.obj.dtype)
@@ -246,6 +258,13 @@ class ObjectCutout(t.Generic[DTypeT]):
     def set(self, view: NDArray[DTypeT]):
         if self.pos.ndim == 1:
             self.obj[..., *self.sampling.slice_at_pos(self.pos, view.shape)] = view
+
+        if is_cupy(self.obj) and self.obj.ndim == 2:
+            try:
+                from ._kernels import set_cutouts, cupy
+                set_cutouts(self.obj, view, cupy.array(self._start_idxs))  # type: ignore
+            except ImportError:
+                pass
 
         for idx in numpy.ndindex(self.pos.shape[:-1]):
             self.obj[..., *self.sampling.slice_at_pos(self.pos[idx], view.shape)] = view[idx]

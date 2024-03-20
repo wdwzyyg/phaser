@@ -191,6 +191,20 @@ def test_add_view_at_pos(backend: str, dtype: str) -> numpy.ndarray:
 
 
 @with_backends('cpu', 'cuda')
+def test_cutout_2d(backend: str):
+    samp = ObjectSampling((200, 200), (1.0, 1.0))
+    cutout_shape = (64, 64)
+
+    xp = get_backend_module(backend)
+    obj = xp.zeros(samp.shape, dtype=numpy.float32)
+
+    cutouts = samp.cutout(obj, [[0., 0.], [2., 2.], [4., 4.], [-2., -2.]], cutout_shape)
+    assert cutouts.get().shape == (4, *cutout_shape)
+    cutouts += cutouts.get()
+    cutouts.arr = cutouts.get()
+
+
+@with_backends('cpu', 'cuda')
 def test_cutout_multidim(backend: str):
     samp = ObjectSampling((200, 200), (1.0, 1.0))
     cutout_shape = (64, 64)
@@ -219,7 +233,7 @@ def test_set_view_at_pos(backend: str, dtype: str) -> numpy.ndarray:
         mag = 15
     elif dtype == 'float':
         obj = xp.zeros(samp.shape, dtype=numpy.float32)
-        cutouts = xp.full((30, *cutout_shape), 10., dtype=numpy.uint8)
+        cutouts = xp.full((30, *cutout_shape), 10., dtype=numpy.float32)
         mag = 10.
     elif dtype == 'complex':
         obj = xp.zeros(samp.shape, dtype=numpy.complex64)
