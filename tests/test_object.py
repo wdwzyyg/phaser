@@ -133,7 +133,7 @@ def test_add_view_at_pos(backend: str, dtype: str) -> numpy.ndarray:
         mag = 15
     elif dtype == 'float':
         obj = xp.zeros(samp.shape, dtype=numpy.float32)
-        cutouts = xp.full((30, *cutout_shape), 10., dtype=numpy.uint8)
+        cutouts = xp.full((30, *cutout_shape), 10., dtype=numpy.float32)
         mag = 10.
     elif dtype == 'complex':
         obj = xp.zeros(samp.shape, dtype=numpy.complex64)
