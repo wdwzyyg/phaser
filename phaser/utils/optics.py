@@ -44,7 +44,6 @@ def make_focused_probe(ky: NDArray[numpy.floating], kx: NDArray[numpy.floating],
     theta2 = thetay**2. + thetax**2.
 
     phase = (defocus/(2. * wavelength)) * theta2
-
     probe = xp.exp(-2.j*numpy.pi * phase)
 
     mask = theta2 <= (aperture * 1e-3)**2.
@@ -200,3 +199,4 @@ def fresnel_propagator(ky: NDArray[numpy.floating], kx: NDArray[numpy.floating],
 
     k2 = ky**2 + kx**2
     return xp.exp(-1.j * numpy.pi * delta_z * (wavelength * k2 - 2.*(kx*tiltx + ky*tilty)))
+

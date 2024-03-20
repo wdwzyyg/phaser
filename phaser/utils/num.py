@@ -370,8 +370,8 @@ class Sampling:
         if dtype is None:
             dtype = numpy.common_type(self.extent, self.sampling)
 
-        ky: NDArray[numpy.number] = xp2.fft.fftfreq(self.shape[0], dtype(self.sampling[0]))
-        kx: NDArray[numpy.number] = xp2.fft.fftfreq(self.shape[1], dtype(self.sampling[1]))
+        ky: NDArray[numpy.number] = xp2.fft.fftfreq(self.shape[0], self.sampling[0]).astype(dtype)
+        kx: NDArray[numpy.number] = xp2.fft.fftfreq(self.shape[1], self.sampling[1]).astype(dtype)
         if centered:
             ky = xp2.fft.fftshift(ky)
             kx = xp2.fft.fftshift(kx)
