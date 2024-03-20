@@ -207,15 +207,34 @@ def test_cutout_2d(backend: str):
 @with_backends('cpu', 'cuda')
 def test_cutout_multidim(backend: str):
     samp = ObjectSampling((200, 200), (1.0, 1.0))
-    cutout_shape = (64, 64)
+    cutout_shape = (80, 100)
 
     xp = get_backend_module(backend)
-    obj = xp.zeros((2, 5, *samp.shape), dtype=numpy.float32)
 
-    cutouts = samp.cutout(obj, [[0., 0.], [2., 2.], [4., 4.], [-2., -2.]], cutout_shape)
-    assert cutouts.get().shape == (4, 2, 5, *cutout_shape)
-    cutouts += cutouts.get()
-    cutouts.arr = cutouts.get()
+    (zz, yy, xx) = xp.indices((3, *samp.shape), dtype=numpy.float32)
+
+    obj = 1000.*zz + (2.*yy + xx)
+
+    cutouts = samp.cutout(obj, [
+        [[-50., -50.], [-50., 50.]],
+        [[50., -50.], [50., 50.]],
+    ], cutout_shape)
+    cutout_arr = cutouts.get()
+    assert cutout_arr.shape == (2, 2, 3, *cutout_shape)
+
+    # check top left corner of each cutout
+    assert_array_almost_equal(to_numpy(cutout_arr[..., 0, 0]), [
+        [[20., 1020., 2020.], [120., 1120., 2120.]],
+        [[220., 1220., 2220.], [320., 1320., 2320.]],
+    ])
+
+    # check that each cutout is a ramp
+    assert_array_almost_equal(*numpy.broadcast_arrays(numpy.diff(to_numpy(cutout_arr), axis=-1), 1.))  # type: ignore
+    assert_array_almost_equal(*numpy.broadcast_arrays(numpy.diff(to_numpy(cutout_arr), axis=-2), 2.))  # type: ignore
+
+    # also test that addition and assignment work
+    cutouts += cutout_arr
+    cutouts.arr = cutout_arr
 
 
 @with_backends('cpu', 'cuda')

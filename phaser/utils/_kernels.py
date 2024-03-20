@@ -4,7 +4,6 @@ import typing as t
 from types import NotImplementedType
 
 import cupy
-from cupy.cuda.runtime import CUDARuntimeError
 import numpy
 
 # grid
@@ -22,8 +21,6 @@ import numpy
 
 def set_cutouts(obj: cupy.ndarray, cutouts: cupy.ndarray, start_idxs: cupy.ndarray):
     assert obj.ndim >= 2
-    if obj.ndim > 2:
-        raise NotImplementedError()  # for now
 
     kernel = _get_cutout_kernel(obj.dtype, 'set')
     if kernel is NotImplemented:
@@ -31,31 +28,30 @@ def set_cutouts(obj: cupy.ndarray, cutouts: cupy.ndarray, start_idxs: cupy.ndarr
 
     # output array must be the correct dtype
     assert obj.dtype == cutouts.dtype
-    # last two dimensions of output array must be contiguous
-    assert obj[tuple(0 for _ in obj.shape[:-2])].flags.c_contiguous
+    # output array must be contiguous
+    assert obj.flags.c_contiguous
 
     # cutouts must be the correct shape
-    assert cutouts.shape[:-2] == (*obj.shape[:-2], *start_idxs.shape[:-1])
-    assert obj.shape[:-2] == cutouts.shape[:obj.ndim-2]
+    assert cutouts.shape[:-2] == (*start_idxs.shape[:-1], *obj.shape[:-2])
+    assert obj.shape[:-2] == cutouts.shape[-obj.ndim:-2]
     assert start_idxs.shape[-1] == 2
 
-    n_cutouts = numpy.prod(cutouts.shape[obj.ndim-2:-2])
+    n_cutouts = numpy.prod((1, *start_idxs.shape[:-1]))
+    n_objects = numpy.prod((1, *obj.shape[:-2]))
 
     block = (128, 8, 1)
-    shape = (cutouts.shape[-1], cutouts.shape[-2], n_cutouts)
+    shape = (cutouts.shape[-1], cutouts.shape[-2], n_cutouts * n_objects)
     grid = tuple((s + b - 1) // b for (s, b) in zip(shape, block))
 
     start_idxs = cupy.ascontiguousarray(start_idxs.astype(cupy.uint64))
 
-    args = (obj, cupy.ascontiguousarray(cutouts), start_idxs, n_cutouts, *obj.shape[-2:], *cutouts.shape[-2:])
+    args = (obj, cupy.ascontiguousarray(cutouts), start_idxs, n_cutouts, n_objects, *obj.shape[-2:], *cutouts.shape[-2:])
     kernel(grid, block, args)
     return cutouts
 
 
 def get_cutouts(obj: cupy.ndarray, start_idxs: cupy.ndarray, cutout_shape: t.Tuple[int, int]) -> cupy.ndarray:
     assert obj.ndim >= 2
-    if obj.ndim > 2:
-        raise NotImplementedError()  # for now
 
     kernel = _get_cutout_kernel(obj.dtype, 'get')
     if kernel is NotImplemented:
@@ -63,26 +59,26 @@ def get_cutouts(obj: cupy.ndarray, start_idxs: cupy.ndarray, cutout_shape: t.Tup
 
     # check start_idxs shape
     assert start_idxs.shape[-1] == 2
-    cutouts = cupy.empty((*obj.shape[:-2], *start_idxs.shape[:-1], *cutout_shape), dtype=obj.dtype)
+    cutouts = cupy.empty((*start_idxs.shape[:-1], *obj.shape[:-2], *cutout_shape), dtype=obj.dtype)
     # output array must be contiguous
     assert cutouts.flags.c_contiguous
-    n_cutouts = numpy.prod(start_idxs.shape[:-1])
+
+    n_cutouts = numpy.prod((1, *start_idxs.shape[:-1]))
+    n_objects = numpy.prod((1, *obj.shape[:-2]))
 
     block = (128, 8, 1)
-    shape = (cutouts.shape[-1], cutouts.shape[-2], n_cutouts)
+    shape = (cutouts.shape[-1], cutouts.shape[-2], n_cutouts * n_objects)
     grid = tuple((s + b - 1) // b for (s, b) in zip(shape, block))
 
     start_idxs = cupy.ascontiguousarray(start_idxs.astype(cupy.uint64))
 
-    args = (cupy.ascontiguousarray(obj), cutouts, start_idxs, n_cutouts, *obj.shape[-2:], *cutouts.shape[-2:])
+    args = (cupy.ascontiguousarray(obj), cutouts, start_idxs, n_cutouts, n_objects, *obj.shape[-2:], *cutouts.shape[-2:])
     kernel(grid, block, args)
     return cutouts
 
 
 def add_cutouts(obj: cupy.ndarray, cutouts: cupy.ndarray, start_idxs: cupy.ndarray):
-    assert obj.ndim >= 2  # for now
-    if obj.ndim > 2:
-        raise NotImplementedError()  # for now
+    assert obj.ndim >= 2
 
     kernel = _get_cutout_kernel(obj.dtype, 'add')
     if kernel is NotImplemented:
@@ -90,23 +86,24 @@ def add_cutouts(obj: cupy.ndarray, cutouts: cupy.ndarray, start_idxs: cupy.ndarr
 
     # output array must be the correct dtype
     assert obj.dtype == cutouts.dtype
-    # last two dimensions of output array must be contiguous
-    assert obj[tuple(0 for _ in obj.shape[:-2])].flags.c_contiguous
+    # output array must be contiguous
+    assert obj.flags.c_contiguous
 
     # cutouts must be the correct shape
-    assert cutouts.shape[:-2] == (*obj.shape[:-2], *start_idxs.shape[:-1])
-    assert obj.shape[:-2] == cutouts.shape[:obj.ndim-2]
+    assert cutouts.shape[:-2] == (*start_idxs.shape[:-1], *obj.shape[:-2])
+    assert obj.shape[:-2] == cutouts.shape[-obj.ndim:-2]
     assert start_idxs.shape[-1] == 2
 
-    n_cutouts = numpy.prod(cutouts.shape[obj.ndim-2:-2])
+    n_cutouts = numpy.prod((1, *start_idxs.shape[:-1]))
+    n_objects = numpy.prod((1, *obj.shape[:-2]))
 
     block = (128, 8, 1)
-    shape = (cutouts.shape[-1], cutouts.shape[-2], n_cutouts)
+    shape = (cutouts.shape[-1], cutouts.shape[-2], n_cutouts * n_objects)
     grid = tuple((s + b - 1) // b for (s, b) in zip(shape, block))
 
     start_idxs = cupy.ascontiguousarray(start_idxs.astype(cupy.uint64))
 
-    args = (obj, cupy.ascontiguousarray(cutouts), start_idxs, n_cutouts, *obj.shape[-2:], *cutouts.shape[-2:])
+    args = (obj, cupy.ascontiguousarray(cutouts), start_idxs, n_cutouts, n_objects, *obj.shape[-2:], *cutouts.shape[-2:])
     kernel(grid, block, args)
     return cutouts
 
@@ -178,28 +175,28 @@ __device__ inline void atomicAdd(complex<U> *address, complex<U> val) {{
 }}
 
 extern "C" __global__
-void {kernel_name}({const_s[0]}T *obj, {const_s[1]}T *cutouts, const long long *start_idxs, long long n_cutouts,
+void {kernel_name}({const_s[0]}T *obj, {const_s[1]}T *cutouts, const long long *start_idxs, long long n_cutouts, long long n_objects,
                          long long obj_shape_y, long long obj_shape_x, long long cutout_shape_y, long long cutout_shape_x) {{
     size_t          j = blockIdx.x * blockDim.x + threadIdx.x;
     size_t          i = blockIdx.y * blockDim.y + threadIdx.y;
     size_t cutout_num = blockIdx.z * blockDim.z + threadIdx.z;
 
+    size_t     object_num = cutout_num % n_objects;
+    size_t pos_cutout_num = cutout_num / n_objects;
+
     // check if our thread is outside the requested cutout
-    if (cutout_num >= n_cutouts || i >= cutout_shape_y || j >= cutout_shape_x) {{
+    if (pos_cutout_num >= n_cutouts || object_num >= n_objects || i >= cutout_shape_y || j >= cutout_shape_x) {{
         return;
     }}
 
     // offset to get object location, check that it's in bounds
-    long long obj_i = i + start_idxs[2*cutout_num];
-    long long obj_j = j + start_idxs[2*cutout_num + 1];
+    long long obj_i = i + start_idxs[2*pos_cutout_num];
+    long long obj_j = j + start_idxs[2*pos_cutout_num + 1];
     assert(obj_i >= 0 && obj_i < obj_shape_y && obj_j >= 0 && obj_j < obj_shape_x);
-    if (!(obj_i >= 0 && obj_i < obj_shape_y && obj_j >= 0 && obj_j < obj_shape_x)) {{
-        return;
-    }}
 
     // compute cutout and object indices
     size_t cutout_idx = cutout_shape_y * cutout_shape_x * cutout_num + cutout_shape_x * i + j;
-    size_t obj_idx = obj_shape_x * obj_i + obj_j;
+    size_t obj_idx = obj_shape_y * obj_shape_x * object_num + obj_shape_x * obj_i + obj_j;
     // and perform our operation
     {op}
 }}
