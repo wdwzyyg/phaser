@@ -299,6 +299,26 @@ def abs2(x: ArrayLike) -> NDArray[numpy.floating]:
     return x.real**2. + x.imag**2.
 
 
+@t.overload
+def ufunc_outer(ufunc: numpy.ufunc, x: NDArray[DTypeT], y: ArrayLike) -> NDArray[DTypeT]:
+    ...
+
+@t.overload
+def ufunc_outer(ufunc: numpy.ufunc, x: ArrayLike, y: NDArray[DTypeT]) -> NDArray[DTypeT]:
+    ...
+
+@t.overload
+def ufunc_outer(ufunc: numpy.ufunc, x: ArrayLike, y: ArrayLike) -> numpy.ndarray:
+    ...
+
+def ufunc_outer(ufunc: numpy.ufunc, x: ArrayLike, y: ArrayLike) -> numpy.ndarray:
+    if is_jax and not t.TYPE_CHECKING:
+        from ._jax_kernels import outer
+        return outer(ufunc, x, y)
+
+    return ufunc.outer(x, y)
+
+
 @dataclass(frozen=True, init=False)
 class Sampling:
     shape: NDArray[numpy.int_]

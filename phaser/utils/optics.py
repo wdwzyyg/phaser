@@ -7,7 +7,7 @@ import typing as t
 import numpy
 from numpy.typing import NDArray, ArrayLike
 
-from .num import get_array_module, ifft2, abs2, NumT, fuse
+from .num import get_array_module, ifft2, abs2, NumT, ufunc_outer, is_jax
 from .num import to_complex_dtype, to_real_dtype, split_array
 
 
@@ -86,8 +86,9 @@ def hermetian_modes(base_probe: NDArray[NumT], n_y: int, n_x: int) -> NDArray[Nu
     and normalized in reciprocal space.
     """
     xp = get_array_module(base_probe)
+    real_dtype = to_real_dtype(base_probe.dtype)
 
-    (yy, xx) = xp.indices(base_probe.shape, dtype=to_real_dtype(base_probe.dtype))
+    (yy, xx) = xp.indices(base_probe.shape, dtype=real_dtype)
 
     base_probe_mag = abs2(base_probe)
 
@@ -112,10 +113,13 @@ def hermetian_modes(base_probe: NDArray[NumT], n_y: int, n_x: int) -> NDArray[Nu
             # renormalize
             mode /= xp.sqrt(xp.sum(abs2(mode)))
 
-            modes[i] = mode
+            if is_jax(modes) and not t.TYPE_CHECKING:
+                modes = modes.at[i].set(mode)
+            else:
+                modes[i] = mode
             i += 1
 
-    realspace_norm = numpy.sqrt(numpy.prod(base_probe.shape[-2:]))
+    realspace_norm = numpy.sqrt(numpy.prod(base_probe.shape[-2:])).astype(real_dtype)
     return modes.reshape((n_y, n_x, *base_probe.shape)) * realspace_norm
 
 
@@ -153,7 +157,8 @@ def fourier_shift_filter(ky: NDArray[numpy.floating], kx: NDArray[numpy.floating
     dtype = to_complex_dtype(ky.dtype)
 
     (y, x) = split_array(xp.array(shifts, dtype=ky.dtype), axis=-1)
-    return xp.exp(xp.array(-2.j*numpy.pi, dtype=dtype) * (xp.multiply.outer(x, kx) + xp.multiply.outer(y, ky)))
+
+    return xp.exp(xp.array(-2.j*numpy.pi, dtype=dtype) * (ufunc_outer(xp.multiply, x, kx) + ufunc_outer(xp.multiply, y, ky)))
 
 
 @t.overload
