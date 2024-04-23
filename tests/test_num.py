@@ -13,13 +13,14 @@ from phaser.utils.num import (
 )
 
 
-@with_backends('cpu', 'cuda')
+@with_backends('cpu', 'jax', 'cuda')
 def test_get_array_module(backend: str):
     expected = get_backend_module(backend)
 
     mocked_imports = {
-        # on cpu, pretend cupy doesn't exist
-        'cpu': {'cupy'},
+        # on cpu, pretend cupy and jax don't exist
+        'cpu': {'cupy', 'jax'},
+        'jax': {},
         'cuda': {},
     }[backend]
 
@@ -33,7 +34,7 @@ def test_get_array_module(backend: str):
         ) is expected
 
 
-@with_backends('cpu', 'cuda')
+@with_backends('cpu', 'jax', 'cuda')
 def test_get_scipy_module(backend: str):
     import scipy
 
@@ -43,6 +44,7 @@ def test_get_scipy_module(backend: str):
     mocked_imports = {
         # on cpu, pretend cupyx doesn't exist
         'cpu': {'cupyx'},
+        'jax': {},
         'cuda': {},
     }[backend]
 
@@ -96,7 +98,7 @@ def test_to_complex_dtype_invalid():
         to_complex_dtype(numpy.int_)
 
 
-@with_backends('cpu', 'cuda')
+@with_backends('cpu', 'jax', 'cuda')
 def test_fft2(backend: str):
     xp = get_backend_module(backend)
 
@@ -123,7 +125,7 @@ def test_fft2(backend: str):
     )
 
 
-@with_backends('cpu', 'cuda')
+@with_backends('cpu', 'jax', 'cuda')
 def test_ifft2(backend: str):
     xp = get_backend_module(backend)
 
@@ -135,7 +137,8 @@ def test_ifft2(backend: str):
     # normalized, so mass in = intensity out
     assert_array_almost_equal(
         to_numpy(ifft2(a)),
-        numpy.full((5, 5), 1., dtype=numpy.complex64)
+        numpy.full((5, 5), 1., dtype=numpy.complex64),
+        decimal=5
     )
 
     # plane input, F = 1 + 1i
@@ -146,11 +149,12 @@ def test_ifft2(backend: str):
     # zero position is centered
     assert_array_almost_equal(
         to_numpy(ifft2(a)),
-        numpy.pad([[25.+25.j]], ((2, 2), (2, 2))).astype(numpy.complex64)
+        numpy.pad([[25.+25.j]], ((2, 2), (2, 2))).astype(numpy.complex64),
+        decimal=5
     )
 
 
-@with_backends('cpu', 'cuda')
+@with_backends('cpu', 'jax', 'cuda')
 def test_abs2(backend: str):
     xp = get_backend_module(backend)
 

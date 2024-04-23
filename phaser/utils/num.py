@@ -4,6 +4,7 @@ General numeric utilities.
 
 from dataclasses import dataclass
 import typing as t
+from types import ModuleType
 
 import numpy
 
@@ -18,7 +19,21 @@ T = t.TypeVar('T')
 P = t.ParamSpec('P')
 
 
+try:
+    import jax
+    jax.config.update('jax_enable_x64', True)
+except ImportError:
+    pass
+
+
 def get_array_module(*arrs: ArrayLike):
+    try:
+        import jax
+        if any(isinstance(arr, jax.Array) for arr in arrs) \
+           and not t.TYPE_CHECKING:
+            return jax.numpy
+    except ImportError:
+        pass
     try:
         from cupy import get_array_module as f  # type: ignore
         if not t.TYPE_CHECKING:
@@ -31,6 +46,13 @@ def get_array_module(*arrs: ArrayLike):
 def get_scipy_module(*arrs: ArrayLike):
     import scipy
 
+    try:
+        import jax
+        if any(isinstance(arr, jax.Array) for arr in arrs) \
+           and not t.TYPE_CHECKING:
+            return jax.scipy
+    except ImportError:
+        pass
     try:
         from cupyx.scipy import get_array_module as f  # type: ignore
         if not t.TYPE_CHECKING:
@@ -56,14 +78,14 @@ def fuse(*args, **kwargs) -> t.Callable[[T], T]:
 
 def to_numpy(arr: NDArray[DTypeT], stream=None) -> NDArray[DTypeT]:
     """
-    Equivalent to `cupy.asnumpy`, if supported.
+    Convert an array to numpy.
+    For cupy backend, this is equivalent to `cupy.asnumpy`.
     """
-    try:
-        import cupy  # type: ignore
-    except ImportError:
-        pass
-    else:
-        if isinstance(arr, cupy.ndarray) and not t.TYPE_CHECKING:
+    if not t.TYPE_CHECKING:
+        if is_jax(arr):
+            return numpy.array(arr)
+
+        if is_cupy(arr):
             return arr.get(stream)
 
     return arr
@@ -75,6 +97,14 @@ def is_cupy(arr: NDArray[DTypeT]) -> bool:
     except ImportError:
         return False
     return isinstance(arr, cupy.ndarray)
+
+
+def is_jax(arr: NDArray[DTypeT]) -> bool:
+    try:
+        import jax  # type: ignore
+    except ImportError:
+        return False
+    return isinstance(arr, jax.Array)
 
 
 _COMPLEX_MAP: t.Dict[t.Type[numpy.floating], t.Type[numpy.complexfloating]] = {

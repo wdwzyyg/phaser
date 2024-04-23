@@ -7,7 +7,7 @@ from phaser.utils.num import Sampling, to_numpy
 from phaser.utils.optics import make_focused_probe, fresnel_propagator
 
 
-@with_backends('cpu', 'cuda')
+@with_backends('cpu', 'jax', 'cuda')
 @check_array_equals_file('probe_10mrad_focused_mag.tiff', decimal=5)
 def test_focused_probe(backend: str) -> numpy.ndarray:
     xp = get_backend_module(backend)
@@ -18,7 +18,7 @@ def test_focused_probe(backend: str) -> numpy.ndarray:
     return to_numpy(numpy.abs(probe))
 
 
-@with_backends('cpu', 'cuda')
+@with_backends('cpu', 'jax', 'cuda')
 @check_array_equals_file('probe_10mrad_20over.tiff', decimal=5)
 def test_defocused_probe(backend: str) -> numpy.ndarray:
     xp = get_backend_module(backend)
@@ -29,7 +29,7 @@ def test_defocused_probe(backend: str) -> numpy.ndarray:
     return to_numpy(probe)
 
 
-@with_backends('cpu', 'cuda')
+@with_backends('cpu', 'jax', 'cuda')
 @check_array_equals_file('fresnel_200kV_1nm_phase.tiff', decimal=8)
 def test_fresnel_propagator(backend: str) -> numpy.ndarray:
     xp = get_backend_module(backend)

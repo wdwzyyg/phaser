@@ -9,7 +9,8 @@ import typing as t
 import numpy
 from numpy.typing import ArrayLike, DTypeLike, NDArray
 
-from .num import get_array_module, to_real_dtype, is_cupy, NumT, ComplexT, DTypeT
+from .num import get_array_module, to_real_dtype, is_cupy, is_jax
+from .num import NumT, ComplexT, DTypeT
 from .misc import create_rng
 
 
@@ -157,19 +158,19 @@ class ObjectSampling:
         """
         return self.cutout(arr, pos, shape).get()
 
-    def set_view_at_pos(self, arr: numpy.ndarray, pos: ArrayLike, view: numpy.ndarray):
+    def set_view_at_pos(self, arr: NDArray[NumT], pos: ArrayLike, view: numpy.ndarray) -> NDArray[NumT]:
         """
         Set cutout views of `arr` of shape `shape` around positions `pos`
         """
-        cutout = self.cutout(arr, pos, view.shape)
-        cutout.arr = view
+        cutout = self.cutout(arr, pos, view.shape).set(view)
+        return cutout.obj
 
-    def add_view_at_pos(self, arr: numpy.ndarray, pos: ArrayLike, view: numpy.ndarray):
+    def add_view_at_pos(self, arr: NDArray[NumT], pos: ArrayLike, view: numpy.ndarray) -> NDArray[NumT]:
         """
         Add to cutout views of `arr` of shape `shape` around positions `pos`
         """
-        cutout = self.cutout(arr, pos, view.shape)
-        cutout += view
+        cutout = self.cutout(arr, pos, view.shape).add(view)
+        return cutout.obj
 
     def get_region_crop(self) -> t.Tuple[slice, slice]:
         if self.region_min is None:
@@ -239,12 +240,13 @@ class ObjectCutout(t.Generic[DTypeT]):
         return (*self.pos.shape[:-1], *self.obj.shape[:-2], *self.cutout_shape[-2:])
 
     def get(self) -> NDArray[DTypeT]:
-        if self.pos.ndim == 1:
-            return self.obj[..., *self.sampling.slice_at_pos(self.pos, self.cutout_shape)]
+        if is_jax(self.obj):
+            from ._jax_kernels import get_cutouts
+            return t.cast(NDArray[DTypeT], get_cutouts(self.obj, self._start_idxs, tuple(self.cutout_shape)))
 
         if is_cupy(self.obj):
             try:
-                from ._kernels import get_cutouts
+                from ._cuda_kernels import get_cutouts
                 return get_cutouts(self.obj, self._start_idxs, self.cutout_shape)  # type: ignore
             except (ImportError, NotImplementedError):
                 pass
@@ -257,45 +259,51 @@ class ObjectCutout(t.Generic[DTypeT]):
 
         return out
 
-    def set(self, view: NDArray[DTypeT]):
-        if self.pos.ndim == 1:
-            self.obj[..., *self.sampling.slice_at_pos(self.pos, view.shape)] = view
+    def set(self, view: NDArray[DTypeT]) -> ObjectCutout[DTypeT]:
+        if is_jax(self.obj):
+            from ._jax_kernels import set_cutouts
+            obj = t.cast(NDArray[DTypeT], set_cutouts(self.obj, view, self._start_idxs))
+            return self._with_obj(obj)
 
         if is_cupy(self.obj):
             try:
-                from ._kernels import set_cutouts
+                from ._cuda_kernels import set_cutouts
                 set_cutouts(self.obj, view, self._start_idxs)
-                return
+                return self
             except (ImportError, NotImplementedError):
                 pass
 
         for idx in numpy.ndindex(self.pos.shape[:-1]):
             # todo make slices outside of loop
             self.obj[..., *self.sampling.slice_at_pos(self.pos[idx], view.shape)] = view[idx]
+        return self
 
-    def add(self, view: NDArray[DTypeT]):
-        if self.pos.ndim == 1:
-            self.obj[..., *self.sampling.slice_at_pos(self.pos, view.shape)] += view  # type: ignore
+    def add(self, view: NDArray[DTypeT]) -> ObjectCutout[DTypeT]:
+        if is_jax(self.obj):
+            from ._jax_kernels import add_cutouts
+            obj = t.cast(NDArray[DTypeT], add_cutouts(self.obj, view, self._start_idxs))
+            return self._with_obj(obj)
 
         if is_cupy(self.obj):
             try:
-                from ._kernels import add_cutouts
+                from ._cuda_kernels import add_cutouts
                 add_cutouts(self.obj, view, self._start_idxs)
-                return
+                return self
             except (ImportError, NotImplementedError) as e:
                 pass
 
         for idx in numpy.ndindex(self.pos.shape[:-1]):
             # todo make slices outside of loop
             self.obj[..., *self.sampling.slice_at_pos(self.pos[idx], view.shape)] += view[idx]
+        return self
 
-    @property
-    def arr(self) -> NDArray[DTypeT]:
-        return self.get()
-
-    @arr.setter
-    def arr(self, view: NDArray[DTypeT]):
-        self.set(view)
+    def _with_obj(self, obj: NDArray[DTypeT]) -> ObjectCutout[DTypeT]:
+        return ObjectCutout(
+            self.sampling,
+            obj,
+            self.pos.copy(),
+            self.cutout_shape
+        )
 
     def __cupy_get_ndarray__(self) -> NDArray[DTypeT]:
         if not is_cupy(self.obj):
@@ -304,16 +312,3 @@ class ObjectCutout(t.Generic[DTypeT]):
 
     def __array__(self) -> NDArray[DTypeT]:
         return self.get()
-
-    def __iadd__(self, other: NDArray[DTypeT]) -> t.Self:
-        self.add(other)
-        return self
-
-    def __isub__(self, other: NDArray[DTypeT]) -> t.Self:
-        raise NotImplementedError()
-
-    def __ior__(self, other: NDArray[DTypeT]) -> t.Self:
-        raise NotImplementedError()
-
-    def __iand__(self, other: NDArray[DTypeT]) -> t.Self:
-        raise NotImplementedError()

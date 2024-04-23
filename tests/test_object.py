@@ -9,7 +9,7 @@ from phaser.utils.num import to_numpy, abs2
 from phaser.utils.object import random_phase_object, ObjectSampling
 
 
-@with_backends('cpu', 'cuda')
+@with_backends('cpu', 'jax', 'cuda')
 def test_random_phase_object(backend: str):
     xp = get_backend_module(backend)
 
@@ -118,7 +118,37 @@ def test_object_slicing():
     )
 
 
-@with_backends('cpu', 'cuda')
+@with_backends('cpu', 'jax', 'cuda')
+@pytest.mark.parametrize('dtype', ('float', 'complex', 'uint8'))
+@check_array_equals_file('object_get_views_{dtype}.npy', out_name='object_get_views_{dtype}_{backend}.npy')
+def test_get_cutouts(backend: str, dtype: str) -> numpy.ndarray:
+    samp = ObjectSampling((200, 200), (1.0, 1.0))
+    cutout_shape = (64, 64)
+
+    xp = get_backend_module(backend)
+
+    yy, xx = xp.arange(samp.shape[-2]), xp.arange(samp.shape[-1])
+    yy, xx = xp.meshgrid(yy, xx, indexing='ij')
+
+    if dtype == 'uint8':
+        obj = ((yy + 2.*xx) % 256).astype(numpy.uint8)
+    elif dtype == 'float':
+        obj = (yy + 2.*xx).astype(numpy.float32)
+    elif dtype == 'complex':
+        obj = xp.exp((yy + 2.*xx).astype(numpy.complex64) * 1.j/100)
+    else:
+        raise ValueError()
+
+    pos = numpy.array([
+        [0., 0.],
+        [-50., -50.],
+        [-50., 50.],
+        [50., 50.],
+    ])
+
+    return samp.cutout(obj, pos, cutout_shape).get()
+
+@with_backends('cpu', 'jax', 'cuda')
 @pytest.mark.parametrize('dtype', ('float', 'complex', 'uint8'))
 @check_array_equals_file('object_add_views_{dtype}.tiff', out_name='object_add_views_{dtype}_{backend}.tiff', decimal=5)
 def test_add_view_at_pos(backend: str, dtype: str) -> numpy.ndarray:
@@ -182,7 +212,7 @@ def test_add_view_at_pos(backend: str, dtype: str) -> numpy.ndarray:
        [ 48.4540186 ,  52.91460643]
     ])
 
-    samp.add_view_at_pos(obj, pos, cutouts)
+    obj = samp.add_view_at_pos(obj, pos, cutouts)
 
     if dtype != 'complex':
         assert numpy.sum(to_numpy(obj)) == mag * numpy.prod(cutouts.shape)
@@ -190,7 +220,7 @@ def test_add_view_at_pos(backend: str, dtype: str) -> numpy.ndarray:
     return to_numpy(obj)
 
 
-@with_backends('cpu', 'cuda')
+@with_backends('cpu', 'jax', 'cuda')
 def test_cutout_2d(backend: str):
     samp = ObjectSampling((200, 200), (1.0, 1.0))
     cutout_shape = (64, 64)
@@ -200,11 +230,13 @@ def test_cutout_2d(backend: str):
 
     cutouts = samp.cutout(obj, [[0., 0.], [2., 2.], [4., 4.], [-2., -2.]], cutout_shape)
     assert cutouts.get().shape == (4, *cutout_shape)
-    cutouts += cutouts.get()
-    cutouts.arr = cutouts.get()
+
+    # also test that addition and assignment work
+    cutouts.add(cutouts.get())
+    cutouts.set(cutouts.get())
 
 
-@with_backends('cpu', 'cuda')
+@with_backends('cpu', 'jax', 'cuda')
 def test_cutout_multidim(backend: str):
     samp = ObjectSampling((200, 200), (1.0, 1.0))
     cutout_shape = (80, 100)
@@ -233,11 +265,11 @@ def test_cutout_multidim(backend: str):
     assert_array_almost_equal(*numpy.broadcast_arrays(numpy.diff(to_numpy(cutout_arr), axis=-2), 2.))  # type: ignore
 
     # also test that addition and assignment work
-    cutouts += cutout_arr
-    cutouts.arr = cutout_arr
+    cutouts.add(cutouts.get())
+    cutouts.set(cutouts.get())
 
 
-@with_backends('cpu', 'cuda')
+@with_backends('cpu', 'jax', 'cuda')
 @pytest.mark.parametrize('dtype', ('float', 'complex', 'uint8'))
 @check_array_equals_file('object_set_views_{dtype}.tiff', out_name='object_set_views_{dtype}_{backend}.tiff')
 def test_set_view_at_pos(backend: str, dtype: str) -> numpy.ndarray:
@@ -294,7 +326,7 @@ def test_set_view_at_pos(backend: str, dtype: str) -> numpy.ndarray:
        [ 48.4540186 ,  52.91460643]
     ])
 
-    samp.set_view_at_pos(obj, pos, cutouts)
+    obj = samp.set_view_at_pos(obj, pos, cutouts)
 
     if dtype == 'complex':
         assert numpy.max(to_numpy(abs2(obj))) == mag
