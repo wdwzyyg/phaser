@@ -146,7 +146,7 @@ def test_get_cutouts(backend: str, dtype: str) -> numpy.ndarray:
         [50., 50.],
     ])
 
-    return samp.cutout(obj, pos, cutout_shape).get()
+    return to_numpy(samp.cutout(obj, pos, cutout_shape).get())
 
 @with_backends('cpu', 'jax', 'cuda')
 @pytest.mark.parametrize('dtype', ('float', 'complex', 'uint8'))

@@ -9,7 +9,7 @@ import typing as t
 import numpy
 from numpy.typing import ArrayLike, DTypeLike, NDArray
 
-from .num import get_array_module, to_real_dtype, is_cupy, is_jax
+from .num import get_array_module, to_real_dtype, is_cupy, is_jax, to_numpy
 from .num import NumT, ComplexT, DTypeT
 from .misc import create_rng
 
@@ -105,12 +105,15 @@ class ObjectSampling:
 
     def _pos_to_object_idx(self, pos: NDArray[numpy.float_], cutout_shape: t.Tuple[int, ...]) -> NDArray[numpy.float_]:
         """Return starting index for the cutout closest to centered around `pos` (`(y, x)`)"""
+        
+        if not is_jax(pos):  # allow jax tracers to work right
+            pos = to_numpy(pos)
 
         # for a given cutout, shift to the top left pixel of that cutout
         # e.g. a 2x2 cutout needs shifted by s/2
         shift = -numpy.maximum(0., (numpy.array(cutout_shape[-2:]) - 1.)) / 2.
 
-        return (numpy.array(pos) - self.corner) / self.sampling + shift
+        return (pos - self.corner) / self.sampling + shift
 
     def slice_at_pos(self, pos: ArrayLike, cutout_shape: t.Tuple[int, ...]) -> t.Tuple[slice, slice]:
         """
@@ -124,7 +127,7 @@ class ObjectSampling:
         Returns slices which can be used to index into an object. E.g. `obj[slice_at_pos(pos, (32, 32))]`
         will return an array of shape `(32, 32)`.
         """
-        pos = numpy.array(pos)
+
         (start_i, start_j) = numpy.round(self._pos_to_object_idx(pos, cutout_shape)).astype(numpy.int_)
         assert start_i >= 0 and start_j >= 0
         return (
@@ -138,7 +141,7 @@ class ObjectSampling:
 
         Returns the shift from the rounded position towards the actual position.
         """
-        pos = self._pos_to_object_idx(numpy.array(pos), cutout_shape)
+        pos = self._pos_to_object_idx(pos, cutout_shape)
         return pos - numpy.round(pos)
 
     @t.overload
@@ -150,7 +153,8 @@ class ObjectSampling:
         ...
 
     def cutout(self, arr: numpy.ndarray, pos: ArrayLike, shape: t.Tuple[int, ...]) -> ObjectCutout[t.Any]:
-        return ObjectCutout(self, arr, numpy.array(pos), shape)
+        xp = get_array_module(arr, pos)
+        return ObjectCutout(self, xp.array(arr), xp.array(pos), shape)
 
     def get_view_at_pos(self, arr: NDArray[NumT], pos: ArrayLike, shape: t.Tuple[int, ...]) -> NDArray[NumT]:
         """
