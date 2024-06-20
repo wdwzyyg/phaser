@@ -62,10 +62,9 @@ def test_get_scipy_module(backend: str):
     (numpy.complex64, numpy.float32),
     (numpy.complex128, numpy.float64),
     (numpy.complexfloating, numpy.floating),
-    (numpy.complex_, numpy.float_),
     ('complex128', numpy.float64),
-    (float, numpy.float_),
-    (complex, numpy.float_),
+    (float, numpy.float64),
+    (complex, numpy.float64),
 ])
 def test_to_real_dtype(input, expected):
     assert to_real_dtype(input) is expected
@@ -77,10 +76,9 @@ def test_to_real_dtype(input, expected):
     (numpy.float32, numpy.complex64),
     (numpy.float64, numpy.complex128),
     (numpy.floating, numpy.complexfloating),
-    (numpy.float_, numpy.complex_),
     ('float32', numpy.complex64),
-    (float, numpy.complex_),
-    (complex, numpy.complex_),
+    (float, numpy.complex128),
+    (complex, numpy.complex128),
 ])
 def test_to_complex_dtype(input, expected):
     assert to_complex_dtype(input) is expected

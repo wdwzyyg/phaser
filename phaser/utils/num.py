@@ -91,6 +91,18 @@ def to_numpy(arr: NDArray[DTypeT], stream=None) -> NDArray[DTypeT]:
     return arr
 
 
+def to_array(arr: ArrayLike) -> numpy.ndarray:
+    """
+    Convert an ArrayLike to an array, but not necessarily
+    a numpy array.
+    """
+    if not t.TYPE_CHECKING:
+        xp = get_array_module(arr)
+        if xp is not numpy:
+            return arr
+    return numpy.array(arr)
+
+
 def is_cupy(arr: NDArray[DTypeT]) -> bool:
     try:
         import cupy  # type: ignore
@@ -109,7 +121,6 @@ def is_jax(arr: NDArray[DTypeT]) -> bool:
 
 _COMPLEX_MAP: t.Dict[t.Type[numpy.floating], t.Type[numpy.complexfloating]] = {
     numpy.floating: numpy.complexfloating,
-    numpy.float_: numpy.complex_,
     numpy.float32: numpy.complex64,
     numpy.float64: numpy.complex128,
     #numpy.float80: numpy.complex160,
@@ -118,12 +129,13 @@ _COMPLEX_MAP: t.Dict[t.Type[numpy.floating], t.Type[numpy.complexfloating]] = {
     #numpy.float256: numpy.complex512,
 }
 
+try:  # numpy 1.x
+    _COMPLEX_MAP[numpy.float_] = numpy.complex_  # type: ignore
+except AttributeError:
+    pass
+
 _REAL_MAP: t.Dict[t.Type[numpy.complexfloating], t.Type[numpy.floating]] = dict((v, k) for (k, v) in _COMPLEX_MAP.items())
 
-
-@t.overload
-def to_complex_dtype(dtype: t.Type[numpy.float_]) -> t.Type[numpy.complex_]:
-    ...
 
 @t.overload
 def to_complex_dtype(dtype: t.Type[numpy.float32]) -> t.Type[numpy.complex64]:
@@ -158,10 +170,6 @@ def to_complex_dtype(dtype: DTypeLike) -> t.Type[numpy.complexfloating]:
 
 
 @t.overload
-def to_real_dtype(dtype: t.Type[numpy.complex_]) -> t.Type[numpy.float_]:
-    ...
-
-@t.overload
 def to_real_dtype(dtype: t.Type[numpy.complex64]) -> t.Type[numpy.float32]:
     ...
 
@@ -194,10 +202,6 @@ def to_real_dtype(dtype: DTypeLike) -> t.Type[numpy.floating]:
 
 
 @t.overload
-def ifft2(a: t.Union[NDArray[numpy.complex_], NDArray[numpy.float_]]) -> NDArray[numpy.complex_]:
-    ...
-
-@t.overload
 def ifft2(a: t.Union[NDArray[numpy.float64], NDArray[numpy.complex128]]) -> NDArray[numpy.complex128]:
     ...
 
@@ -224,10 +228,6 @@ def ifft2(a: ArrayLike) -> NDArray[numpy.complexfloating]:
     return xp.fft.fftshift(xp.fft.ifft2(a, norm='forward'), axes=(-2, -1))
 
 @t.overload
-def fft2(a: t.Union[NDArray[numpy.complex_], NDArray[numpy.float_]]) -> NDArray[numpy.complex_]:
-    ...
-
-@t.overload
 def fft2(a: t.Union[NDArray[numpy.float64], NDArray[numpy.complex128]]) -> NDArray[numpy.complex128]:
     ...
 
@@ -243,7 +243,7 @@ def fft2(a: NDArray[NumT]) -> NDArray[numpy.complexfloating]:
 def fft2(a: ArrayLike) -> NDArray[numpy.complexfloating]:
     ...
 
-def fft2(a: ArrayLike) -> NDArray[numpy.complex_]:
+def fft2(a: ArrayLike) -> NDArray[numpy.complexfloating]:
     """
     Perform a forward FFT on the last two axes of `a`.
 
@@ -268,10 +268,6 @@ def split_array(arr: NDArray[DTypeT], axis: int = 0, *, keepdims: bool = False) 
     arrs = xp.split(arr, arr.shape[axis], axis=axis)
     return tuple(arr) if keepdims else tuple(xp.squeeze(arr, axis) for arr in arrs)
 
-
-@t.overload
-def abs2(x: t.Union[NDArray[numpy.complex_], NDArray[numpy.float_]]) -> NDArray[numpy.float_]:
-    ...
 
 @t.overload
 def abs2(x: t.Union[NDArray[numpy.float64], NDArray[numpy.complex128]]) -> NDArray[numpy.float64]:
@@ -323,13 +319,13 @@ def ufunc_outer(ufunc: numpy.ufunc, x: ArrayLike, y: ArrayLike) -> numpy.ndarray
 class Sampling:
     shape: NDArray[numpy.int_]
     """Sampling shape (n_y, n_x)"""
-    extent: NDArray[numpy.float_]
+    extent: NDArray[numpy.float64]
     """Sampling diameter (b, a)"""
-    sampling: NDArray[numpy.float_]
+    sampling: NDArray[numpy.float64]
     """Sample spacing (s_y, s_x)"""
 
     @property
-    def k_max(self) -> NDArray[numpy.float_]:
+    def k_max(self) -> NDArray[numpy.float64]:
         """
         Return maximum frequency (radius) of reciprocal space (1/(2s_y), 1/(2s_x))
         """
@@ -360,13 +356,13 @@ class Sampling:
 
         if extent is not None:
             try:
-                object.__setattr__(self, 'extent', numpy.broadcast_to(extent, (2,)).astype(numpy.float_))
+                object.__setattr__(self, 'extent', numpy.broadcast_to(extent, (2,)).astype(numpy.float64))
             except ValueError as e:
                 raise ValueError(f"Expected an extent (b, a), instead got: {extent}") from e
             object.__setattr__(self, 'sampling', self.extent / self.shape)
         elif sampling is not None:
             try:
-                object.__setattr__(self, 'sampling', numpy.broadcast_to(sampling, (2,)).astype(numpy.float_))
+                object.__setattr__(self, 'sampling', numpy.broadcast_to(sampling, (2,)).astype(numpy.float64))
             except ValueError as e:
                 raise ValueError(f"Expected a sampling (s_y, s_x), instead got: {sampling}") from e
             object.__setattr__(self, 'extent', self.sampling * self.shape)

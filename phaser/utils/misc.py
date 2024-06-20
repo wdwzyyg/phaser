@@ -75,7 +75,7 @@ def create_rng_group(n: int, seed: object = None, entropy: object = None) -> t.T
     return tuple(map(Generator, map(PCG64, t.cast(SeedSequence, seq).spawn(n))))
 
 
-def create_groupings(shape: t.Union[int, t.Iterable[int]], grouping: int = 8, seed: t.Any = None) -> list[NDArray[numpy.int_]]:
+def create_groupings(shape: t.Union[int, t.Iterable[int]], grouping: int = 8, seed: t.Any = None) -> list[NDArray[numpy.int64]]:
     """
     Randomly split the indices of `shape` into groups of maximum size `grouping`.
 
@@ -86,4 +86,4 @@ def create_groupings(shape: t.Union[int, t.Iterable[int]], grouping: int = 8, se
     idxs = numpy.indices((shape,) if isinstance(shape, int) else tuple(shape))
     idxs = idxs.reshape(idxs.shape[0], -1).T
     rng.shuffle(idxs)
-    return numpy.array_split(idxs.T, numpy.ceil(idxs.shape[0] / grouping).astype(numpy.int_), axis=-1)
+    return numpy.array_split(idxs.T, numpy.ceil(idxs.shape[0] / grouping).astype(numpy.int64), axis=-1)

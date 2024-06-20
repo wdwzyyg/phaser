@@ -44,7 +44,7 @@ def make_raster_scan(shape: t.Tuple[int, int], scan_step: ArrayLike,
         xp2 = numpy
 
     if dtype is None:
-        dtype = numpy.float_
+        dtype = numpy.float64
 
     # TODO actually center this around (0, 0)
     yy = xp2.arange(shape[0], dtype=dtype) - numpy.array(shape[0] / 2., dtype=dtype)

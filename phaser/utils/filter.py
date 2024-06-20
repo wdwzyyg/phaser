@@ -18,7 +18,7 @@ def remove_linear_ramp(data: NDArray[NumT]) -> NDArray[NumT]:
     ...
 
 @t.overload
-def remove_linear_ramp(data: ArrayLike) -> NDArray[numpy.float_]:
+def remove_linear_ramp(data: ArrayLike) -> NDArray[numpy.float64]:
     ...
 
 def remove_linear_ramp(data: ArrayLike) -> NDArray[numpy.number]:
@@ -38,7 +38,7 @@ def remove_linear_ramp(data: ArrayLike) -> NDArray[numpy.number]:
 
     # TODO fix on gpu
     for idx in numpy.ndindex(data.shape[:-2]):
-        layer = data[*idx].astype(numpy.float_)
+        layer = data[*idx].astype(numpy.float64)
         p, residues, rank, singular = lstsq(pts, layer.flatten())
         output[*idx] = (layer - (p @ pts.T).reshape(layer.shape)).astype(output.dtype)
 

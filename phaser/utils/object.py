@@ -9,7 +9,7 @@ import typing as t
 import numpy
 from numpy.typing import ArrayLike, DTypeLike, NDArray
 
-from .num import get_array_module, to_real_dtype, is_cupy, is_jax, to_numpy
+from .num import get_array_module, to_real_dtype, is_cupy, is_jax, to_numpy, to_array
 from .num import NumT, ComplexT, DTypeT
 from .misc import create_rng
 
@@ -34,7 +34,7 @@ def random_phase_object(shape: t.Iterable[int], sigma: float = 1e-6, *, seed: t.
       - `shape`: Shape of random phase object to generate
       - `sigma`: Standard deviation of phase variation to create
       - `seed`: Random seed or existing random number generator to use. See `create_rng` for more details.
-      - `dtype`: Output datatype of object. Must be complex. Defaults to `numpy.float_`
+      - `dtype`: Output datatype of object. Must be complex. Defaults to `numpy.float64`
       - `xp`: Array module to create object on.
     """
     if xp is None or t.TYPE_CHECKING:
@@ -44,7 +44,7 @@ def random_phase_object(shape: t.Iterable[int], sigma: float = 1e-6, *, seed: t.
 
     rng = create_rng(seed, 'random_phase_object')
 
-    real_dtype = to_real_dtype(dtype) if dtype is not None else numpy.float_
+    real_dtype = to_real_dtype(dtype) if dtype is not None else numpy.float64
     obj_angle = xp2.array(rng.normal(0., sigma, tuple(shape)), dtype=real_dtype)
     return xp2.cos(obj_angle) + xp2.sin(obj_angle) * 1.j
 
@@ -53,46 +53,46 @@ def random_phase_object(shape: t.Iterable[int], sigma: float = 1e-6, *, seed: t.
 class ObjectSampling:
     shape: NDArray[numpy.int_]
     """Sampling shape `(n_y, n_x)`"""
-    sampling: NDArray[numpy.float_]
+    sampling: NDArray[numpy.float64]
     """Sample spacing `(s_y, s_x)`"""
-    corner: NDArray[numpy.float_]
+    corner: NDArray[numpy.float64]
     """Corner of sampling `(y_min, x_min)`"""
 
-    region_min: t.Optional[NDArray[numpy.float_]]
-    region_max: t.Optional[NDArray[numpy.float_]]
+    region_min: t.Optional[NDArray[numpy.float64]]
+    region_max: t.Optional[NDArray[numpy.float64]]
 
     @property
-    def min(self) -> NDArray[numpy.float_]:
+    def min(self) -> NDArray[numpy.float64]:
         """Minimum object pixel position (y, x). Alias for `corner`."""
         return self.corner
 
     @property
-    def max(self) -> NDArray[numpy.float_]:
+    def max(self) -> NDArray[numpy.float64]:
         """Maximum pixel position (y, x)."""
         return self.corner + (self.shape - 1) * self.sampling
 
     @property
-    def extent(self) -> NDArray[numpy.float_]:
+    def extent(self) -> NDArray[numpy.float64]:
         return self.shape * self.sampling
 
     def __init__(self, shape: t.Tuple[int, int], sampling: ArrayLike, corner: t.Optional[ArrayLike] = None,
                  region_min: t.Optional[ArrayLike] = None, region_max: t.Optional[ArrayLike] = None):
         object.__setattr__(self, 'shape', numpy.broadcast_to(numpy.array(shape, dtype=numpy.int_), (2,)))
-        object.__setattr__(self, 'sampling', numpy.broadcast_to(numpy.array(sampling, dtype=numpy.float_), (2,)))
-        object.__setattr__(self, 'region_min', numpy.broadcast_to(numpy.array(region_min, dtype=numpy.float_), (2,)) if region_min is not None else None)
-        object.__setattr__(self, 'region_max', numpy.broadcast_to(numpy.array(region_max, dtype=numpy.float_), (2,)) if region_max is not None else None)
+        object.__setattr__(self, 'sampling', numpy.broadcast_to(numpy.array(sampling, dtype=numpy.float64), (2,)))
+        object.__setattr__(self, 'region_min', numpy.broadcast_to(numpy.array(region_min, dtype=numpy.float64), (2,)) if region_min is not None else None)
+        object.__setattr__(self, 'region_max', numpy.broadcast_to(numpy.array(region_max, dtype=numpy.float64), (2,)) if region_max is not None else None)
 
         if corner is None:
             corner = -self.extent / 2. + self.sampling/2. #* (self.shape % 2)
         else:
-            corner = numpy.broadcast_to(numpy.array(corner, dtype=numpy.float_), (2,))
+            corner = numpy.broadcast_to(numpy.array(corner, dtype=numpy.float64), (2,))
 
         object.__setattr__(self, 'corner', corner)
 
     @classmethod
     def from_scan(cls: t.Type[t.Self], scan_positions: NDArray[numpy.floating], sampling: ArrayLike, pad: ArrayLike = 0) -> t.Self:
         """Create an ObjectSampling around the given scan positions, padded by at least a radius `pad` in real-space."""
-        sampling = numpy.array(sampling, dtype=numpy.float_)
+        sampling = numpy.array(sampling, dtype=numpy.float64)
         pad = numpy.broadcast_to(pad, (2,)).astype(numpy.int_)
 
         y_min, y_max = numpy.nanmin(scan_positions[..., 0]), numpy.nanmax(scan_positions[:, 0])
@@ -103,7 +103,7 @@ class ObjectSampling:
 
         return cls((n_y, n_x), sampling, (y_min - pad[0], x_min - pad[1]), (y_min, x_min), (y_max, x_max))
 
-    def _pos_to_object_idx(self, pos: NDArray[numpy.float_], cutout_shape: t.Tuple[int, ...]) -> NDArray[numpy.float_]:
+    def _pos_to_object_idx(self, pos: NDArray[numpy.float64], cutout_shape: t.Tuple[int, ...]) -> NDArray[numpy.float64]:
         """Return starting index for the cutout closest to centered around `pos` (`(y, x)`)"""
         
         if not is_jax(pos):  # allow jax tracers to work right
@@ -128,21 +128,22 @@ class ObjectSampling:
         will return an array of shape `(32, 32)`.
         """
 
-        (start_i, start_j) = numpy.round(self._pos_to_object_idx(pos, cutout_shape)).astype(numpy.int_)
+        idxs = self._pos_to_object_idx(numpy.array(pos), cutout_shape)
+        (start_i, start_j) = numpy.round(idxs).astype(numpy.int64)
         assert start_i >= 0 and start_j >= 0
         return (
             slice(start_i, start_i + cutout_shape[-2]),
             slice(start_j, start_j + cutout_shape[-1]),
         )
 
-    def get_subpx_shifts(self, pos: ArrayLike, cutout_shape: t.Tuple[int, ...]) -> NDArray[numpy.float_]:
+    def get_subpx_shifts(self, pos: ArrayLike, cutout_shape: t.Tuple[int, ...]) -> NDArray[numpy.float64]:
         """
         Get the subpixel shifts between `pos` and the cutout region around `pos`.
 
         Returns the shift from the rounded position towards the actual position.
         """
-        pos = self._pos_to_object_idx(pos, cutout_shape)
-        return pos - numpy.round(pos)
+        pos = self._pos_to_object_idx(to_array(pos), cutout_shape)
+        return pos - get_array_module(pos).round(pos)
 
     @t.overload
     def cutout(self, arr: NDArray[DTypeT], pos: ArrayLike, shape: t.Tuple[int, ...]) -> ObjectCutout[DTypeT]:

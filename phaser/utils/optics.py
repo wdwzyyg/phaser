@@ -12,11 +12,6 @@ from .num import to_complex_dtype, to_real_dtype, split_array
 
 
 @t.overload
-def make_focused_probe(ky: NDArray[numpy.float_], kx: NDArray[numpy.float_], wavelength: float,
-                    aperture: float, *, defocus: float = 0.) -> NDArray[numpy.complex_]:
-    ...
-
-@t.overload
 def make_focused_probe(ky: NDArray[numpy.float64], kx: NDArray[numpy.float64], wavelength: float,
                     aperture: float, *, defocus: float = 0.) -> NDArray[numpy.complex128]:
     ...
@@ -124,10 +119,6 @@ def hermetian_modes(base_probe: NDArray[NumT], n_y: int, n_x: int) -> NDArray[Nu
 
 
 @t.overload
-def fourier_shift_filter(ky: NDArray[numpy.float_], kx: NDArray[numpy.float_], shifts: ArrayLike) -> NDArray[numpy.complex_]:
-    ...
-
-@t.overload
 def fourier_shift_filter(ky: NDArray[numpy.float64], kx: NDArray[numpy.float64], shifts: ArrayLike) -> NDArray[numpy.complex128]:
     ...
 
@@ -160,11 +151,6 @@ def fourier_shift_filter(ky: NDArray[numpy.floating], kx: NDArray[numpy.floating
 
     return xp.exp(xp.array(-2.j*numpy.pi, dtype=dtype) * (ufunc_outer(xp.multiply, x, kx) + ufunc_outer(xp.multiply, y, ky)))
 
-
-@t.overload
-def fresnel_propagator(ky: NDArray[numpy.float_], kx: NDArray[numpy.float_], wavelength: float,
-                       delta_z: float, tilt: t.Tuple[float, float] = (0., 0.)) -> NDArray[numpy.complex_]:
-    ...
 
 @t.overload
 def fresnel_propagator(ky: NDArray[numpy.float64], kx: NDArray[numpy.float64], wavelength: float,
