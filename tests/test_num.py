@@ -9,7 +9,7 @@ from phaser.utils.num import (
     get_array_module, get_scipy_module,
     to_real_dtype, to_complex_dtype,
     fft2, ifft2, abs2,
-    to_numpy
+    to_numpy, to_array
 )
 
 
@@ -168,4 +168,31 @@ def test_abs2(backend: str):
         to_numpy(abs2(xp.array([1., -2., 5.], dtype=numpy.float32))),
         numpy.array([1, 4., 25.], dtype=numpy.float32),
         decimal=5  # this is pretty poor performance
+    )
+
+
+@with_backends('cpu', 'jax', 'cuda')
+def test_to_numpy(backend: str):
+    xp = get_backend_module(backend)
+
+    arr = xp.array([1., 2., 3., 4.])
+
+    assert_array_almost_equal(
+        to_numpy(arr),
+        numpy.array([1., 2., 3., 4.])
+    )
+
+
+@with_backends('cpu', 'jax', 'cuda')
+def test_to_array(backend: str):
+    xp = get_backend_module(backend)
+
+    arr = xp.array([1., 2., 3., 4.])
+    assert to_array(arr) is arr
+
+    arr = to_array([1., 2., 3., 4.])
+    assert isinstance(arr, numpy.ndarray)
+    assert_array_almost_equal(
+        arr,
+        numpy.array([1., 2., 3., 4.])
     )

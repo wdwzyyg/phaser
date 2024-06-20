@@ -100,7 +100,7 @@ def to_array(arr: ArrayLike) -> numpy.ndarray:
         xp = get_array_module(arr)
         if xp is not numpy:
             return arr
-    return numpy.array(arr)
+    return numpy.asarray(arr)
 
 
 def is_cupy(arr: NDArray[DTypeT]) -> bool:
