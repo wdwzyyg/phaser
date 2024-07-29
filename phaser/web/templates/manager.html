@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Phaser frontend{% endblock %}
+
+{% block head %}
+  <script type="text/javascript" src="{{ url_for('static', filename='bundle-manager.js') }}" defer></script>
+{% endblock %}
+
+{% block body %}
+  Reconstruction manager
+{% endblock %}

@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Phaser frontend{% endblock %}
+
+{% block head %}
+  <script type="text/javascript" src="{{ url_for('static', filename='bundle-dashboard.js') }}" defer></script>
+{% endblock %}
+
+{% block body %}
+  <div class="section-header">Probe</div>
+  <div class="section">
+    <div style="width: 100%; margin: auto;" class="plot-cont" id="probe-plot"></div>
+  </div>
+{% endblock %}

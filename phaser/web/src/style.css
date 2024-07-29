@@ -1,0 +1,48 @@
+body {
+    font-family: sans-serif;
+    max-width: 60em;
+    margin: auto;
+}
+
+.section-header {
+    display: block;
+    font-size: x-large;
+    border-bottom: 2px solid;
+    padding: 10px;
+    margin: 10px 10px;
+}
+
+.section-header:hover {
+    background-color: #ccc;
+    border-radius: 5px;
+}
+
+.section {
+    transition: max-height 0.3s ease-out;
+    max-height: 50em;
+    overflow: hidden;
+}
+
+.section-header + .section.collapsed {
+    transition: max-height 0.3s ease-in;
+    max-height: 0;
+}
+
+
+div.plot-cont {
+    width: 100%;
+}
+
+svg.plot {
+    display: inherit;
+    margin: auto;
+}
+
+.x-axis, .y-axis {
+    font-size: 18px;
+    stroke-width: 2px;
+}
+
+.y-axis-label {
+    text-anchor: middle;
+}
