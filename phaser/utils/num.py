@@ -308,7 +308,7 @@ def ufunc_outer(ufunc: numpy.ufunc, x: ArrayLike, y: ArrayLike) -> numpy.ndarray
     ...
 
 def ufunc_outer(ufunc: numpy.ufunc, x: ArrayLike, y: ArrayLike) -> numpy.ndarray:
-    if is_jax and not t.TYPE_CHECKING:
+    if not t.TYPE_CHECKING and is_jax(x):
         from ._jax_kernels import outer
         return outer(ufunc, x, y)
 

@@ -54,6 +54,6 @@ def make_raster_scan(shape: t.Tuple[int, int], scan_step: ArrayLike,
     if rotation != 0.:
         theta = rotation * numpy.pi/180.
         mat = xp2.array([[numpy.cos(theta), -numpy.sin(theta)], [numpy.sin(theta), numpy.cos(theta)]], dtype=dtype)
-        pts = (mat @ pts.T).T
+        pts = (pts @ mat.T)
 
     return pts * xp2.broadcast_to(scan_step, (2,)).astype(dtype)
