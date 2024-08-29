@@ -1,5 +1,8 @@
-
-from multiprocessing import Queue
+import multiprocessing.connection
+import base64
+import os
+import json
+from multiprocessing.connection import Connection
 import typing as t
 
 import jax
@@ -20,11 +23,63 @@ from phaser.utils.scan import make_raster_scan
 from phaser.utils.object import ObjectSampling, random_phase_object
 
 
-def main(msg_queue: t.Optional[Queue] = None):
+class PipeEncoder(json.JSONEncoder):
+    def default(self, obj: t.Any) -> t.Any:
+        if isinstance(obj, numpy.ndarray):
+            d = obj.__array_interface__
+            d['data'] = base64.encodebytes(obj.tobytes()).decode('ascii')
+            d['_ty'] = 'numpy'
+            return d
 
+        if isinstance(obj, bytes):
+            return {
+                '_ty': 'bytes',
+                'data': base64.encodebytes(obj).decode('ascii')
+            }
+
+        return super().default(obj)
+
+
+class ConnectionWrapper():
+    def __init__(self, conn: Connection):
+        self.inner = conn
+
+    def send(self, obj: t.Any):
+        obj = json.dumps(obj, cls=PipeEncoder).encode('utf-8')
+        self.inner.send_bytes(obj)
+
+    def _pipe_decode(self, obj: t.Dict[t.Any, t.Any]) -> t.Any:
+        if '_ty' not in obj:
+            return obj
+        ty = obj.pop('_ty')
+
+        if ty == 'numpy':
+            obj['data'] = base64.decodebytes(obj['data'].encode('utf-8'))
+            tmp = object()
+            tmp.__array_interface__ = obj  # type: ignore
+            return numpy.array(tmp)
+
+        if ty == 'bytes':
+            return base64.decodebytes(obj['data'].encode('utf-8'))
+
+        raise ValueError(f"Unknown custom type '{ty}', while parsing JSON object {obj}")
+
+    def recv(self) -> t.Any:
+        buf = self.inner.recv_bytes()
+        return json.loads(buf, object_hook=self._pipe_decode)
+
+
+def main(connection: t.Optional[Connection] = None):
     xp = jax.numpy
     dtype = numpy.float32
     complex_dtype = to_complex_dtype(dtype)
+
+    if connection is not None:
+        connection.send_bytes(b"testbytes")
+        # TODO wrap this in a context handler
+        conn = ConnectionWrapper(connection)
+    else:
+        conn = None
 
     meta = AnyMetadata.parse_file("/Users/colin/Downloads/mos2/1/mos2/mos2_0.00_dstep1.0.json")
 
@@ -54,9 +109,10 @@ def main(msg_queue: t.Optional[Queue] = None):
     print(f"Initializing probe...")
     init_probe = make_focused_probe(*grid.recip_grid(dtype=dtype, xp=xp), wavelength, meta.conv_angle, defocus=meta.defocus*1e10)
     init_probes = make_hermetian_modes(init_probe, 4, powers=0.1)
+    print(f"Initialized probe.")
 
-    if msg_queue is not None:
-        msg_queue.put([('init_probe', to_numpy(init_probes))])
+    if conn is not None:
+        conn.send(('init_probe', to_numpy(init_probes)))
 
     print(f"Initializing scan...")
     (n_x, n_y) = meta.scan_shape
@@ -74,8 +130,8 @@ def main(msg_queue: t.Optional[Queue] = None):
     obj_grid = ObjectSampling.from_scan(scan, grid.sampling, pad=grid.extent / 2. + grid.sampling)
     init_obj = random_phase_object((n_slices, *obj_grid.shape), dtype=complex_dtype, xp=xp)
 
-    if msg_queue is not None:
-        msg_queue.put([('init_obj', to_numpy(init_obj))])
+    if conn is not None:
+        conn.send(('init_obj', to_numpy(init_obj)))
 
     raw = xp.array(raw)
     obj = init_obj.copy()
@@ -225,9 +281,9 @@ def main(msg_queue: t.Optional[Queue] = None):
         #pbar.set_description(f"RMS: {mean_sse:10.5e}  step size: {step_size:10.5e}  beta: {beta:.3f}")
         pbar.set_postfix({'rms': mean_sse, 'step_size': step_size, 'beta': beta})
 
-        if msg_queue is not None:
-            msg_queue.put([
+        if conn is not None:
+            [conn.send(v) for v in [
                 ('probe', to_numpy(probes)),
                 ('obj', to_numpy(obj)),
                 ('progress', (numpy.arange(len(iter_sses)), numpy.array(iter_sses))),
-            ])
+            ]]

@@ -2,7 +2,6 @@
   "name": "phaser-frontend",
   "version": "0.1.0",
   "description": "Frontend for phaser",
-  "main": "src/index.ts",
   "scripts": {
     "build": "webpack",
     "serve": "webpack serve"

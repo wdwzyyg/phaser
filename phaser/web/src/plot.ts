@@ -1,5 +1,7 @@
 import * as d3 from 'd3';
 
+import { Scalebar } from './scalebar';
+
 function makeId(prefix: string): string {
     return prefix + `-${d3.format("06g")(Math.floor(Math.random() * 1000000))}`;
 }
@@ -29,7 +31,6 @@ export function canvasPlot(
         .attr("viewBox", [0, 0, width + marginLeft + marginRight, height + marginBottom + marginTop])
         .attr("width", width + marginLeft + marginRight)
         .attr("height", height + marginBottom + marginTop);
-
 
     // axes clip
     const clipId = makeId("ax-clip");
@@ -76,6 +77,9 @@ export function canvasPlot(
         .attr("transform", `translate(0, 0)`)
         .call(yAxis, yScale);
 
+    gy.selectAll(".tick text")
+        .attr("x", "-10px");
+
     if (xLabel !== undefined) {
         gx.append("text")
             .attr("class", "x-axis-label")
@@ -90,6 +94,9 @@ export function canvasPlot(
             .attr("fill", "currentColor")
             .html(yLabel);
     }
+
+    const scalebar = new Scalebar(axCont, width, height, "m", 1e-9);
+    scalebar.scale(xScale);
 
     // canvas container
     const canvasCont = ax.append("foreignObject")
@@ -115,6 +122,7 @@ export function canvasPlot(
         ax.attr("transform", `${transform}`);
         gx.call(xAxis, transform.rescaleX(xScale));
         gy.call(yAxis, transform.rescaleY(yScale));
+        scalebar.scale(transform.rescaleX(xScale))
     } 
 
     return {
