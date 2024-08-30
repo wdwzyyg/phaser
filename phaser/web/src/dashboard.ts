@@ -45,7 +45,7 @@ async function run() {
         console.log(`running, i = ${i}`);
         let probe = make_focused_probe(ky, kx, wavelength, aperture, defocus + 50*(i**1.7));
         let probe_mag = np.abs(probe);
-        imageData.data.set(np.expr`${probe_mag} / ${np.max(probe_mag)}`.apply_cmap());
+        imageData.data.set(np.expr`${probe_mag} / ${np.max(probe_mag)}`.apply_cmap('magma'));
         ctx.putImageData(imageData, 0, 0);
 
         await sleep(200.);

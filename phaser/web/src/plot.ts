@@ -51,6 +51,10 @@ export function canvasPlot(
     // axes
     const ax = axClip.append("g").attr("class", "ax");
 
+    axCont.append("rect")
+        .attr("class", "ax-box")
+        .attr("width", `${width}`).attr("height", `${height}`);
+
     // x and y scales
     const xScale = d3.scaleLinear()
         .domain(xDomain)
@@ -90,7 +94,7 @@ export function canvasPlot(
     if (yLabel !== undefined) {
         gy.append("text")
             .attr("class", "y-axis-label")
-            .attr("transform", `translate(-50, ${height / 2}) rotate(90)`)
+            .attr("transform", `translate(-70, ${height / 2}) rotate(90)`)
             .attr("fill", "currentColor")
             .html(yLabel);
     }

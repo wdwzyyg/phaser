@@ -22,51 +22,7 @@ from phaser.utils.optics import make_focused_probe, make_hermetian_modes, fourie
 from phaser.utils.scan import make_raster_scan
 from phaser.utils.object import ObjectSampling, random_phase_object
 
-
-class PipeEncoder(json.JSONEncoder):
-    def default(self, obj: t.Any) -> t.Any:
-        if isinstance(obj, numpy.ndarray):
-            d = obj.__array_interface__
-            d['data'] = base64.encodebytes(obj.tobytes()).decode('ascii')
-            d['_ty'] = 'numpy'
-            return d
-
-        if isinstance(obj, bytes):
-            return {
-                '_ty': 'bytes',
-                'data': base64.encodebytes(obj).decode('ascii')
-            }
-
-        return super().default(obj)
-
-
-class ConnectionWrapper():
-    def __init__(self, conn: Connection):
-        self.inner = conn
-
-    def send(self, obj: t.Any):
-        obj = json.dumps(obj, cls=PipeEncoder).encode('utf-8')
-        self.inner.send_bytes(obj)
-
-    def _pipe_decode(self, obj: t.Dict[t.Any, t.Any]) -> t.Any:
-        if '_ty' not in obj:
-            return obj
-        ty = obj.pop('_ty')
-
-        if ty == 'numpy':
-            obj['data'] = base64.decodebytes(obj['data'].encode('utf-8'))
-            tmp = object()
-            tmp.__array_interface__ = obj  # type: ignore
-            return numpy.array(tmp)
-
-        if ty == 'bytes':
-            return base64.decodebytes(obj['data'].encode('utf-8'))
-
-        raise ValueError(f"Unknown custom type '{ty}', while parsing JSON object {obj}")
-
-    def recv(self) -> t.Any:
-        buf = self.inner.recv_bytes()
-        return json.loads(buf, object_hook=self._pipe_decode)
+from phaser.web.util import ConnectionWrapper
 
 
 def main(connection: t.Optional[Connection] = None):
@@ -75,7 +31,6 @@ def main(connection: t.Optional[Connection] = None):
     complex_dtype = to_complex_dtype(dtype)
 
     if connection is not None:
-        connection.send_bytes(b"testbytes")
         # TODO wrap this in a context handler
         conn = ConnectionWrapper(connection)
     else:

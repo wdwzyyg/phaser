@@ -21,6 +21,7 @@ body {
     transition: max-height 0.3s ease-out;
     max-height: 50em;
     overflow: hidden;
+    margin: 15px 15px;
 }
 
 .section-header + .section.collapsed {
@@ -28,6 +29,26 @@ body {
     max-height: 0;
 }
 
+.simple-button {
+    display: block;
+    margin: auto;
+
+    width: 40px;
+    height: 40px;
+    border-radius: 15px;
+    border: none;
+    cursor: pointer;
+    box-sizing: border-box;
+
+    background-color: #e6194B;
+}
+
+.simple-button:hover {
+    filter: brightness(85%);
+
+    border: 2px solid black;
+    border-color: black;
+}
 
 div.plot-cont {
     width: 100%;
@@ -36,12 +57,19 @@ div.plot-cont {
 svg.plot {
     display: inherit;
     margin: auto;
+
+    stroke-width: 2px;
+    fill: black;
 }
 
 .x-axis, .y-axis {
     font-size: 18px;
-    stroke-width: 2px;
     user-select: none;
+}
+
+.ax-box {
+    stroke: black;
+    fill: none;
 }
 
 .y-axis-label {
@@ -56,4 +84,33 @@ svg.plot {
     font-size: 24px;
     font-weight: 1000;
     user-select: none;
+}
+
+table {
+    margin: auto;
+    width: 60%;
+    max-width: 200em;
+    min-width: 30em;
+
+    border: 1.5px solid;
+    border-collapse: collapse;
+
+    font-size: 16px;
+}
+
+td {
+    border-style: none solid none;  /* left and right */
+    border-width: 1px;
+
+    padding: 4px;
+}
+
+th {
+    border: 1.5px solid;
+
+    padding: 5px;
+}
+
+#recons-table {
+    text-align: center;
 }

@@ -4,12 +4,14 @@ import multiprocessing
 from multiprocessing.connection import Connection
 import struct
 import io
-import os
+import sys
 import socket
 import random
 import typing as t
 
 from quart import Quart, render_template, request, abort, websocket, url_for
+
+from .util import pipe_deserialize
 
 # reconstruction:
 # - make queue, schedule on scheduler
@@ -29,17 +31,14 @@ class Reconstruction:
         self._conn: Connection = read
         self.process: multiprocessing.Process = multiprocessing.Process(target=main, args=[write])
         self.subscribers: set[asyncio.Queue] = set()
-        self.fut = None
+        self.task = None
 
     async def watch_conn(self):
-        print(f"watch_conn()")
         sock = socket.fromfd(self._conn.fileno(), socket.AF_UNIX, socket.SOCK_STREAM)
 
         loop = asyncio.get_event_loop()
         stream_reader = asyncio.StreamReader()
         transport, protocol = await loop.connect_accepted_socket(lambda: asyncio.StreamReaderProtocol(stream_reader), sock)
-
-        print(f"connected")
 
         while self.running():
             size, = struct.unpack("!i", await stream_reader.readexactly(4))
@@ -59,7 +58,12 @@ class Reconstruction:
                 buf.write(chunk)
                 remaining -= len(chunk)
 
-            print(buf.getvalue())
+            try:
+                msg = pipe_deserialize(buf.getvalue())
+            except Exception as e:
+                logging.error("Error deserializing message", exc_info=sys.exc_info())
+                continue
+            print(msg)
 
     async def subscribe(self) -> t.AsyncGenerator[t.Any, None]:
         connection = asyncio.Queue()
@@ -70,17 +74,86 @@ class Reconstruction:
         finally:  # called when connection closes
             self.subscribers.remove(connection)
 
+    async def message_subscribers(self, msg: t.Any):
+        for subscriber in self.subscribers:
+            await subscriber.put(msg)
+
     def running(self) -> bool:
         return self.process.is_alive()
 
     async def start(self):
         self.process.start()
         app.add_background_task(self.watch_conn)
-        print(f"started future")
 
-    async def join(self, timeout: t.Optional[float] = None):
+        self.task = asyncio.create_task(self._process_future())
+
+    async def _process_future(self):
+        await asyncio.to_thread(lambda: self.process.join())
+        await self.message_subscribers({'status': 'closed'})
+
+    def join(self, timeout: t.Optional[float] = None):
         if self.process.is_alive():
             self.process.join(timeout)
+
+
+class Reconstructions:
+    def __init__(self):
+        self.inner: t.Dict[ID, Reconstruction] = {}
+        self.subscribers: set[asyncio.Queue] = set()
+
+    async def add(self, recons: Reconstruction):
+        await recons.start()
+        self.inner[recons.id] = recons
+        await self.message_subscribers(('started', recons.id))
+
+    async def remove(self, recons: Reconstruction):
+        try:
+            self.inner.pop(recons.id)
+            await self.message_subscribers(('stopped', recons.id))
+        except KeyError:
+            pass
+
+    async def subscribe(self) -> t.AsyncGenerator[t.Any, None]:
+        connection = asyncio.Queue()
+        self.subscribers.add(connection)
+        try:
+            while True:
+                yield await connection.get()
+        finally:
+            self.subscribers.remove(connection)
+
+    async def message_subscribers(self, msg: t.Any):
+        for subscriber in self.subscribers:
+            await subscriber.put({'event': msg, 'state': self.state()})
+
+    def state(self) -> t.Any:
+        return [
+            {
+                'id': recons.id,
+                'status': "running",
+                'links': {
+                    'dashboard': url_for('dashboard', id=recons.id),
+                    'cancel': url_for('cancel', id=recons.id),
+                }
+            }
+            for recons in self.values()
+        ]
+
+    def __contains__(self, item: t.Any) -> bool:
+        return self.inner.__contains__(item)
+
+    def __getitem__(self, item: ID) -> Reconstruction:
+        return self.inner[item]
+
+    def items(self) -> t.ItemsView[ID, Reconstruction]:
+        return self.inner.items()
+
+    def keys(self) -> t.KeysView[ID]:
+        return self.inner.keys()
+
+    def values(self) -> t.ValuesView[Reconstruction]:
+        return self.inner.values()
+
 
 app = Quart(
     __name__,
@@ -90,7 +163,7 @@ app = Quart(
 
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 5
 
-reconstructions: t.Dict[ID, Reconstruction] = {}
+reconstructions: Reconstructions = Reconstructions()
 
 _ID_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 
@@ -107,7 +180,7 @@ def run() -> None:
 @app.after_serving
 async def shutdown():
     for recons in reconstructions.values():
-        await recons.join()
+        recons.join()
 
 @app.get("/")
 async def index():
@@ -117,9 +190,7 @@ async def index():
 async def start_recons():
     _ = await request.get_data()
     id = make_id()
-    recons = Reconstruction(id)
-    await recons.start()
-    reconstructions[id] = Reconstruction(id)
+    await reconstructions.add(Reconstruction(id))
     return {
         'id': id,
         'links': {'dashboard': url_for('dashboard', id=id)}
@@ -133,8 +204,28 @@ async def dashboard(id: ID):
         abort(404)
     return await render_template("dashboard.html")
 
+@app.post("/<string:id>/cancel")
+async def cancel(id: ID):
+    print(f"cancel ID {id}")
+
+    return {
+        'result': 'failed'
+    }
+
+@app.websocket("/listen")
+async def manager_websocket():
+    await websocket.accept()
+
+    await websocket.send_json({
+        'event': 'connected',
+        'state': reconstructions.state()
+    })
+
+    async for msg in reconstructions.subscribe():
+        await websocket.send_json(msg)
+
 @app.websocket("/<string:id>/listen")
-async def listen_websocket(id: ID):
+async def dashboard_websocket(id: ID):
     try:
         recons = reconstructions[id]
     except KeyError:
