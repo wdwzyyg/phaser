@@ -13,14 +13,31 @@ from quart import Quart, render_template, request, abort, websocket, url_for
 
 from .util import pipe_deserialize
 
-# reconstruction:
-# - make queue, schedule on scheduler
-# websocket connect:
-# - add websocket to reconstruction queue
-# run:
-# - start process
-
 ID: t.TypeAlias = str
+ReconstructionState: t.TypeAlias = t.Literal["queued", "starting", "running", "stopping", "stopped", "done"]
+
+
+class ReconstructionStateChange(t.TypedDict):
+    msg: t.Literal['state_change']
+    id: ID
+    state: ReconstructionState
+
+
+class ReconstructionUpdate(t.TypedDict):
+    msg: t.Literal['update']
+    id: ID
+    state: ReconstructionState
+    data: t.Any
+
+
+ReconstructionMessage = ReconstructionUpdate | ReconstructionStateChange
+
+
+class ReconstructionStatus(t.TypedDict):
+    id: ID
+    state: ReconstructionState
+    links: t.Dict[str, str]
+
 
 class Reconstruction:
     def __init__(self, id: ID):
@@ -30,8 +47,17 @@ class Reconstruction:
         (read, write) = multiprocessing.Pipe(duplex=True)
         self._conn: Connection = read
         self.process: multiprocessing.Process = multiprocessing.Process(target=main, args=[write])
-        self.subscribers: set[asyncio.Queue] = set()
+        self.subscribers: set[asyncio.Queue[ReconstructionMessage]] = set()
         self.task = None
+        self.state: ReconstructionState = "queued"
+
+    async def _state_change(self, new_state: ReconstructionState):
+        self.state = new_state
+        await self.message_subscribers({
+            'msg': 'state_change',
+            'id': self.id,
+            'state': new_state
+        })
 
     async def watch_conn(self):
         sock = socket.fromfd(self._conn.fileno(), socket.AF_UNIX, socket.SOCK_STREAM)
@@ -40,7 +66,7 @@ class Reconstruction:
         stream_reader = asyncio.StreamReader()
         transport, protocol = await loop.connect_accepted_socket(lambda: asyncio.StreamReaderProtocol(stream_reader), sock)
 
-        while self.running():
+        while True:
             size, = struct.unpack("!i", await stream_reader.readexactly(4))
             if size == -1:
                 # long size
@@ -65,8 +91,23 @@ class Reconstruction:
                 continue
             print(msg)
 
-    async def subscribe(self) -> t.AsyncGenerator[t.Any, None]:
-        connection = asyncio.Queue()
+            if msg['msg'] == 'update':
+                await self.message_subscribers({
+                    'msg': 'update',
+                    'id': self.id,
+                    'state': self.state,
+                    'data': msg['data']
+                })
+            elif msg['msg'] == 'running':
+                await self._state_change('running')
+            elif msg['msg'] == 'done':
+                await self._state_change('done')
+            else:
+                logging.error(f"Unknown message type {msg['msg']}")
+                continue
+
+    async def subscribe(self) -> t.AsyncGenerator[ReconstructionMessage, None]:
+        connection: asyncio.Queue[ReconstructionMessage] = asyncio.Queue()
         self.subscribers.add(connection)
         try:
             while True:
@@ -74,22 +115,26 @@ class Reconstruction:
         finally:  # called when connection closes
             self.subscribers.remove(connection)
 
-    async def message_subscribers(self, msg: t.Any):
+    async def message_subscribers(self, msg: ReconstructionMessage):
         for subscriber in self.subscribers:
             await subscriber.put(msg)
-
-    def running(self) -> bool:
-        return self.process.is_alive()
 
     async def start(self):
         self.process.start()
         app.add_background_task(self.watch_conn)
-
         self.task = asyncio.create_task(self._process_future())
+        await self._state_change('starting')
+
+    async def stop(self):
+        # TODO request stop
+        await self._state_change('stopping')
+        await asyncio.to_thread(lambda: self.process.join())
 
     async def _process_future(self):
         await asyncio.to_thread(lambda: self.process.join())
-        await self.message_subscribers({'status': 'closed'})
+        if self.state != "done":
+            await self._state_change('stopped')
+        await reconstructions.remove(self)
 
     def join(self, timeout: t.Optional[float] = None):
         if self.process.is_alive():
@@ -102,18 +147,19 @@ class Reconstructions:
         self.subscribers: set[asyncio.Queue] = set()
 
     async def add(self, recons: Reconstruction):
-        await recons.start()
         self.inner[recons.id] = recons
-        await self.message_subscribers(('started', recons.id))
+        await recons.start()
+        #await self.message_subscribers(('started', recons.id))
 
     async def remove(self, recons: Reconstruction):
         try:
-            self.inner.pop(recons.id)
-            await self.message_subscribers(('stopped', recons.id))
+            recons = self.inner.pop(recons.id)
+            #TODO send stop request
+            await asyncio.to_thread(lambda: recons.join())
         except KeyError:
             pass
 
-    async def subscribe(self) -> t.AsyncGenerator[t.Any, None]:
+    async def subscribe(self) -> t.AsyncGenerator[ReconstructionMessage, None]:
         connection = asyncio.Queue()
         self.subscribers.add(connection)
         try:
@@ -122,7 +168,7 @@ class Reconstructions:
         finally:
             self.subscribers.remove(connection)
 
-    async def message_subscribers(self, msg: t.Any):
+    async def message_subscribers(self, msg: ReconstructionMessage):
         for subscriber in self.subscribers:
             await subscriber.put({'event': msg, 'state': self.state()})
 

@@ -26,13 +26,18 @@ from phaser.web.util import ConnectionWrapper
 
 
 def main(connection: t.Optional[Connection] = None):
-    xp = jax.numpy
+    if t.TYPE_CHECKING:
+        xp = numpy
+    else:
+        xp = jax.numpy
+
     dtype = numpy.float32
     complex_dtype = to_complex_dtype(dtype)
 
     if connection is not None:
         # TODO wrap this in a context handler
         conn = ConnectionWrapper(connection)
+        conn.message("running")
     else:
         conn = None
 
@@ -67,7 +72,7 @@ def main(connection: t.Optional[Connection] = None):
     print(f"Initialized probe.")
 
     if conn is not None:
-        conn.send(('init_probe', to_numpy(init_probes)))
+        conn.update({'init_probe': to_numpy(init_probes)})
 
     print(f"Initializing scan...")
     (n_x, n_y) = meta.scan_shape
@@ -86,7 +91,7 @@ def main(connection: t.Optional[Connection] = None):
     init_obj = random_phase_object((n_slices, *obj_grid.shape), dtype=complex_dtype, xp=xp)
 
     if conn is not None:
-        conn.send(('init_obj', to_numpy(init_obj)))
+        conn.update({'init_obj': to_numpy(init_obj)})
 
     raw = xp.array(raw)
     obj = init_obj.copy()
@@ -107,7 +112,7 @@ def main(connection: t.Optional[Connection] = None):
 
         # shape (mode, group, y, x)
         group_probes = ifft2(fft2(probes)[:, None, ...] * group_subpx_filters)
-        group_objs = obj_grid.get_view_at_pos(obj, group_scan, cutout_shape)
+        group_objs = obj_grid.get_view_at_pos(t.cast(numpy.ndarray, obj), group_scan, cutout_shape)
         return (group_probes, group_objs)
 
     @jax.jit
@@ -115,7 +120,7 @@ def main(connection: t.Optional[Connection] = None):
         for slice_i in range(obj.shape[0]):
             group_probes = group_probes * group_objs[:, slice_i]
             if slice_i + 1 < obj.shape[0]:
-                group_probes = ifft2(fft2(group_probes) * propagator)
+                group_probes = ifft2(fft2(group_probes) * propagator)  # type: ignore
 
         # sum over incoherent modes
         intensity = xp.sum(abs2(fft2(group_probes)), axis=0)
@@ -237,8 +242,11 @@ def main(connection: t.Optional[Connection] = None):
         pbar.set_postfix({'rms': mean_sse, 'step_size': step_size, 'beta': beta})
 
         if conn is not None:
-            [conn.send(v) for v in [
-                ('probe', to_numpy(probes)),
-                ('obj', to_numpy(obj)),
-                ('progress', (numpy.arange(len(iter_sses)), numpy.array(iter_sses))),
-            ]]
+            conn.update({
+                'probe': to_numpy(probes),
+                'obj': to_numpy(obj),
+                'progress': (numpy.arange(len(iter_sses)), numpy.array(iter_sses)),
+            })
+
+    if conn is not None:
+        conn.message('done')

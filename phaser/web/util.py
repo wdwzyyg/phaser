@@ -6,6 +6,11 @@ import typing as t
 import numpy
 
 
+class ReconstructionMessage(t.TypedDict):
+    msg: t.Literal['update', 'running', 'done']
+    data: t.Dict[str, t.Any]
+
+
 class PipeEncoder(json.JSONEncoder):
     def default(self, obj: t.Any) -> t.Any:
         if isinstance(obj, numpy.ndarray):
@@ -56,8 +61,14 @@ class ConnectionWrapper():
     def __init__(self, conn: Connection):
         self.inner = conn
 
-    def send(self, obj: t.Any):
-        self.inner.send_bytes(pipe_serialize(obj))
+    def send(self, msg: ReconstructionMessage):
+        self.inner.send_bytes(pipe_serialize(msg))
+
+    def update(self, data: t.Any):
+        self.send({'msg': 'update', 'data': data})
+
+    def message(self, msg: t.Literal['running', 'done']):
+        self.send({'msg': msg, 'data': {}})
 
     def recv(self) -> t.Any:
         return pipe_deserialize(self.inner.recv_bytes())
