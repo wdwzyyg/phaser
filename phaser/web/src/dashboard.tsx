@@ -1,3 +1,18 @@
+
+import React, { StrictMode } from 'react';
+import { createRoot } from 'react-dom/client';
+
+import Section from './section';
+
+const root = createRoot(document.getElementById('app')!);
+root.render(
+    <StrictMode>
+        <Section name="Section 1">Child text</Section>
+    </StrictMode>
+);
+
+/*
+
 import * as d3 from 'd3';
 import * as np from 'wasm-array';
 
@@ -56,3 +71,5 @@ async function run() {
 }
 
 run();
+
+*/

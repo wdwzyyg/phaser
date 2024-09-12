@@ -4,7 +4,7 @@
   "description": "Frontend for phaser",
   "scripts": {
     "build": "webpack",
-    "serve": "webpack serve"
+    "watch": "webpack --mode development --watch"
   },
   "keywords": [
     "webassembly",
@@ -13,11 +13,17 @@
     "webpack"
   ],
   "dependencies": {
-    "d3": "^7.9.0",
+    "d3-array": "^3.2.4",
+    "d3-format": "^3.1.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "wasm-array": "0.1.0"
   },
   "devDependencies": {
-    "@types/d3": "^7.4.3",
+    "@types/d3-array": "^3.2.1",
+    "@types/d3-format": "^3.0.4",
+    "@types/react": "^18.3.5",
+    "@types/react-dom": "^18.3.0",
     "copy-webpack-plugin": "^12.0.2",
     "ts-loader": "^9.5.1",
     "webpack": "^5.74.0",

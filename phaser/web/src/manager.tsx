@@ -1,3 +1,25 @@
+
+import React, { StrictMode } from 'react';
+import { createRoot } from 'react-dom/client';
+
+import Section from './section';
+
+import { Plot, XAxis, YAxis } from './plotting/plot';
+
+
+const root = createRoot(document.getElementById('app')!);
+root.render(
+    <StrictMode>
+        <Section name="Section 1">
+            <Plot width={200} height={200}>
+                <XAxis label="X Axis"/>
+                <YAxis label="Y Axis"/>
+            </Plot>
+        </Section>
+    </StrictMode>
+);
+
+/*
 import * as d3 from 'd3';
 
 var reconstructions: Array<any> = [];
@@ -117,3 +139,4 @@ addEventListener("DOMContentLoaded", (event) => {
         })
     }
 });
+*/

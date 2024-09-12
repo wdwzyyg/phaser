@@ -1,3 +1,4 @@
+/*
 import * as d3 from 'd3';
 
 const prefixes: Map<number, string> = new Map([
@@ -156,3 +157,4 @@ export class Scalebar<E extends SVGElement> {
         this.update(frameWidth);
     }
 }
+*/

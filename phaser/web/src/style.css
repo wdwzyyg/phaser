@@ -65,15 +65,15 @@ svg.plot {
 .x-axis, .y-axis {
     font-size: 18px;
     user-select: none;
+
+    .axis-label {
+        text-anchor: middle;
+    }
 }
 
 .ax-box {
     stroke: black;
     fill: none;
-}
-
-.y-axis-label {
-    text-anchor: middle;
 }
 
 .scalebar {

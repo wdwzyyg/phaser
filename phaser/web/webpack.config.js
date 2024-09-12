@@ -5,8 +5,8 @@ module.exports = {
   mode: "development",
   devtool: 'eval-source-map',
   entry: {
-    manager: './src/manager.ts',
-    dashboard: './src/dashboard.ts',
+    manager: './src/manager.tsx',
+    dashboard: './src/dashboard.tsx',
   },
   output: {
     filename: "bundle-[name].js",
@@ -15,14 +15,14 @@ module.exports = {
   module: {
     rules: [
         {
-            test: /\.ts$/,
+            test: /\.tsx?$/,
             use: 'ts-loader',
             include: [path.resolve(__dirname, 'src')],
         },
     ],
   },
   resolve: {
-    extensions: ['.ts', '.js'],
+    extensions: ['.ts', '.js', '.tsx', '.jsx'],
   },
   plugins: [
     new CopyPlugin({

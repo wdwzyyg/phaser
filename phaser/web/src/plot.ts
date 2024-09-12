@@ -1,3 +1,4 @@
+/*
 import * as d3 from 'd3';
 
 import { Scalebar } from './scalebar';
@@ -133,3 +134,4 @@ export function canvasPlot(
         "svg": svg, "ax": ax, "canvas": canvas, "zoom": zoom,
     }
 }
+*/
