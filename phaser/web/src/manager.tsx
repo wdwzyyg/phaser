@@ -14,6 +14,7 @@ root.render(
             <Plot width={200} height={200}>
                 <XAxis label="X Axis"/>
                 <YAxis label="Y Axis"/>
+                <rect x="50" y="50" width="100" height="100" />
             </Plot>
         </Section>
     </StrictMode>

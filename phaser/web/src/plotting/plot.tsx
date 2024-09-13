@@ -2,15 +2,15 @@ import React from 'react';
 import * as format from 'd3-format';
 import * as array from 'd3-array';
 
+import { PlotScale } from './scale';
+import Zoomer, { ZoomEvent } from './zoom';
+
 interface PlotContextData {
-    width: number
-    height: number
+    xscale: PlotScale
+    yscale: PlotScale
 
-    xLim: [number, number]
-    yLim: [number, number]
-
-    setXLim: (xLim: [number, number]) => void
-    setYLim: (xLim: [number, number]) => void
+    //setXScale: (scale: Scale) => void
+    //setYScale: (scale: Scale) => void
 }
 
 const PlotContext = React.createContext<PlotContextData | undefined>(undefined);
@@ -34,7 +34,7 @@ export function XAxis(props: AxisProps) {
 
     let label: React.ReactElement | undefined = undefined;
     if (props.label) {
-        label = <text className="axis-label" transform={`translate(${plot.width / 2}, 50)`}>
+        label = <text className="axis-label" transform={`translate(${plot.xscale.rangeFromUnit(0.5)}, 50)`}>
             {props.label}
         </text>;
     }
@@ -45,18 +45,19 @@ export function XAxis(props: AxisProps) {
     const fmt = format.format(props.tickFormat ?? "~g");
     const tickLength = props.tickLength ?? 8;
 
-    let ticks = array.ticks(plot.xLim[0], plot.xLim[1], props.ticks ?? 4).map((val) => {
+    let ticks = array.ticks(...plot.xscale.domain, props.ticks ?? 4).map((val) => {
         const text = fmt(val);
-        const pos = (val - plot.xLim[0]) * plot.width / (plot.xLim[1] - plot.xLim[0]);
-        console.log(`tick pos ${pos} text ${text}`);
+        const pos = plot.xscale.transform(val);
         return <g className="tick" key={val}>
             <line x1={pos} x2={pos} y1={0} y2={tickLength} stroke="black"/>
             <text x={pos} y={tickLength} dy="0.9em">{text}</text>
         </g>;
     });
 
-    return <g className='x-axis' transform={`translate(0, ${plot.height})`}>
-        <line x1="0" y1="0" x2={plot.width} y2="0" stroke="black"/>
+    let ax_ypos = plot.yscale.rangeFromUnit(1.0);
+    let [ax_start, ax_stop] = plot.xscale.range;
+    return <g className='bot-axis' transform={`translate(0, ${ax_ypos})`}>
+        <line x1={ax_start} x2={ax_stop} y1="0" y2="0" stroke="black"/>
         { ticks }
         { label }
     </g>;
@@ -70,7 +71,7 @@ export function YAxis(props: AxisProps) {
 
     let label: React.ReactElement | undefined = undefined;
     if (props.label) {
-        label = <text className="axis-label" transform={`translate(-70, ${plot.height / 2}) rotate(90)`}>
+        label = <text className="axis-label" transform={`translate(-70, ${plot.yscale.rangeFromUnit(0.5)}) rotate(90)`}>
             {props.label}
         </text>;
     }
@@ -78,18 +79,19 @@ export function YAxis(props: AxisProps) {
     const fmt = format.format(props.tickFormat ?? "~g");
     const tickLength = props.tickLength ?? 8;
 
-    let ticks = array.ticks(plot.xLim[0], plot.xLim[1], props.ticks ?? 4).map((val) => {
+    let ticks = array.ticks(...plot.yscale.domain, props.ticks ?? 4).map((val) => {
         const text = fmt(val);
-        const pos = (val - plot.yLim[0]) * plot.height / (plot.yLim[1] - plot.yLim[0]);
-        console.log(`tick pos ${pos} text ${text}`);
+        const pos = plot.yscale.transform(val);
         return <g className="tick" key={val}>
             <line x1={-tickLength} x2={0} y1={pos} y2={pos} stroke="black"/>
             <text x={-tickLength} y={pos} dx="-0.3em" dy="0.4em">{text}</text>
         </g>;
     });
 
-    return <g className='y-axis'>
-        <line x1="0" y1="0" x2="0" y2={plot.height} stroke="black"/>
+    let ax_xpos = plot.xscale.rangeFromUnit(0.0);
+    let [ax_start, ax_stop] = plot.yscale.range;
+    return <g className='left-axis' transform={`translate(${ax_xpos}, 0)`}>
+        <line x1="0" x2="0" y1={ax_start} y2={ax_stop} stroke="black"/>
         { ticks }
         { label }
     </g>;
@@ -98,6 +100,8 @@ export function YAxis(props: AxisProps) {
 interface PlotProps {
     width: number
     height: number
+    xDomain?: [number, number]
+    yDomain?: [number, number]
     margins?: [number, number, number, number]
 
     children?: React.ReactNode
@@ -106,11 +110,6 @@ interface PlotProps {
 export function Plot(props: PlotProps) {
     let xAxis: boolean = false;
     let yAxis: boolean = false;
-
-    let [fullXLim, setFullXLim] = React.useState<[number, number]>([-2.0, 2.0]);
-    let [fullYLim, setFullYLim] = React.useState<[number, number]>([-2.0, 2.0]);
-    let [xLim, setXLim] = React.useState<[number, number]>(fullXLim);
-    let [yLim, setYLim] = React.useState<[number, number]>(fullYLim);
 
     let clippedChildren: React.ReactNode[] = [];
     let children: React.ReactNode[] = [];
@@ -132,35 +131,50 @@ export function Plot(props: PlotProps) {
         clippedChildren.push(child);
     });
 
+    const [width, height] = [props.width, props.height];
     const [marginTop, marginRight, marginBottom, marginLeft] = props.margins ?? [10, 10, xAxis ? 80 : 10, yAxis ? 90 : 10];
 
-    const viewBox = [0, 0, props.width + marginLeft + marginRight, props.height + marginBottom + marginTop];
-    const [width, height] = [props.width, props.height];
+    let initXScale = new PlotScale([-2.0, 2.0], [0, width]);
+    let initYScale = new PlotScale([-2.0, 2.0], [0, height]);
+    let [xscale, setXScale] = React.useState(initXScale);
+    let [yscale, setYScale] = React.useState(initYScale);
+
+    let [zoomExtent, setZoomExtent] = React.useState<[number, number]>([1.0, 40.0]);
+    let [translateExtent, setTranslateExtent] = React.useState<[[number, number], [number, number]]>([[0.0, width], [0.0, height]]);
+
     const totalWidth = width + marginLeft + marginRight;
     const totalHeight = height + marginBottom + marginTop;
+    const viewBox = [-marginLeft, -marginTop, totalWidth, totalHeight];
 
     const clipId = React.useMemo(() => makeId("ax-clip"), []);
 
-    /*const zoomHandler = React.useMemo(() => new ZoomHandler(width, height), [props.width, props.height, props.margins]);
+    //const zoomHandler = React.useMemo(() => new ZoomHandler(xscale, yscale), [props.width, props.height, props.margins]);
+    //zoomHandler.zoomExtent = [1, 20];
+    //zoomHandler.translateExtent = [[0, width], [0, height]];
 
-    zoomHandler.bind((event) => {
-        console.log("zoom event")
-    });*/
+    function onzoom(event: ZoomEvent) {
+        setXScale(event.xscale);
+        setYScale(event.yscale);
+    }
 
     const ctx = {
-        width: width, height: height, xLim: xLim, yLim: yLim, setXLim: setXLim, setYLim: setYLim, //zoom: zoomHandler,
+        width: width, height: height, xscale: xscale, yscale: yscale, //zoom: zoomHandler,
     };
 
-    return <svg className="plot" viewBox={viewBox.join(" ")} width={totalWidth} height={totalHeight}>
-        <PlotContext.Provider value={ctx}>
-            <clipPath id={clipId}><rect x={0} y={0} width={width} height={height}/></clipPath>
-            <g className="ax-cont" transform={`translate(${marginLeft}, ${marginTop})`}>
-                <rect className="ax-box" width={width} height={height}/>
-                { children }
-                <g className="ax-clip" clipPath={`url(#${clipId})`}>
-                    { clippedChildren }
+    return <Zoomer xscale={initXScale} yscale={initYScale} onzoom={onzoom} zoomExtent={zoomExtent} translateExtent={translateExtent}>
+        <svg className="plot" viewBox={viewBox.join(" ")} width={totalWidth} height={totalHeight}>
+            <PlotContext.Provider value={ctx}>
+                <clipPath id={clipId}><rect x={0} y={0} width={width} height={height}/></clipPath>
+                <g className="ax-cont">
+                    <rect className="ax-box" width={width} height={height}/>
+                    { children }
+                    <g className="ax-clip" clipPath={`url(#${clipId})`}>
+                        <g className="zoom">
+                            { clippedChildren }
+                        </g>
+                    </g>
                 </g>
-            </g>
-        </PlotContext.Provider>
-    </svg>;
+            </PlotContext.Provider>
+        </svg>
+    </Zoomer>;
 }

@@ -62,13 +62,17 @@ svg.plot {
     fill: black;
 }
 
-.x-axis, .y-axis {
+.bot-axis, .top-axis, .left-axis, .right-axis {
     font-size: 18px;
     user-select: none;
 
-    .axis-label {
-        text-anchor: middle;
-    }
+    text-anchor: middle;
+}
+.left-axis .tick {
+    text-anchor: end;
+}
+.right-axis .tick {
+    text-anchor: begin;
 }
 
 .ax-box {
