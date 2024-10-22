@@ -4,18 +4,29 @@ import { createRoot } from 'react-dom/client';
 
 import Section from './section';
 
-import { Plot, XAxis, YAxis } from './plotting/plot';
+import { PlotScale } from './plotting/scale';
+import { Figure, Plot, XAxis, YAxis } from './plotting/plot';
 
+const scales = new Map([
+    ["x", new PlotScale([-2.0, 2.0], [0.0, 200.0])],
+    ["y", new PlotScale([-2.0, 2.0], [0.0, 200.0])]
+]);
+const translateExtents: Map<string, [number, number]> = new Map([
+    ["x", [-2.0, 2.0]],
+    ["y", [-2.0, 2.0]],
+]);
 
 const root = createRoot(document.getElementById('app')!);
 root.render(
     <StrictMode>
         <Section name="Section 1">
-            <Plot width={200} height={200}>
-                <XAxis label="X Axis"/>
-                <YAxis label="Y Axis"/>
-                <rect x="50" y="50" width="100" height="100" />
-            </Plot>
+            <Figure scales={scales} translateExtents={translateExtents}>
+                <Plot xscale="x" yscale="y">
+                    <XAxis label="X Axis"/>
+                    <YAxis label="Y Axis"/>
+                    <rect x="50" y="50" width="100" height="100" />
+                </Plot>
+            </Figure>
         </Section>
     </StrictMode>
 );

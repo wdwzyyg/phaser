@@ -15,6 +15,7 @@
   "dependencies": {
     "d3-array": "^3.2.4",
     "d3-format": "^3.1.0",
+    "jotai": "^2.10.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "wasm-array": "0.1.0"

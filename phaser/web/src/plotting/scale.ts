@@ -12,6 +12,20 @@ export function clamp<T extends ArrayOrNum>(val: T, extent: Pair): Writable<T> {
 }
 
 
+export function isClose<T extends ArrayOrNum>(left: T, right: T, rtol: number = 1e-6, atol: number = 1e-6): boolean {
+    if (typeof left == "number") {
+        return typeof right == "number" && (
+            Math.abs(left - right) < Math.max(rtol * Math.max(Math.abs(left), Math.abs(right)), atol)
+        );
+    }
+    if (typeof right == "number" || left.length != right.length) return false;
+    for (let i = 0; i < left.length; i++) {
+        if (!isClose(left[i], right[i], rtol, atol)) return false;
+    }
+    return true;
+}
+
+
 export class PlotScale {
     readonly domain: Pair
     readonly range: Pair
@@ -20,6 +34,13 @@ export class PlotScale {
         this.domain = domain;
         this.range = range;
     }
+
+    toString = () => `PlotScale { domain: [${this.domain[0]}, ${this.domain[1]}] range: [${this.range[0]}, ${this.range[1]}] }`;
+
+    isClose = (other: PlotScale) => isClose(this.domain, other.domain) && isClose(this.range, other.range);
+
+    domainSize = () => Math.abs(this.domain[1] - this.domain[0]);
+    rangeSize = () => Math.abs(this.range[1] - this.range[0]);
 
     domainToUnit<T extends ArrayOrNum>(val: T, clip?: boolean): Writable<T> {
         if (clip) {

@@ -1,5 +1,5 @@
 
-import { Pair, clamp } from "./scale";
+import { Pair, clamp, PlotScale } from "./scale";
 
 export default class Transform {
     readonly k: Pair = [1., 1.]
@@ -23,7 +23,14 @@ export default class Transform {
      * Create a transform from the given bounds to the unit box
      */
     static fromBounds(xlim: [number, number], ylim: [number, number]): Transform {
-        return Transform.fromBounds(xlim, ylim).invert();
+        return Transform.toBounds(xlim, ylim).invert();
+    }
+
+    static fromScales(xscale: PlotScale, yscale: PlotScale): Transform {
+        let k: Pair = [xscale.rangeSize() / xscale.domainSize(), yscale.rangeSize() / yscale.domainSize()];
+        return new Transform(
+            k, [xscale.range[0] - k[0] * xscale.domain[0], yscale.range[1] - k[1] * yscale.domain[1]]
+        );
     }
 
     pretranslate(x: number, y: number): Transform {

@@ -1,23 +1,11 @@
 import React from 'react';
+import { useAtom } from 'jotai';
 
-import { clamp, Pair, PlotScale } from "./scale";
+import { clamp, PlotScale, Pair } from "./scale";
 import Transform from "./transform";
 
+import { PlotContext, FigureContext } from "./plot";
 
-export class ZoomEvent {
-    readonly type: "start" | "zoom" | "end"
-
-    readonly xscale: PlotScale
-    readonly yscale: PlotScale
-    readonly transform: Transform
-
-    constructor(type: "start" | "zoom" | "end", xscale: PlotScale, yscale: PlotScale, transform: Transform) {
-        this.type = type;
-        this.xscale = xscale;
-        this.yscale = yscale;
-        this.transform = transform;
-    }
-}
 
 function viewCoords(node: SVGElement, client: Pair): Pair {
     let svg = node.ownerSVGElement || node as SVGSVGElement;
@@ -27,104 +15,161 @@ function viewCoords(node: SVGElement, client: Pair): Pair {
     return [pt.x, pt.y];
 }
 
+export function Zoomer({children: children}: {children?: React.ReactNode}) {
+    const fig = React.useContext(FigureContext)!;
+    const plot = React.useContext(PlotContext)!;
 
-interface ZoomerProps {
-    zoomExtent?: Pair// = [1, Infinity]
-    translateExtent?: [Pair, Pair]// = [[-Infinity, Infinity], [-Infinity, Infinity]]
-
-    xscale: PlotScale
-    yscale: PlotScale
-
-    onzoom?: (event: ZoomEvent) => void
-
-    children?: React.ReactNode
-}
-
-
-export default function Zoomer(props: ZoomerProps) {
-    const reactChild = React.Children.only(props.children) as React.ReactElement;
-    const childRef: React.MutableRefObject<SVGElement | null> = React.useRef(null);
+    const child = React.Children.only(children) as React.ReactElement;
+    const childRef: React.MutableRefObject<(HTMLElement & SVGSVGElement) | null> = React.useRef(null);
     const managerRef: React.MutableRefObject<ZoomManager | null> = React.useRef(null);
 
-    React.useEffect(() => {
-        console.log("constructing zoomer");
-        let manager = new ZoomManager(props.xscale, props.yscale);
+    let [xscale, setXScale] = useAtom(fig.scales.get(plot.xscale)!);
+    let [yscale, setYScale] = useAtom(fig.scales.get(plot.yscale)!);
 
-        if (props.onzoom) manager.bind(props.onzoom);
-        if (props.zoomExtent) manager.zoomExtent = props.zoomExtent;
-        if (props.translateExtent) manager.translateExtent = props.translateExtent;
+    React.useEffect(() => {
+        if (!managerRef.current) {
+            let zoomExtent = fig.zoomExtent;
+            let xTranslateExtent = fig.translateExtents.get(plot.xscale)!;
+            let yTranslateExtent = fig.translateExtents.get(plot.xscale)!;
+
+            managerRef.current = new ZoomManager(
+                xscale, yscale, setXScale, setYScale,
+                xTranslateExtent, yTranslateExtent,
+                zoomExtent
+            );
+        }
+        const manager = managerRef.current;
 
         manager.register(childRef.current!);
-        managerRef.current = manager;
 
-        return () => {
-            manager.cleanup();
+        () => {
+            manager.unregister(childRef.current!);
         }
-    }, []);
+    }, [fig, plot.xscale, plot.yscale]);
 
-    if (managerRef.current) {
-        if (props.zoomExtent) managerRef.current.zoomExtent = props.zoomExtent;
-        if (props.translateExtent) managerRef.current.translateExtent = props.translateExtent;
-    }
+    React.useEffect(() => {
+        if (!managerRef.current) return;
+        const manager = managerRef.current;
 
-    return React.cloneElement(reactChild, {ref: childRef});
+        manager.xscale = xscale;
+        manager.yscale = yscale;
+        manager.updateTransform();
+    }, [xscale, yscale])
+
+    return React.cloneElement(child, {ref: childRef});
 }
 
-
 class ZoomManager {
-    readonly fullXScale: PlotScale;
-    readonly fullYScale: PlotScale;
     xscale: PlotScale;
+    setXScale: (val: PlotScale) => void;
+    fullXScale: PlotScale;
+
     yscale: PlotScale;
-    // transform, which applies in range coordinate system
+    setYScale: (val: PlotScale) => void;
+    fullYScale: PlotScale;
+
+    xTranslateExtent: Pair;
+    yTranslateExtent: Pair;
+
+    zoomExtent: Pair;
+
+    state: "drag" | "idle" = "idle";
+    dragStart: Pair = [0, 0];
     transform: Transform = new Transform();
 
-    private listeners: Array<(event: ZoomEvent) => void> = [];
-    bind(listener: (event: ZoomEvent) => void) { this.listeners.push(listener); }
+    elem: (SVGElement & HTMLElement) | null = null;
 
-    zoomExtent: Pair = [1, Infinity];
-    translateExtent: [Pair, Pair] = [[-Infinity, Infinity], [-Infinity, Infinity]];
+    listeners: EventListenerManager = new EventListenerManager();
 
-    state: "idle" | "drag" = "idle";
-    dragStart: Pair = [0, 0];
+    constructor(
+        xscale: PlotScale, yscale: PlotScale,
+        setXScale: (val: PlotScale) => void, setYScale: (val: PlotScale) => void,
+        xTranslateExtent: Pair, yTranslateExtent: Pair, zoomExtent: Pair,
+    ) {
+        this.xscale = this.fullXScale = xscale;
+        this.setXScale = setXScale;
+        this.yscale = this.fullYScale = yscale;
+        this.setYScale = setYScale;
 
-    private eventListeners: Array<[Element, string, EventListener, any]> = [];
-
-    constructor(xscale: PlotScale, yscale: PlotScale) {
-        this.fullXScale = xscale;
-        this.fullYScale = yscale;
-        this.xscale = xscale;
-        this.yscale = yscale;
+        this.xTranslateExtent = xTranslateExtent;
+        this.yTranslateExtent = yTranslateExtent;
+        this.zoomExtent = zoomExtent;
     }
 
-    private update(type: "start" | "zoom" | "end", node?: SVGElement) {
-        // get new domain by applying transform to range
-        let xdomain = this.fullXScale.untransform(this.transform.invert().xlim(this.fullXScale.range));
-        let ydomain = this.fullYScale.untransform(this.transform.invert().ylim(this.fullYScale.range));
-        // apply new domain to scales
-        this.xscale = new PlotScale(xdomain, this.fullXScale.range);
-        this.yscale = new PlotScale(ydomain, this.fullYScale.range);
+    register(elem: HTMLElement & SVGElement) {
+        this.listeners.addEventListener(elem, "mousedown", (ev) => this.mousedown(elem, ev));
+        this.listeners.addEventListener(elem, "mousemove", (ev) => this.mousemove(elem, ev));
+        this.listeners.addEventListener(elem, "mouseup", (ev) => this.mouseup(elem, ev));
+        this.listeners.addEventListener(elem, "wheel", (ev) => this.wheel(elem, ev));
+        this.elem = elem;
+    }
 
-        // update transforms
-        if (node) {
-            const elems = node.getElementsByClassName('zoom');
+    unregister(elem: HTMLElement & SVGElement) {
+        this.elem = null;
+        this.listeners.removeElementListeners(elem);
+    }
+
+    updateTransform() {
+        this.transform = Transform.fromScales(this.fullXScale, this.fullYScale).invert().compose(
+            Transform.fromScales(this.xscale, this.yscale)
+        );
+
+        if (this.elem) {
+            const elems = this.elem.getElementsByClassName('zoom');
             for (let i = 0; i < elems.length; i++) {
                 (elems[i] as SVGElement).setAttribute("transform", this.transform.toString());
             }
         }
-
-        let event = new ZoomEvent(type, this.xscale, this.yscale, this.transform);
-        this.listeners.forEach((listener) => listener(event));
     }
 
-    constrain(transform: Transform): Transform {
+    constrainScales(xscale: PlotScale, yscale: PlotScale): [PlotScale, PlotScale] {
+        // adapted from d3-zoom
+        // desired shift in domain units
+        const x0 = xscale.domain[0] - this.xTranslateExtent[0];
+        const x1 = xscale.domain[1] - this.xTranslateExtent[1];
+        const y0 = yscale.domain[0] - this.yTranslateExtent[0];
+        const y1 = yscale.domain[1] - this.yTranslateExtent[1];
+
+        // if x1 > x0, overconstrained, return the average.
+        // otherwise clamp to either side
+        const deltaX = x1 > x0 ? (x0 + x1) / 2.0 : Math.min(0, x0) + Math.max(0, x1);
+        const deltaY = y1 > y0 ? (y0 + y1) / 2.0 : Math.min(0, y0) + Math.max(0, y1);
+
+        return [
+            new PlotScale([xscale.domain[0] - deltaX, xscale.domain[1] - deltaX], xscale.range),
+            new PlotScale([yscale.domain[0] - deltaY, yscale.domain[1] - deltaY], yscale.range)
+        ];
+    }
+
+    setScales(xscale: PlotScale, yscale: PlotScale, constrain: boolean = true): void {
+        if (constrain) {
+            [xscale, yscale] = this.constrainScales(xscale, yscale);
+        }
+
+        this.xscale = xscale;
+        this.yscale = yscale;
+        this.setXScale(this.xscale); this.setYScale(this.yscale);
+    }
+
+    setTransform(transform: Transform): void {
+        //console.log("Setting transform");
+        this.transform = transform;
+
+        let xdomain = this.fullXScale.untransform(transform.invert().xlim(this.fullXScale.range));
+        let ydomain = this.fullYScale.untransform(transform.invert().ylim(this.fullYScale.range));
+        this.xscale = new PlotScale(xdomain, this.fullXScale.range);
+        this.yscale = new PlotScale(ydomain, this.fullYScale.range);
+        this.setXScale(this.xscale); this.setYScale(this.yscale);
+    }
+
+    constrain(transform: Transform): Transform { 
         // taken from d3-zoom
         let currentExtent = [transform.invert().xlim(this.xscale.range), transform.invert().ylim(this.yscale.range)];
         // desired shift to bring extent to translateExtent
-        let x0 = currentExtent[0][0] - this.translateExtent[0][0];
-        let x1 = currentExtent[0][1] - this.translateExtent[0][1];
-        let y0 = currentExtent[1][0] - this.translateExtent[1][0];
-        let y1 = currentExtent[1][1] - this.translateExtent[1][1];
+        let x0 = currentExtent[0][0] - this.xTranslateExtent[0];
+        let x1 = currentExtent[0][1] - this.xTranslateExtent[1];
+        let y0 = currentExtent[1][0] - this.yTranslateExtent[0];
+        let y1 = currentExtent[1][1] - this.yTranslateExtent[1];
 
         return transform.pretranslate(
             // if x1 > x0, overconstrained, return the average.
@@ -134,75 +179,119 @@ class ZoomManager {
         );
     }
 
-    // events to handle:
-    // mousedown (no prevent default)
-    // mousemove
-    // mouseup
-    // wheel
-    // touchstart
-    // touchmove
-    // touchend (no prevent default)
-    // touchcancel (no prevent default)
-    // on window, during gesture:
-    // dragstart
-    // selectstart
-
-    mousedown(event: MouseEvent) {
+    mousedown(elem: (HTMLElement & SVGElement), event: MouseEvent) {
         if (event.button != 0) { return; } // LMB only
-        const [x, y] = viewCoords(event.currentTarget as SVGElement, [event.clientX, event.clientY]);
+        const [x, y] = viewCoords(elem, [event.clientX, event.clientY]);
 
         this.state = "drag";
         this.dragStart = [this.xscale.untransform(x), this.yscale.untransform(y)];
 
+        // TODO: add doc listeners
+        this.listeners.addDocumentListener("mousemove", (ev) => this.mousemove(elem, ev));
+        this.listeners.addDocumentListener("mouseup", (ev) => this.mouseup(elem, ev));
+
         event.stopPropagation(); event.preventDefault();
     }
 
-    mousemove(event: MouseEvent) {
+    mousemove(elem: (HTMLElement & SVGElement), event: MouseEvent) {
         if (this.state != "drag") { return; }
 
-        let [x, y] = viewCoords(event.currentTarget as SVGElement, [event.clientX, event.clientY]);
+        let [x, y] = viewCoords(elem, [event.clientX, event.clientY]);
         [x, y] = [this.xscale.untransform(x), this.yscale.untransform(y)];
-        //console.log(`translating [${x}, ${y}] => [${this.dragStart[0]}, ${this.dragStart[1]}]`);
-        let [deltaX, deltaY] = [this.xscale.scale(x - this.dragStart[0]), this.yscale.scale(y - this.dragStart[1])]
+        //let [deltaX, deltaY] = [this.xscale.scale(x - this.dragStart[0]), this.yscale.scale(y - this.dragStart[1])]
+        let [deltaX, deltaY] = [this.dragStart[0] - x, this.dragStart[1] - y];
 
-        this.transform = this.constrain(this.transform.translate(deltaX, deltaY));
-        this.update("zoom", event.currentTarget as SVGElement);
+        this.setScales(
+            new PlotScale([this.xscale.domain[0] + deltaX, this.xscale.domain[1] + deltaX], this.xscale.range),
+            new PlotScale([this.yscale.domain[0] + deltaY, this.yscale.domain[1] + deltaY], this.yscale.range)
+        );
+
+        //this.setTransform(this.constrain(this.transform.translate(deltaX, deltaY)));
         event.stopPropagation(); event.preventDefault();
     }
 
-    mouseup(event: MouseEvent) {
+    mouseup(elem: (HTMLElement & SVGElement), event: MouseEvent) {
         this.state = "idle";
+        this.listeners.removeDocumntListeners();
         event.stopPropagation(); event.preventDefault();
     }
 
-    wheel(event: WheelEvent) {
-        const [x, y] = viewCoords(event.currentTarget as SVGElement, [event.clientX, event.clientY]);
+    wheel(elem: (HTMLElement & SVGElement), event: WheelEvent) {
+        const [x, y] = viewCoords(elem, [event.clientX, event.clientY]);
         const k = Math.exp(-event.deltaY / 500.0);
         const totalK = this.transform.k.map((oldK) => clamp(k * oldK, this.zoomExtent)) as Pair;
 
         const [origx, origy] = this.transform.unapply([x, y]);
-        this.transform = this.constrain(new Transform(totalK, [-origx * totalK[0] + x, -origy * totalK[1] + y]));
+        const transform = new Transform(totalK, [-origx * totalK[0] + x, -origy * totalK[1] + y]);
 
-        this.update("zoom", event.currentTarget as SVGElement);
+        let xdomain = this.fullXScale.untransform(transform.invert().xlim(this.fullXScale.range));
+        let ydomain = this.fullYScale.untransform(transform.invert().ylim(this.fullYScale.range));
+        this.setScales(
+            new PlotScale(xdomain, this.fullXScale.range),
+            new PlotScale(ydomain, this.fullYScale.range)
+        );
 
         event.stopPropagation(); event.preventDefault();
-    }
+    } 
+}
 
-    register(elem: SVGElement) {
-        this.addListener(elem, "mousedown", this.mousedown.bind(this));
-        this.addListener(elem, "mousemove", this.mousemove.bind(this));
-        this.addListener(elem, "mouseup", this.mouseup.bind(this));
-        this.addListener(elem, "wheel", this.wheel.bind(this));
-    }
+class EventListenerManager {
+    private elemListeners: Map<HTMLElement, Array<[keyof HTMLElementEventMap, (this: HTMLElement, ev: any) => void, boolean | undefined | AddEventListenerOptions]>> = new Map();
+    private docListeners: Array<[keyof DocumentEventMap, (this: Document, ev: any) => void, boolean | undefined | AddEventListenerOptions]> = [];
+    private winListeners: Array<[keyof WindowEventMap, (this: Window, ev: any) => void, boolean | undefined | AddEventListenerOptions]> = [];
 
-    private addListener<K extends keyof SVGElementEventMap>(elem: SVGElement, type: K, listener: (this: SVGElement, ev: SVGElementEventMap[K]) => any, options?: boolean | AddEventListenerOptions) {
+    addEventListener<K extends keyof HTMLElementEventMap>(
+        elem: HTMLElement, type: K,
+        listener: (this: HTMLElement, ev: HTMLElementEventMap[K]) => void,
+        options?: boolean | AddEventListenerOptions,
+    ) {
         elem.addEventListener(type, listener, options);
-        this.eventListeners.push([elem, type, listener as EventListener, options]);
+
+        let arr = this.elemListeners.get(elem);
+        if (!arr) {
+            this.elemListeners.set(elem, [[type, listener, options]]);
+        } else {
+            arr.push([type, listener, options]);
+        }
     }
 
-    cleanup() {
-        for (let [elem, type, listener, options] of this.eventListeners) {
-            elem.removeEventListener(type, listener, options);
+    removeElementListeners(elem: HTMLElement) {
+        let arr = this.elemListeners.get(elem);
+        if (arr) {
+            for (const [type, listener, options] of arr) {
+                elem.removeEventListener(type, listener, options);
+            }
+            this.elemListeners.set(elem, []);
         }
+    }
+
+    addDocumentListener<K extends keyof DocumentEventMap>(
+        type: K, listener: (this: Document, ev: DocumentEventMap[K]) => void,
+        options?: boolean | AddEventListenerOptions,
+    ) {
+        document.addEventListener(type, listener, options);
+        this.docListeners.push([type, listener, options]);
+    }
+
+    removeDocumntListeners() {
+        for (const [type, listener, options] of this.docListeners) {
+            document.removeEventListener(type, listener, options);
+        }
+        this.docListeners = [];
+    }
+
+    addWindowListener<K extends keyof WindowEventMap>(
+        type: K, listener: (this: Window, ev: WindowEventMap[K]) => void,
+        options?: boolean | AddEventListenerOptions,
+    ) {
+        window.addEventListener(type, listener, options);
+        this.winListeners.push([type, listener, options]);
+    }
+
+    removeWindowListeners() {
+        for (const [type, listener, options] of this.docListeners) {
+            window.removeEventListener(type, listener, options);
+        }
+        this.winListeners = [];
     }
 }
