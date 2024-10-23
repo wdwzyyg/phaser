@@ -1,7 +1,9 @@
 
+import { Transform1D } from "./transform";
+
 export type Pair = [number, number];
-type ArrayOrNum = number | ReadonlyArray<number>;
-type Writable<T extends ArrayOrNum> = T & (T extends number ? number : T extends readonly number[] ? number[] : never);
+export type ArrayOrNum = number | ReadonlyArray<number>;
+export type Writable<T extends ArrayOrNum> = T & (T extends number ? number : T extends readonly number[] ? number[] : never);
 
 
 export function clamp<T extends ArrayOrNum>(val: T, extent: Pair): Writable<T> {
@@ -96,5 +98,13 @@ export class PlotScale {
 
     unscale(val: number): number {
         return val * (this.domain[1] - this.domain[0]) / (this.range[1] - this.range[0]);
+    }
+
+    transformDomain(transform: Transform1D): PlotScale {
+        return new PlotScale([transform.apply(this.domain[0]), transform.apply(this.domain[1])], this.range);
+    }
+
+    transformRange(transform: Transform1D): PlotScale {
+        return new PlotScale(this.domain, [transform.apply(this.range[0]), transform.apply(this.range[1])]);
     }
 }

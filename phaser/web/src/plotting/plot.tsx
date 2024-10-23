@@ -4,13 +4,14 @@ import { atom, useAtomValue, PrimitiveAtom } from 'jotai';
 import * as format from 'd3-format';
 import * as array from 'd3-array';
 
+import { Transform1D } from './transform';
 import { PlotScale, Pair } from './scale';
 import { Zoomer } from "./zoom";
 
 
 export interface FigureContextData<K> {
-    fullScales: Map<K, PlotScale>
-    scales: Map<K, PrimitiveAtom<PlotScale>>
+    scales: Map<K, PlotScale>
+    transforms: Map<K, PrimitiveAtom<Transform1D>>
     translateExtents: Map<K, Pair>
 
     zoomExtent: Pair
@@ -30,12 +31,12 @@ interface FigureProps {
 export function Figure(props: FigureProps) {
     console.log("Redrawing Figure");
 
-    let fullScales = new Map();
     let scales = new Map();
+    let transforms = new Map();
 
-    for (const [k, fullScale] of props.scales) {
-        fullScales.set(k, fullScale);
-        scales.set(k, atom(fullScale));
+    for (const [k, scale] of props.scales) {
+        scales.set(k, scale);
+        transforms.set(k, atom(new Transform1D()));
     }
 
     let translateExtents = new Map();
@@ -53,8 +54,8 @@ export function Figure(props: FigureProps) {
     }
 
     const ctx = {
-        fullScales: fullScales,
         scales: scales,
+        transforms: transforms,
         translateExtents: translateExtents,
         zoomExtent: props.zoomExtent || [1, Infinity],
     };
@@ -89,7 +90,11 @@ export function XAxis(props: AxisProps) {
     if (fig === undefined || plot === undefined) {
         throw new Error("Component 'XAxis' must be used inside a 'Plot'");
     }
-    let scale = useAtomValue(fig.scales.get(plot.xscale)!);
+    let fullScale = fig.scales.get(plot.xscale)!;
+    let scale = new PlotScale(
+        fullScale.untransform(useAtomValue(fig.transforms.get(plot.xscale)!).unapply(fullScale.range)),
+        fullScale.range
+    );
 
     let label: React.ReactElement | undefined = undefined;
     if (props.label) {
@@ -113,7 +118,7 @@ export function XAxis(props: AxisProps) {
         </g>;
     });
 
-    let ax_ypos = fig.fullScales.get(plot.yscale)!.rangeFromUnit(1.0);
+    let ax_ypos = fig.scales.get(plot.yscale)!.rangeFromUnit(1.0);
     let [ax_start, ax_stop] = scale.range;
     return <g className='bot-axis' transform={`translate(0, ${ax_ypos})`}>
         <line x1={ax_start} x2={ax_stop} y1="0" y2="0" stroke="black"/>
@@ -128,7 +133,11 @@ export function YAxis(props: AxisProps) {
     if (fig === undefined || plot === undefined) {
         throw new Error("Component 'YAxis' must be used inside a 'Plot'");
     }
-    let scale = useAtomValue(fig.scales.get(plot.yscale)!);
+    let fullScale = fig.scales.get(plot.yscale)!;
+    let scale = new PlotScale(
+        fullScale.untransform(useAtomValue(fig.transforms.get(plot.yscale)!).unapply(fullScale.range)),
+        fullScale.range
+    );
 
     let label: React.ReactElement | undefined = undefined;
     if (props.label) {
@@ -149,7 +158,7 @@ export function YAxis(props: AxisProps) {
         </g>;
     });
 
-    let ax_xpos = fig.fullScales.get(plot.xscale)!.rangeFromUnit(0.0);
+    let ax_xpos = fig.scales.get(plot.xscale)!.rangeFromUnit(0.0);
     let [ax_start, ax_stop] = scale.range;
     return <g className='left-axis' transform={`translate(${ax_xpos}, 0)`}>
         <line x1="0" x2="0" y1={ax_start} y2={ax_stop} stroke="black"/>
@@ -201,8 +210,8 @@ export function Plot(props: PlotProps) {
         clippedChildren.push(child);
     });
 
-    const [xFullScale, yFullScale] = [fig.fullScales.get(props.xscale)!, fig.fullScales.get(props.yscale)!];
-    const [width, height] = [xFullScale.rangeSize(), yFullScale.rangeSize()];
+    const [xscale, yscale] = [fig.scales.get(props.xscale)!, fig.scales.get(props.yscale)!];
+    const [width, height] = [xscale.rangeSize(), yscale.rangeSize()];
     const [marginTop, marginRight, marginBottom, marginLeft] = props.margins ?? [10, 10, xAxis ? 80 : 10, yAxis ? 90 : 10];
 
     const totalWidth = width + marginLeft + marginRight;
@@ -214,8 +223,6 @@ export function Plot(props: PlotProps) {
     const ctx = {
         xscale: props.xscale, yscale: props.yscale
     };
-
-    //let [xscale, yscale] = [fig.scales.get(props.xscale)!, fig.scales.get(props.yscale)!];
 
     return <PlotContext.Provider value={ctx}> <Zoomer>
         <svg className="plot" viewBox={viewBox.join(" ")} width={totalWidth} height={totalHeight}>
