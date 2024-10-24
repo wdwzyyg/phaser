@@ -5,27 +5,44 @@ import { createRoot } from 'react-dom/client';
 import Section from './section';
 
 import { PlotScale } from './plotting/scale';
-import { Figure, Plot, XAxis, YAxis } from './plotting/plot';
+import { Figure, Plot, PlotGrid, AxisSpec, Axis } from './plotting/plot';
 
-const scales = new Map([
-    ["x", new PlotScale([-2.0, 2.0], [0.0, 200.0])],
-    ["y", new PlotScale([-2.0, 2.0], [0.0, 200.0])]
-]);
-const translateExtents: Map<string, [number, number]> = new Map([
-    ["x", [-2.0, 2.0]],
-    ["y", [-2.0, 2.0]],
+const axes: Map<string, AxisSpec> = new Map([
+    ["x1", {
+        scale: new PlotScale([-2.0, 2.0], [0.0, 200.0]),
+        label: "X axis",
+        show: 'one',
+    }],
+    ["x2", {
+        scale: new PlotScale([-2.0, 2.0], [0.0, 200.0]),
+        label: "X axis",
+        show: 'one',
+    }],
+    ["y1", {
+        scale: new PlotScale([-2.0, 2.0], [0.0, 200.0]),
+        label: "Y axis",
+        show: 'one',
+    }]
 ]);
 
 const root = createRoot(document.getElementById('app')!);
 root.render(
     <StrictMode>
         <Section name="Section 1">
-            <Figure scales={scales} translateExtents={translateExtents}>
-                <Plot xscale="x" yscale="y">
-                    <XAxis label="X Axis"/>
-                    <YAxis label="Y Axis"/>
+            <Figure axes={axes}>
+                <Plot xaxis="x1" yaxis="y1">
                     <rect x="50" y="50" width="100" height="100" />
                 </Plot>
+            </Figure>
+        </Section>
+        <Section name="Section 2">
+            <Figure axes={axes}>
+                <PlotGrid ncols={2} nrows={2} xaxes={["x1", "x2"]} yaxes={"y1"}>
+                    <Plot><rect x="50" y="50" width="100" height="100" /></Plot>
+                    <Plot><rect x="50" y="50" width="100" height="100" /></Plot>
+                    <Plot><rect x="50" y="50" width="100" height="100" /></Plot>
+                    <Plot><rect x="50" y="50" width="100" height="100" /></Plot>
+                </PlotGrid>
             </Figure>
         </Section>
     </StrictMode>

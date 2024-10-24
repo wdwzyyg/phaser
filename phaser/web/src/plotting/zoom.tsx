@@ -1,10 +1,10 @@
 import React from 'react';
 import { useAtom } from 'jotai';
 
-import { clamp, PlotScale, Pair } from "./scale";
+import { clamp, Pair } from "./scale";
 import { Transform1D, Transform2D } from "./transform";
 
-import { PlotContext, FigureContext } from "./plot";
+import { PlotContext, FigureContext, Axis } from "./plot";
 
 
 function viewCoords(node: SVGElement, client: Pair): Pair {
@@ -23,23 +23,20 @@ export function Zoomer({children: children}: {children?: React.ReactNode}) {
     const childRef: React.MutableRefObject<(HTMLElement & SVGSVGElement) | null> = React.useRef(null);
     const managerRef: React.MutableRefObject<ZoomManager | null> = React.useRef(null);
 
-    let [xtrans, setXTrans] = useAtom(fig.transforms.get(plot.xscale)!);
-    let [ytrans, setYTrans] = useAtom(fig.transforms.get(plot.yscale)!);
+    let [xtrans, setXTrans] = useAtom(fig.transforms.get(plot.xaxis)!);
+    let [ytrans, setYTrans] = useAtom(fig.transforms.get(plot.yaxis)!);
 
-    let xscale = fig.scales.get(plot.xscale)!;
-    let yscale = fig.scales.get(plot.yscale)!;
+    let xaxis = fig.axes.get(plot.xaxis)!;
+    let yaxis = fig.axes.get(plot.yaxis)!;
 
     React.useEffect(() => {
         if (!managerRef.current) {
-            let zoomExtent = fig.zoomExtent;
-            let xTranslateExtent = fig.translateExtents.get(plot.xscale)!;
-            let yTranslateExtent = fig.translateExtents.get(plot.xscale)!;
             let transform = Transform2D.from_1d(xtrans, ytrans);
 
             managerRef.current = new ZoomManager(
-                xscale, yscale, transform, setXTrans, setYTrans,
-                xTranslateExtent, yTranslateExtent,
-                zoomExtent
+                xaxis, yaxis, transform,
+                setXTrans, setYTrans,
+                fig.zoomExtent, plot.fixedAspect
             );
         }
         const manager = managerRef.current;
@@ -49,7 +46,7 @@ export function Zoomer({children: children}: {children?: React.ReactNode}) {
         () => {
             manager.unregister(childRef.current!);
         }
-    }, [fig, plot.xscale, plot.yscale, xscale, yscale]);
+    }, [fig, plot.xaxis, plot.yaxis, xaxis, yaxis]);
 
     React.useEffect(() => {
         if (!managerRef.current) return;
@@ -63,16 +60,15 @@ export function Zoomer({children: children}: {children?: React.ReactNode}) {
 }
 
 class ZoomManager {
-    xscale: PlotScale;
-    yscale: PlotScale;
+    xaxis: Axis;
+    yaxis: Axis;
 
     transform: Transform2D;
     setXTrans: (val: Transform1D) => void;
     setYTrans: (val: Transform1D) => void;
 
-    xTranslateExtent: Pair;
-    yTranslateExtent: Pair;
     zoomExtent: Pair;
+    fixedAspect: boolean;
 
     state: "drag" | "idle" = "idle";
     dragStart: Pair = [0, 0];
@@ -83,20 +79,19 @@ class ZoomManager {
     listeners: EventListenerManager = new EventListenerManager();
 
     constructor(
-        xscale: PlotScale, yscale: PlotScale, transform: Transform2D,
+        xaxis: Axis, yaxis: Axis, transform: Transform2D, 
         setXTrans: (val: Transform1D) => void, setYTrans: (val: Transform1D) => void,
-        xTranslateExtent: Pair, yTranslateExtent: Pair, zoomExtent: Pair,
+        zoomExtent: Pair, fixedAspect: boolean = false
     ) {
-        this.xscale = xscale;
-        this.yscale = yscale;
+        this.xaxis = xaxis;
+        this.yaxis = yaxis;
 
         this.transform = transform;
         this.setXTrans = setXTrans;
         this.setYTrans = setYTrans;
 
-        this.xTranslateExtent = xTranslateExtent;
-        this.yTranslateExtent = yTranslateExtent;
         this.zoomExtent = zoomExtent;
+        this.fixedAspect = fixedAspect;
     }
 
     register(elem: HTMLElement & SVGElement) {
@@ -120,6 +115,9 @@ class ZoomManager {
     }
 
     updateTransform() {
+        if (this.fixedAspect) {
+            throw new Error("Unimplemented");
+        }
         if (this.elem) {
             const elems = this.elem.getElementsByClassName('zoom');
             for (let i = 0; i < elems.length; i++) {
@@ -130,10 +128,10 @@ class ZoomManager {
 
     constrain(transform: Transform2D): Transform2D { 
         // taken from d3-zoom
-        let currentExtent = [transform.invert().xlim(this.xscale.range), transform.invert().ylim(this.yscale.range)];
+        let currentExtent = [transform.invert().xlim(this.xaxis.scale.range), transform.invert().ylim(this.yaxis.scale.range)];
         // transform translateExtent to range coordinates
-        let xExtent = this.xscale.transform(this.xTranslateExtent);
-        let yExtent = this.yscale.transform(this.yTranslateExtent);
+        let xExtent = this.xaxis.scale.transform(this.xaxis.translateExtent);
+        let yExtent = this.yaxis.scale.transform(this.yaxis.translateExtent);
 
         // desired shift to bring extent to translateExtent
         let x0 = currentExtent[0][0] - xExtent[0];
