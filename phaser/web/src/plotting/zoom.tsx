@@ -1,7 +1,7 @@
 import React from 'react';
 import { useAtom } from 'jotai';
 
-import { clamp, Pair } from "./scale";
+import { Pair, clamp, isClose } from "./scale";
 import { Transform1D, Transform2D } from "./transform";
 
 import { PlotContext, FigureContext, Axis } from "./plot";
@@ -30,6 +30,13 @@ export function Zoomer({children: children}: {children?: React.ReactNode}) {
     let yaxis = fig.axes.get(plot.yaxis)!;
 
     React.useEffect(() => {
+        if (!managerRef.current) return;
+        const manager = managerRef.current;
+
+        manager.updateTransform(Transform2D.from_1d(xtrans, ytrans));
+    }, [xtrans, ytrans]);
+
+    React.useEffect(() => {
         if (!managerRef.current) {
             let transform = Transform2D.from_1d(xtrans, ytrans);
 
@@ -48,14 +55,6 @@ export function Zoomer({children: children}: {children?: React.ReactNode}) {
         }
     }, [fig, plot.xaxis, plot.yaxis, xaxis, yaxis]);
 
-    React.useEffect(() => {
-        if (!managerRef.current) return;
-        const manager = managerRef.current;
-
-        manager.transform = Transform2D.from_1d(xtrans, ytrans);
-        manager.updateTransform();
-    }, [xtrans, ytrans])
-
     return React.cloneElement(child, {ref: childRef});
 }
 
@@ -67,7 +66,7 @@ class ZoomManager {
     setXTrans: (val: Transform1D) => void;
     setYTrans: (val: Transform1D) => void;
 
-    zoomExtent: Pair;
+    zoomExtent: [Pair, Pair]; // [[minx, maxx], [miny, maxy]]
     fixedAspect: boolean;
 
     state: "drag" | "idle" = "idle";
@@ -75,8 +74,8 @@ class ZoomManager {
     //transform: Transform2D = new Transform2D();
 
     elem: (SVGElement & HTMLElement) | null = null;
-
     listeners: EventListenerManager = new EventListenerManager();
+    firstUpdate: boolean = true;
 
     constructor(
         xaxis: Axis, yaxis: Axis, transform: Transform2D, 
@@ -90,8 +89,14 @@ class ZoomManager {
         this.setXTrans = setXTrans;
         this.setYTrans = setYTrans;
 
-        this.zoomExtent = zoomExtent;
+        this.zoomExtent = [zoomExtent, zoomExtent];
         this.fixedAspect = fixedAspect;
+
+        if (fixedAspect) {
+            this.setTransform(this.constrainToAspect(this.transform, 'shrink'));
+            //this.zoomExtent[0] = [this.zoomExtent[0][0] * this.transform.k[0], this.zoomExtent[0][1] * this.transform.k[0]]
+            //this.zoomExtent[1] = [this.zoomExtent[1][0] * this.transform.k[1], this.zoomExtent[1][1] * this.transform.k[1]]
+        }
     }
 
     register(elem: HTMLElement & SVGElement) {
@@ -108,25 +113,67 @@ class ZoomManager {
     }
 
     setTransform(transform: Transform2D): void {
-        //console.log("Setting transform");
         this.transform = transform;
         const [xtrans, ytrans] = transform.to_1d();
         this.setXTrans(xtrans); this.setYTrans(ytrans);
     }
 
-    updateTransform() {
-        if (this.fixedAspect) {
-            throw new Error("Unimplemented");
+    updateTransform(transform: Transform2D) {
+        const oldTransform = this.transform;
+        this.transform = transform;
+
+        if (this.fixedAspect && !this.firstUpdate) {
+            // update y axis if x changed, and vice versa.
+            const method = isClose(oldTransform.k[0], transform.k[0]) ? 'x' : 'y';
+
+            transform = this.constrainToAspect(transform, method);
+            if (!isClose(this.transform.k, transform.k)) {
+                this.transform = transform;
+                const [xtrans, ytrans] = transform.to_1d();
+                if (method == "x") {
+                    this.setXTrans(xtrans);
+                } else {
+                    this.setYTrans(ytrans);
+                }
+            }
         }
+
         if (this.elem) {
             const elems = this.elem.getElementsByClassName('zoom');
             for (let i = 0; i < elems.length; i++) {
                 (elems[i] as SVGElement).setAttribute("transform", this.transform.toString());
             }
         }
+
+        this.firstUpdate = false;
+    }
+
+    constrainToAspect(transform: Transform2D, method?: 'x' | 'y' | 'grow' | 'shrink'): Transform2D {
+        let kx = Math.abs((this.xaxis.scale.rangeSize() / this.xaxis.scale.domainSize()) * this.transform.k[0]);
+        let ky = Math.abs((this.yaxis.scale.rangeSize() / this.yaxis.scale.domainSize()) * this.transform.k[1]);
+        if (isClose(kx, ky)) return transform;
+
+        const [c_x, c_y] = this.transform.unapply([this.xaxis.scale.rangeFromUnit(0.5), this.yaxis.scale.rangeFromUnit(0.5)]);
+
+        let scale: Pair;
+        if (method == 'x') {
+            scale = [ky/kx, 1.0];
+        } else if (method == 'y') {
+            scale = [1.0, kx/ky];
+        } else if (method == 'grow') {
+            scale = [Math.max(1.0, kx/ky), Math.max(1.0, ky/kx)];
+        } else { // method == 'shrink'
+            scale = [Math.min(1.0, ky/kx), Math.min(1.0, kx/ky)];
+        }
+
+        return this.transform.compose(new Transform2D(scale, [c_x*(1-scale[0]), c_y*(1-scale[1])]));
     }
 
     constrain(transform: Transform2D): Transform2D { 
+        if (this.fixedAspect) {
+            transform = this.constrainToAspect(transform, 'shrink');
+        }
+
         // taken from d3-zoom
         let currentExtent = [transform.invert().xlim(this.xaxis.scale.range), transform.invert().ylim(this.yaxis.scale.range)];
         // transform translateExtent to range coordinates
@@ -179,7 +226,10 @@ class ZoomManager {
     wheel(elem: (HTMLElement & SVGElement), event: WheelEvent) {
         const [x, y] = viewCoords(elem, [event.clientX, event.clientY]);
         const k = Math.exp(-event.deltaY / 500.0);
-        const totalK = this.transform.k.map((oldK) => clamp(k * oldK, this.zoomExtent)) as Pair;
+        const totalK: Pair = [
+            clamp(k * this.transform.k[0], this.zoomExtent[0]),
+            clamp(k * this.transform.k[1], this.zoomExtent[1]),
+        ];
 
         const [origx, origy] = this.transform.unapply([x, y]);
         const transform = new Transform2D(totalK, [-origx * totalK[0] + x, -origy * totalK[1] + y]);

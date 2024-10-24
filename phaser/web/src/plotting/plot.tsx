@@ -235,8 +235,8 @@ export function Plot(props: PlotProps) {
         clippedChildren.push(child);
     });
 
-    if (show_xaxis) children.push(<XAxis label={xaxis.label}/>)
-    if (show_yaxis) children.push(<YAxis label={yaxis.label}/>)
+    if (show_xaxis) children.push(<XAxis label={xaxis.label} key="xaxis"/>)
+    if (show_yaxis) children.push(<YAxis label={yaxis.label} key="yaxis"/>)
 
     const dims = calc_plot_dims(fig, ctx.xaxis, ctx.yaxis, show_xaxis, show_yaxis, props.margins);
 
@@ -337,8 +337,6 @@ export function PlotGrid(props: PlotGridProps) {
 
     let widths: Array<number> = Array(props.ncols).fill(0);
     let heights: Array<number> = Array(props.nrows).fill(0);
-
-    console.log(`PlotGrid xaxes: ${xaxes} yaxes: ${yaxes}`);
 
     const children = React.Children.map(props.children, (child, i) => {
         const [row, col] = [Math.floor(i / ncols), i % ncols];

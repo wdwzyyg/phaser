@@ -10,19 +10,24 @@ import { Figure, Plot, PlotGrid, AxisSpec, Axis } from './plotting/plot';
 const axes: Map<string, AxisSpec> = new Map([
     ["x1", {
         scale: new PlotScale([-2.0, 2.0], [0.0, 200.0]),
-        label: "X axis",
+        label: "X1",
         show: 'one',
     }],
     ["x2", {
-        scale: new PlotScale([-2.0, 2.0], [0.0, 200.0]),
-        label: "X axis",
+        scale: new PlotScale([-4.0, 4.0], [0.0, 400.0]),
+        label: "X2",
         show: 'one',
     }],
     ["y1", {
         scale: new PlotScale([-2.0, 2.0], [0.0, 200.0]),
-        label: "Y axis",
+        label: "Y1",
         show: 'one',
-    }]
+    }],
+    ["y2", {
+        scale: new PlotScale([-2.0, 2.0], [0.0, 200.0]),
+        label: "Y2",
+        show: 'one',
+    }],
 ]);
 
 const root = createRoot(document.getElementById('app')!);
@@ -37,11 +42,11 @@ root.render(
         </Section>
         <Section name="Section 2">
             <Figure axes={axes}>
-                <PlotGrid ncols={2} nrows={2} xaxes={["x1", "x2"]} yaxes={"y1"}>
-                    <Plot><rect x="50" y="50" width="100" height="100" /></Plot>
-                    <Plot><rect x="50" y="50" width="100" height="100" /></Plot>
-                    <Plot><rect x="50" y="50" width="100" height="100" /></Plot>
-                    <Plot><rect x="50" y="50" width="100" height="100" /></Plot>
+                <PlotGrid ncols={2} nrows={2} xaxes={"x1"} yaxes={"y1"}>
+                    <Plot fixedAspect={true}><rect x="50" y="50" width="100" height="100" /></Plot>
+                    <Plot fixedAspect={true}><rect x="50" y="50" width="100" height="100" /></Plot>
+                    <Plot fixedAspect={true}><rect x="50" y="50" width="100" height="100" /></Plot>
+                    <Plot fixedAspect={true}><rect x="50" y="50" width="100" height="100" /></Plot>
                 </PlotGrid>
             </Figure>
         </Section>
