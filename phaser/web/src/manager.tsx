@@ -2,10 +2,15 @@
 import React, { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
+import * as d3_scale from 'd3-scale';
+import * as d3_scales from 'd3-scale-chromatic';
+
 import Section from './section';
+import { HBox } from './organization';
 
 import { PlotScale } from './plotting/scale';
-import { Figure, Plot, PlotGrid, AxisSpec, Axis } from './plotting/plot';
+import { Figure, Plot, PlotGrid, AxisSpec, ColorScale } from './plotting/plot';
+import { Colorbar } from './plotting/colorbar';
 
 const axes: Map<string, AxisSpec> = new Map([
     ["x1", {
@@ -30,6 +35,13 @@ const axes: Map<string, AxisSpec> = new Map([
     }],
 ]);
 
+const scales: Map<string, ColorScale> = new Map([
+    ["v", {
+        scale: d3_scale.scaleSequential(d3_scales.interpolateMagma),
+        label: "Values",
+    }]
+]);
+
 const root = createRoot(document.getElementById('app')!);
 root.render(
     <StrictMode>
@@ -41,13 +53,16 @@ root.render(
             </Figure>
         </Section>
         <Section name="Section 2">
-            <Figure axes={axes}>
-                <PlotGrid ncols={2} nrows={2} xaxes={"x1"} yaxes={"y1"}>
-                    <Plot fixedAspect={true}><rect x="50" y="50" width="100" height="100" /></Plot>
-                    <Plot fixedAspect={true}><rect x="50" y="50" width="100" height="100" /></Plot>
-                    <Plot fixedAspect={true}><rect x="50" y="50" width="100" height="100" /></Plot>
-                    <Plot fixedAspect={true}><rect x="50" y="50" width="100" height="100" /></Plot>
-                </PlotGrid>
+            <Figure axes={axes} scales={scales}>
+                <HBox>
+                    <PlotGrid ncols={2} nrows={2} xaxes={"x1"} yaxes={"y1"}>
+                        <Plot fixedAspect={true}><rect x="50" y="50" width="100" height="100" /></Plot>
+                        <Plot fixedAspect={true}><rect x="50" y="50" width="100" height="100" /></Plot>
+                        <Plot fixedAspect={true}><rect x="50" y="50" width="100" height="100" /></Plot>
+                        <Plot fixedAspect={true}><rect x="50" y="50" width="100" height="100" /></Plot>
+                    </PlotGrid>
+                    <Colorbar scale="v"></Colorbar>
+                </HBox>
             </Figure>
         </Section>
     </StrictMode>

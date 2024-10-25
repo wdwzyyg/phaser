@@ -29,6 +29,10 @@ body {
     max-height: 0;
 }
 
+.section > * {
+    margin: auto;
+}
+
 .simple-button {
     display: block;
     margin: auto;
@@ -50,13 +54,21 @@ body {
     border-color: black;
 }
 
+.hbox, .vbox {
+    display: flex;
+    justify-content: center;
+}
+
+.hbox > *, .vbox > * {
+    flex: 0 0 auto;
+}
+
 div.plot-cont {
     width: 100%;
 }
 
 svg.plot {
     display: inherit;
-    margin: auto;
 
     stroke-width: 2px;
     fill: black;

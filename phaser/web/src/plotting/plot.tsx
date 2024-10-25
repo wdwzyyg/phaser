@@ -1,8 +1,9 @@
 import React from 'react';
 import { atom, useAtomValue, PrimitiveAtom } from 'jotai';
 
-import * as format from 'd3-format';
-import * as array from 'd3-array';
+import * as d3_format from 'd3-format';
+import * as d3_array from 'd3-array';
+import * as d3_scale from 'd3-scale';
 
 import { Transform1D } from './transform';
 import { PlotScale, Pair } from './scale';
@@ -42,9 +43,16 @@ function normalize_axis(axis: AxisSpec | PlotScale): Axis {
     return axis as Axis;
 }
 
+export interface ColorScale {
+    scale?: d3_scale.ScaleSequential<string>
+    label?: string
+}
+
 export interface FigureContextData<K> {
     axes: Map<K, Axis>
     transforms: Map<K, PrimitiveAtom<Transform1D>>
+
+    scales: Map<K, PrimitiveAtom<ColorScale>>
 
     zoomExtent: Pair
 }
@@ -55,25 +63,35 @@ interface FigureProps {
     axes: Map<string, AxisSpec | PlotScale>
     zoomExtent?: Pair
 
+    scales?: Map<string, ColorScale>
+
     children?: React.ReactNode
 }
 
 export function Figure(props: FigureProps) {
     console.log("Redrawing Figure");
 
-    let axes = new Map();
-    let transforms = new Map();
+    let axes: Map<string, Axis> = new Map();
+    let transforms: Map<string, PrimitiveAtom<Transform1D>> = new Map();
 
     for (let [k, axis] of props.axes) {
-        axis = normalize_axis(axis);
-        axes.set(k, axis);
+        axes.set(k, normalize_axis(axis));
         transforms.set(k, atom(new Transform1D()));
+    }
+
+    const scales: Map<string, PrimitiveAtom<ColorScale>> = new Map();
+
+    if (props.scales) {
+        for (const [k, v] of props.scales) {
+            scales.set(k, atom(v));
+        }
     }
 
     const ctx = {
         axes: axes,
         transforms: transforms,
         zoomExtent: props.zoomExtent || [1, Infinity],
+        scales: scales,
     };
 
     return <FigureContext.Provider value={ctx}>
@@ -82,8 +100,8 @@ export function Figure(props: FigureProps) {
 }
 
 export interface PlotContextData<K> {
-    xaxis: K
-    yaxis: K
+    xaxis: K | Axis
+    yaxis: K | Axis
 
     fixedAspect: boolean
 }
@@ -91,7 +109,7 @@ export interface PlotContextData<K> {
 export const PlotContext = React.createContext<PlotContextData<string> | undefined>(undefined);
 
 function makeId(prefix: string): string {
-    return prefix + `-${format.format("06g")(Math.floor(Math.random() * 1000000))}`;
+    return prefix + `-${d3_format.format("06g")(Math.floor(Math.random() * 1000000))}`;
 }
 
 interface AxisProps {
@@ -105,12 +123,17 @@ interface AxisProps {
 export function XAxis(props: AxisProps) {
     const fig = React.useContext(FigureContext);
     const plot = React.useContext(PlotContext);
-    if (fig === undefined || plot === undefined) {
+    if (fig === undefined || plot == undefined) {
         throw new Error("Component 'XAxis' must be used inside a 'Plot'");
     }
-    let fullScale = fig.axes.get(plot.xaxis)!.scale;
+
+    let xtransform = (typeof plot.xaxis === "string") ? useAtomValue(fig.transforms.get(plot.xaxis)!) : new Transform1D();
+    let xaxis = (typeof plot.xaxis === "string") ? fig.axes.get(plot.xaxis)! : plot.xaxis;
+    let yaxis = (typeof plot.yaxis === "string") ? fig.axes.get(plot.yaxis)! : plot.yaxis;
+
+    let fullScale = xaxis.scale;
     let scale = new PlotScale(
-        fullScale.untransform(useAtomValue(fig.transforms.get(plot.xaxis)!).unapply(fullScale.range)),
+        fullScale.untransform(xtransform.unapply(fullScale.range)),
         fullScale.range
     );
 
@@ -124,10 +147,10 @@ export function XAxis(props: AxisProps) {
     // TODO factor some stuff out
     // TODO replace with path
 
-    const fmt = format.format(props.tickFormat ?? "~g");
+    const fmt = d3_format.format(props.tickFormat ?? "~g");
     const tickLength = props.tickLength ?? 8;
 
-    let ticks = array.ticks(...scale.domain, props.ticks ?? 4).map((val) => {
+    let ticks = d3_array.ticks(...scale.domain, props.ticks ?? 4).map((val) => {
         const text = fmt(val);
         const pos = scale.transform(val);
         return <g className="tick" key={val}>
@@ -136,7 +159,7 @@ export function XAxis(props: AxisProps) {
         </g>;
     });
 
-    let ax_ypos = fig.axes.get(plot.yaxis)!.scale.rangeFromUnit(1.0);
+    let ax_ypos = yaxis.scale.rangeFromUnit(1.0);
     let [ax_start, ax_stop] = scale.range;
     return <g className='bot-axis' transform={`translate(0, ${ax_ypos})`}>
         <line x1={ax_start} x2={ax_stop} y1="0" y2="0" stroke="black"/>
@@ -151,9 +174,14 @@ export function YAxis(props: AxisProps) {
     if (fig === undefined || plot === undefined) {
         throw new Error("Component 'YAxis' must be used inside a 'Plot'");
     }
-    let fullScale = fig.axes.get(plot.yaxis)!.scale;
+
+    let ytransform = (typeof plot.yaxis === "string") ? useAtomValue(fig.transforms.get(plot.yaxis)!) : new Transform1D();
+    let xaxis = (typeof plot.xaxis === "string") ? fig.axes.get(plot.xaxis)! : plot.xaxis;
+    let yaxis = (typeof plot.yaxis === "string") ? fig.axes.get(plot.yaxis)! : plot.yaxis;
+
+    let fullScale = yaxis.scale;
     let scale = new PlotScale(
-        fullScale.untransform(useAtomValue(fig.transforms.get(plot.yaxis)!).unapply(fullScale.range)),
+        fullScale.untransform(ytransform.unapply(fullScale.range)),
         fullScale.range
     );
 
@@ -164,10 +192,10 @@ export function YAxis(props: AxisProps) {
         </text>;
     }
 
-    const fmt = format.format(props.tickFormat ?? "~g");
+    const fmt = d3_format.format(props.tickFormat ?? "~g");
     const tickLength = props.tickLength ?? 8;
 
-    let ticks = array.ticks(...scale.domain, props.ticks ?? 4).map((val) => {
+    let ticks = d3_array.ticks(...scale.domain, props.ticks ?? 4).map((val) => {
         const text = fmt(val);
         const pos = scale.transform(val);
         return <g className="tick" key={val}>
@@ -176,7 +204,7 @@ export function YAxis(props: AxisProps) {
         </g>;
     });
 
-    let ax_xpos = fig.axes.get(plot.xaxis)!.scale.rangeFromUnit(0.0);
+    let ax_xpos = xaxis.scale.rangeFromUnit(0.0);
     let [ax_start, ax_stop] = scale.range;
     return <g className='left-axis' transform={`translate(${ax_xpos}, 0)`}>
         <line x1="0" x2="0" y1={ax_start} y2={ax_stop} stroke="black"/>
@@ -185,11 +213,9 @@ export function YAxis(props: AxisProps) {
     </g>;
 }
 
-
-
 interface PlotProps {
-    xaxis?: string
-    yaxis?: string
+    xaxis?: string | AxisSpec
+    yaxis?: string | AxisSpec
 
     fixedAspect?: boolean /* = false*/
     /*width: number
@@ -216,12 +242,14 @@ export function Plot(props: PlotProps) {
         throw new Error("Component 'Plot' must have xaxis and yaxis props defined.");
     }
 
-    const [xaxis, yaxis] = [fig.axes.get(props.xaxis), fig.axes.get(props.yaxis)];
+    let xaxis = (typeof props.xaxis === "string") ? fig.axes.get(props.xaxis)! : normalize_axis(props.xaxis);
+    let yaxis = (typeof props.yaxis === "string") ? fig.axes.get(props.yaxis)! : normalize_axis(props.yaxis);
     if (!xaxis) throw new Error("Invalid xaxis passed to component 'Plot'");
     if (!yaxis) throw new Error("Invalid yaxis passed to component 'Plot'");
 
     let ctx: PlotContextData<string> = {
-        xaxis: props.xaxis, yaxis: props.yaxis,
+        xaxis: (typeof props.xaxis === "string") ? props.xaxis : xaxis,
+        yaxis: (typeof props.yaxis === "string") ? props.yaxis : yaxis,
         fixedAspect: props.fixedAspect ?? false,
     };
 
@@ -238,7 +266,7 @@ export function Plot(props: PlotProps) {
     if (show_xaxis) children.push(<XAxis label={xaxis.label} key="xaxis"/>)
     if (show_yaxis) children.push(<YAxis label={yaxis.label} key="yaxis"/>)
 
-    const dims = calc_plot_dims(fig, ctx.xaxis, ctx.yaxis, show_xaxis, show_yaxis, props.margins);
+    const dims = calc_plot_dims(fig, xaxis, yaxis, show_xaxis, show_yaxis, props.margins);
 
     const clipId = React.useMemo(() => makeId("ax-clip"), []);
 
@@ -268,10 +296,10 @@ interface PlotDims {
 
 function calc_plot_dims(
     fig: FigureContextData<string>,
-    xaxis: string, yaxis: string, show_xaxis: boolean, show_yaxis: boolean,
+    xaxis: Axis, yaxis: Axis, show_xaxis: boolean, show_yaxis: boolean,
     margins?: [number, number, number, number]
 ): PlotDims {
-    let [xscale, yscale] = [fig.axes.get(xaxis)!.scale, fig.axes.get(yaxis)!.scale] ;
+    let [xscale, yscale] = [xaxis.scale, yaxis.scale] ;
 
     const [width, height] = [xscale.rangeSize(), yscale.rangeSize()];
     const [marginTop, marginRight, marginBottom, marginLeft] = margins ?? [10, 10, show_xaxis ? 80 : 10, show_yaxis ? 90 : 10];
@@ -343,21 +371,23 @@ export function PlotGrid(props: PlotGridProps) {
 
         if (React.isValidElement(child) && typeof child.type == "function") {
             if (child.type.name == "Plot") {
-                const xaxis = child.props.xaxis ?? xaxes[col];
-                const yaxis = child.props.yaxis ?? yaxes[row];
+                const props_xaxis = child.props.xaxis ?? xaxes[col];
+                const props_yaxis = child.props.yaxis ?? yaxes[row];
+                let xaxis = (typeof props_xaxis === "string") ? fig.axes.get(props_xaxis)! : normalize_axis(props_xaxis);
+                let yaxis = (typeof props_yaxis === "string") ? fig.axes.get(props_yaxis)! : normalize_axis(props_yaxis);
 
                 const show_xaxis: boolean = child.props.show_xaxis ?? (
-                    fig.axes.get(xaxis)!.show == "one" ? row == nrows - 1 : fig.axes.get(xaxis)!.show
+                    xaxis.show == "one" ? row == nrows - 1 : xaxis.show
                 );
                 const show_yaxis: boolean = child.props.show_yaxis ?? (
-                    fig.axes.get(yaxis)!.show == "one" ? col == 0 : fig.axes.get(yaxis)!.show
+                    yaxis.show == "one" ? col == 0 : yaxis.show
                 );
 
                 const dims = calc_plot_dims(fig, xaxis, yaxis, show_xaxis, show_yaxis, child.props.margins);
                 widths[col] = Math.max(widths[col], dims.totalWidth);
                 heights[row] = Math.max(heights[row], dims.totalHeight);
 
-                const plotProps = {xaxis: xaxis, yaxis: yaxis, show_xaxis: show_xaxis, show_yaxis: show_yaxis};
+                const plotProps = {xaxis: props_xaxis, yaxis: props_yaxis, show_xaxis: show_xaxis, show_yaxis: show_yaxis};
                 child = React.cloneElement(child, plotProps);
             }
         }

@@ -23,11 +23,28 @@ export function Zoomer({children: children}: {children?: React.ReactNode}) {
     const childRef: React.MutableRefObject<(HTMLElement & SVGSVGElement) | null> = React.useRef(null);
     const managerRef: React.MutableRefObject<ZoomManager | null> = React.useRef(null);
 
-    let [xtrans, setXTrans] = useAtom(fig.transforms.get(plot.xaxis)!);
-    let [ytrans, setYTrans] = useAtom(fig.transforms.get(plot.yaxis)!);
+    let xaxis: Axis, yaxis: Axis;
+    let xtrans: Transform1D, ytrans; Transform1D;
+    let setXTrans: (value: Transform1D) => void, setYTrans: (value: Transform1D) => void;
 
-    let xaxis = fig.axes.get(plot.xaxis)!;
-    let yaxis = fig.axes.get(plot.yaxis)!;
+    if (typeof plot.xaxis === 'string') {
+        console.log(`zoomer got xaxis: ${plot.xaxis}`);
+        xaxis = fig.axes.get(plot.xaxis)!;
+        [xtrans, setXTrans] = useAtom(fig.transforms.get(plot.xaxis)!)
+    } else {
+        xaxis = plot.xaxis;
+        xtrans = new Transform1D();
+        setXTrans = (_: Transform1D) => {};
+    }
+    if (typeof plot.yaxis === 'string') {
+        console.log(`zoomer got yaxis: ${plot.yaxis}`);
+        yaxis = fig.axes.get(plot.yaxis)!;
+        [ytrans, setYTrans] = useAtom(fig.transforms.get(plot.yaxis)!)
+    } else {
+        yaxis = plot.yaxis;
+        ytrans = new Transform1D();
+        setYTrans = (_: Transform1D) => {};
+    }
 
     React.useEffect(() => {
         if (!managerRef.current) return;
