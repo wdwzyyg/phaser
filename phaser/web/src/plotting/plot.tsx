@@ -15,6 +15,10 @@ export interface AxisSpec {
     translateExtent?: Pair | boolean
     label?: string
     show?: boolean | 'one'
+
+    ticks?: number
+    tickFormat?: string
+    tickLength?: number
 }
 
 export interface Axis {
@@ -23,6 +27,10 @@ export interface Axis {
     translateExtent: Pair
     label?: string
     show: boolean | 'one'
+
+    ticks?: number
+    tickFormat?: string
+    tickLength?: number
 }
 
 function normalize_axis(axis: AxisSpec | PlotScale): Axis {
@@ -103,6 +111,9 @@ export interface PlotContextData<K> {
     xaxis: K | Axis
     yaxis: K | Axis
 
+    xaxis_pos: 'bottom' | 'top'
+    yaxis_pos: 'left' | 'right'
+
     fixedAspect: boolean
 }
 
@@ -114,10 +125,6 @@ function makeId(prefix: string): string {
 
 interface AxisProps {
     label?: string | undefined
-
-    ticks?: number
-    tickFormat?: string
-    tickLength?: number
 }
 
 export function XAxis(props: AxisProps) {
@@ -131,6 +138,10 @@ export function XAxis(props: AxisProps) {
     let xaxis = (typeof plot.xaxis === "string") ? fig.axes.get(plot.xaxis)! : plot.xaxis;
     let yaxis = (typeof plot.yaxis === "string") ? fig.axes.get(plot.yaxis)! : plot.yaxis;
 
+    let cross_pos = (plot.xaxis_pos == "top") ? 0.0 : 1.0;
+    let sign = (plot.xaxis_pos == "top") ? -1.0 : 1.0;
+    const className = (plot.xaxis_pos == "top") ? 'top-axis' : 'bot-axis';
+
     let fullScale = xaxis.scale;
     let scale = new PlotScale(
         fullScale.untransform(xtransform.unapply(fullScale.range)),
@@ -139,7 +150,7 @@ export function XAxis(props: AxisProps) {
 
     let label: React.ReactElement | undefined = undefined;
     if (props.label) {
-        label = <text className="axis-label" transform={`translate(${scale.rangeFromUnit(0.5)}, 50)`}>
+        label = <text className="axis-label" transform={`translate(${scale.rangeFromUnit(0.5)}, ${sign * 50})`}>
             {props.label}
         </text>;
     }
@@ -147,19 +158,19 @@ export function XAxis(props: AxisProps) {
     // TODO factor some stuff out
     // TODO replace with path
 
-    const fmt = d3_format.format(props.tickFormat ?? "~g");
-    const tickLength = props.tickLength ?? 8;
+    const fmt = d3_format.format(xaxis.tickFormat ?? "~g");
+    const tickLength = xaxis.tickLength ?? 8;
 
-    let ticks = d3_array.ticks(...scale.domain, props.ticks ?? 4).map((val) => {
+    let ticks = d3_array.ticks(...scale.domain, xaxis.ticks ?? 4).map((val) => {
         const text = fmt(val);
         const pos = scale.transform(val);
         return <g className="tick" key={val}>
-            <line x1={pos} x2={pos} y1={0} y2={tickLength} stroke="black"/>
-            <text x={pos} y={tickLength} dy="0.9em">{text}</text>
+            <line x1={pos} x2={pos} y1={0} y2={sign * tickLength} stroke="black"/>
+            <text x={pos} y={sign * tickLength} dy={`${sign*0.9}em`}>{text}</text>
         </g>;
     });
 
-    let ax_ypos = yaxis.scale.rangeFromUnit(1.0);
+    let ax_ypos = yaxis.scale.rangeFromUnit(cross_pos);
     let [ax_start, ax_stop] = scale.range;
     return <g className='bot-axis' transform={`translate(0, ${ax_ypos})`}>
         <line x1={ax_start} x2={ax_stop} y1="0" y2="0" stroke="black"/>
@@ -179,6 +190,10 @@ export function YAxis(props: AxisProps) {
     let xaxis = (typeof plot.xaxis === "string") ? fig.axes.get(plot.xaxis)! : plot.xaxis;
     let yaxis = (typeof plot.yaxis === "string") ? fig.axes.get(plot.yaxis)! : plot.yaxis;
 
+    let cross_pos = (plot.yaxis_pos == "left") ? 0.0 : 1.0;
+    let sign = (plot.yaxis_pos == "left") ? -1.0 : 1.0;
+    const className = (plot.yaxis_pos == "left") ? 'left-axis' : 'right-axis';
+
     let fullScale = yaxis.scale;
     let scale = new PlotScale(
         fullScale.untransform(ytransform.unapply(fullScale.range)),
@@ -187,26 +202,26 @@ export function YAxis(props: AxisProps) {
 
     let label: React.ReactElement | undefined = undefined;
     if (props.label) {
-        label = <text className="axis-label" transform={`translate(-70, ${scale.rangeFromUnit(0.5)}) rotate(90)`}>
+        label = <text className="axis-label" transform={`translate(${sign * 70}, ${scale.rangeFromUnit(0.5)}) rotate(${sign * -90})`}>
             {props.label}
         </text>;
     }
 
-    const fmt = d3_format.format(props.tickFormat ?? "~g");
-    const tickLength = props.tickLength ?? 8;
+    const fmt = d3_format.format(yaxis.tickFormat ?? "~g");
+    const tickLength = yaxis.tickLength ?? 8;
 
-    let ticks = d3_array.ticks(...scale.domain, props.ticks ?? 4).map((val) => {
+    let ticks = d3_array.ticks(...scale.domain, yaxis.ticks ?? 4).map((val) => {
         const text = fmt(val);
         const pos = scale.transform(val);
         return <g className="tick" key={val}>
-            <line x1={-tickLength} x2={0} y1={pos} y2={pos} stroke="black"/>
-            <text x={-tickLength} y={pos} dx="-0.3em" dy="0.4em">{text}</text>
+            <line x1={sign * tickLength} x2={0} y1={pos} y2={pos} stroke="black"/>
+            <text x={sign * tickLength} y={pos} dx={`${sign*0.3}em`} dy="0.4em">{text}</text>
         </g>;
     });
 
-    let ax_xpos = xaxis.scale.rangeFromUnit(0.0);
+    let ax_xpos = xaxis.scale.rangeFromUnit(cross_pos);
     let [ax_start, ax_stop] = scale.range;
-    return <g className='left-axis' transform={`translate(${ax_xpos}, 0)`}>
+    return <g className={className} transform={`translate(${ax_xpos}, 0)`}>
         <line x1="0" x2="0" y1={ax_start} y2={ax_stop} stroke="black"/>
         { ticks }
         { label }
@@ -226,6 +241,9 @@ interface PlotProps {
 
     show_xaxis?: boolean
     show_yaxis?: boolean
+
+    xaxis_pos?: 'bottom' | 'top'
+    yaxis_pos?: 'left' | 'right'
 
     children?: React.ReactNode
 }
@@ -247,14 +265,20 @@ export function Plot(props: PlotProps) {
     if (!xaxis) throw new Error("Invalid xaxis passed to component 'Plot'");
     if (!yaxis) throw new Error("Invalid yaxis passed to component 'Plot'");
 
+    const xaxis_pos = props.xaxis_pos ?? 'bottom';
+    const yaxis_pos = props.yaxis_pos ?? 'left';
+
     let ctx: PlotContextData<string> = {
         xaxis: (typeof props.xaxis === "string") ? props.xaxis : xaxis,
         yaxis: (typeof props.yaxis === "string") ? props.yaxis : yaxis,
         fixedAspect: props.fixedAspect ?? false,
+
+        xaxis_pos: xaxis_pos,
+        yaxis_pos: yaxis_pos,
     };
 
-    let show_xaxis = props.show_xaxis ?? !!xaxis.show;
-    let show_yaxis = props.show_yaxis ?? !!yaxis.show;
+    const show_xaxis = props.show_xaxis ?? !!xaxis.show;
+    const show_yaxis = props.show_yaxis ?? !!yaxis.show;
 
     let clippedChildren: React.ReactNode[] = [];
     let children: React.ReactNode[] = [];
@@ -266,7 +290,7 @@ export function Plot(props: PlotProps) {
     if (show_xaxis) children.push(<XAxis label={xaxis.label} key="xaxis"/>)
     if (show_yaxis) children.push(<YAxis label={yaxis.label} key="yaxis"/>)
 
-    const dims = calc_plot_dims(fig, xaxis, yaxis, show_xaxis, show_yaxis, props.margins);
+    const dims = calc_plot_dims(fig, xaxis, yaxis, show_xaxis, show_yaxis, xaxis_pos, yaxis_pos, props.margins);
 
     const clipId = React.useMemo(() => makeId("ax-clip"), []);
 
@@ -296,13 +320,34 @@ interface PlotDims {
 
 function calc_plot_dims(
     fig: FigureContextData<string>,
-    xaxis: Axis, yaxis: Axis, show_xaxis: boolean, show_yaxis: boolean,
+    xaxis: Axis, yaxis: Axis,
+    show_xaxis: boolean, show_yaxis: boolean,
+    xaxis_pos: 'bottom' | 'top', yaxis_pos: 'left' | 'right',
     margins?: [number, number, number, number]
 ): PlotDims {
     let [xscale, yscale] = [xaxis.scale, yaxis.scale] ;
 
     const [width, height] = [xscale.rangeSize(), yscale.rangeSize()];
-    const [marginTop, marginRight, marginBottom, marginLeft] = margins ?? [10, 10, show_xaxis ? 80 : 10, show_yaxis ? 90 : 10];
+
+    let marginTop: number, marginRight: number, marginBottom: number, marginLeft: number;
+
+    if (margins) {
+        [marginTop, marginRight, marginBottom, marginLeft] = margins;
+    } else {
+        [marginTop, marginRight, marginBottom, marginLeft] = [10, 10, 10, 10];
+        if (show_xaxis) {
+            if (xaxis_pos == 'bottom')
+                marginBottom += 60;
+            else
+                marginTop += 60;
+        }
+        if (show_yaxis) {
+            if (yaxis_pos == 'left')
+                marginLeft += 80;
+            else
+                marginRight += 80;
+        }
+    }
 
     const totalWidth = width + marginLeft + marginRight;
     const totalHeight = height + marginBottom + marginTop; 
@@ -371,19 +416,24 @@ export function PlotGrid(props: PlotGridProps) {
 
         if (React.isValidElement(child) && typeof child.type == "function") {
             if (child.type.name == "Plot") {
-                const props_xaxis = child.props.xaxis ?? xaxes[col];
-                const props_yaxis = child.props.yaxis ?? yaxes[row];
+                const child_props = child.props as PlotProps;
+
+                const props_xaxis = child_props.xaxis ?? xaxes[col];
+                const props_yaxis = child_props.yaxis ?? yaxes[row];
                 let xaxis = (typeof props_xaxis === "string") ? fig.axes.get(props_xaxis)! : normalize_axis(props_xaxis);
                 let yaxis = (typeof props_yaxis === "string") ? fig.axes.get(props_yaxis)! : normalize_axis(props_yaxis);
 
-                const show_xaxis: boolean = child.props.show_xaxis ?? (
-                    xaxis.show == "one" ? row == nrows - 1 : xaxis.show
+                const xaxis_pos = child_props.xaxis_pos ?? 'bottom';
+                const yaxis_pos = child_props.yaxis_pos ?? 'left';
+
+                const show_xaxis: boolean = child_props.show_xaxis ?? (
+                    xaxis.show == "one" ? row == (xaxis_pos == 'top' ? 0 : nrows - 1) : xaxis.show
                 );
-                const show_yaxis: boolean = child.props.show_yaxis ?? (
-                    yaxis.show == "one" ? col == 0 : yaxis.show
+                const show_yaxis: boolean = child_props.show_yaxis ?? (
+                    yaxis.show == "one" ? col == (yaxis_pos == 'left' ? 0 : ncols - 1) : yaxis.show
                 );
 
-                const dims = calc_plot_dims(fig, xaxis, yaxis, show_xaxis, show_yaxis, child.props.margins);
+                const dims = calc_plot_dims(fig, xaxis, yaxis, show_xaxis, show_yaxis, xaxis_pos, yaxis_pos, child.props.margins);
                 widths[col] = Math.max(widths[col], dims.totalWidth);
                 heights[row] = Math.max(heights[row], dims.totalHeight);
 

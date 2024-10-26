@@ -84,7 +84,7 @@ svg.plot {
     text-anchor: end;
 }
 .right-axis .tick {
-    text-anchor: begin;
+    text-anchor: start;
 }
 
 .ax-box {

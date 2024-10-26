@@ -1,129 +1,31 @@
 
 import React, { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { atom, PrimitiveAtom, useAtomValue, createStore, Provider } from 'jotai';
 
-import * as d3_scale from 'd3-scale';
-import * as d3_scales from 'd3-scale-chromatic';
-
-import Section from './section';
-import { HBox } from './organization';
-
-import { PlotScale } from './plotting/scale';
-import { Figure, Plot, PlotGrid, AxisSpec, ColorScale } from './plotting/plot';
-import { Colorbar } from './plotting/colorbar';
-
-const axes: Map<string, AxisSpec> = new Map([
-    ["x1", {
-        scale: new PlotScale([-2.0, 2.0], [0.0, 200.0]),
-        label: "X1",
-        show: 'one',
-    }],
-    ["x2", {
-        scale: new PlotScale([-4.0, 4.0], [0.0, 400.0]),
-        label: "X2",
-        show: 'one',
-    }],
-    ["y1", {
-        scale: new PlotScale([-2.0, 2.0], [0.0, 200.0]),
-        label: "Y1",
-        show: 'one',
-    }],
-    ["y2", {
-        scale: new PlotScale([-2.0, 2.0], [0.0, 200.0]),
-        label: "Y2",
-        show: 'one',
-    }],
-]);
-
-const scales: Map<string, ColorScale> = new Map([
-    ["v", {
-        scale: d3_scale.scaleSequential(d3_scales.interpolateMagma),
-        label: "Values",
-    }]
-]);
-
-const root = createRoot(document.getElementById('app')!);
-root.render(
-    <StrictMode>
-        <Section name="Section 1">
-            <Figure axes={axes}>
-                <Plot xaxis="x1" yaxis="y1">
-                    <rect x="50" y="50" width="100" height="100" />
-                </Plot>
-            </Figure>
-        </Section>
-        <Section name="Section 2">
-            <Figure axes={axes} scales={scales}>
-                <HBox>
-                    <PlotGrid ncols={2} nrows={2} xaxes={"x1"} yaxes={"y1"}>
-                        <Plot fixedAspect={true}><rect x="50" y="50" width="100" height="100" /></Plot>
-                        <Plot fixedAspect={true}><rect x="50" y="50" width="100" height="100" /></Plot>
-                        <Plot fixedAspect={true}><rect x="50" y="50" width="100" height="100" /></Plot>
-                        <Plot fixedAspect={true}><rect x="50" y="50" width="100" height="100" /></Plot>
-                    </PlotGrid>
-                    <Colorbar scale="v"></Colorbar>
-                </HBox>
-            </Figure>
-        </Section>
-    </StrictMode>
-);
-
-/*
-import * as d3 from 'd3';
-
-var reconstructions: Array<any> = [];
-var socket: WebSocket | null = null;
+import { Reconstruction } from './types';
+import { Section } from './components';
 
 
-function initTable() {
-    let table = d3.select("#recons-table");
+let socket: WebSocket | null = null;
+const reconstructions: PrimitiveAtom<Array<Reconstruction>> = atom([] as Array<Reconstruction>);
+const store = createStore();
 
-    let colgroup = table.append("colgroup");
-    colgroup.append("col").attr("style", "width: 20%");
-    colgroup.append("col").attr("style", "width: 60%");
-    colgroup.append("col").attr("style", "width: 10%");
-    colgroup.append("col").attr("style", "width: 10%");
+function start_recons(e: React.MouseEvent) {
+    fetch("/start", {
+        method: "POST",
+        body: "",
+    })
+    .then((response) => response.json())
+    .then((json) => {
+        //window.location = json['links']['dashboard'];
+        console.log(`Got response: ${JSON.stringify(json)}`);
+    });
+};
 
-    let header = table.append("thead").append("tr");
-    header.append("th").attr("scope", "col").html("ID");
-    header.append("th").attr("scope", "col").html("Status");
-    header.append("th").attr("scope", "col").html("Watch");
-    header.append("th").attr("scope", "col").html("Cancel");
-
-    table.append("tbody");
-}
-
-function updateTable() {
-    let table = d3.select("#recons-table > tbody");
-
-    let rows = table.selectAll("tr")
-        .data(reconstructions)
-        .join(function(enter) {
-            let row = enter.append("tr");
-
-            row.append("td").html((d) => d.id);
-            row.append("td").html((d) => "Running");
-            row.append("td").append("a")
-                .attr("class", "simple-button")
-                .attr("href", (d) => d.links.dashboard);
-            row.append("td").append("button")
-                .attr("class", "simple-button")
-                .on("click", cancelRecons);
-
-            return row;
-        })
-
-    rows.each((v, i, groups) => console.log(`row ${i}: ${v} ${groups}`));
-}
-
-function watchRecons(this: HTMLElement, event: MouseEvent, datum: any) {
-    console.log(`watchRecons: ${JSON.stringify(event)} this: ${this}, datum: ${JSON.stringify(datum)}`);
-    window.location = datum.links.watch;
-}
-
-function cancelRecons(this: HTMLElement, event: MouseEvent, datum: any) {
-    console.log(`cancelRecons: ${JSON.stringify(event)} this: ${this}, datum: ${JSON.stringify(datum)}`);
-    fetch(datum.links.cancel, {
+function cancel_recons(recons: Reconstruction, e: React.MouseEvent) {
+    console.log(`cancelRecons: recons: ${JSON.stringify(recons)}`);
+    fetch(recons.links.cancel, {
         method: "POST",
         body: "",
     })
@@ -131,31 +33,45 @@ function cancelRecons(this: HTMLElement, event: MouseEvent, datum: any) {
     .then((json) => {
         console.log(`Got response: ${JSON.stringify(json)}`);
     })
+};
+
+export function Reconstructions(props: {}) {
+    const cols = [20, 60, 10, 10].map((w, i) => <col style={{width: `${w}%`}} key={i}></col>);
+    const headers = ["ID", "Status", "Watch", "Cancel"].map((name, i) => <th scope="col" key={i}>{name}</th>);
+
+    const recons = useAtomValue(reconstructions);
+
+    const rows = recons.map((recons) => {
+        return <tr key={recons.id}>
+            <td>{recons.id}</td>
+            <td>{recons.state}</td>
+            <td><a className="simple-button" href={recons.links.dashboard}></a></td>
+            <td><button className="simple-button" onClick={(e) => cancel_recons(recons, e)}></button></td>
+        </tr>;
+    });
+
+    return <table>
+        <colgroup>{cols}</colgroup>
+        <thead><tr>{headers}</tr></thead>
+        <tbody>{rows}</tbody>
+    </table>;
 }
 
+const root = createRoot(document.getElementById('app')!);
+root.render(
+    <StrictMode>
+        <Provider store={store}>
+            <Section name="Start reconstruction">
+                <button onClick={start_recons}>Start reconstruction</button>
+            </Section>
+            <Section name="Current reconstruction">
+                <Reconstructions/>
+            </Section>
+        </Provider>
+    </StrictMode>
+);
+
 addEventListener("DOMContentLoaded", (event) => {
-    initTable();
-
-    document.getElementById('start')!.onclick = (event) => {
-        fetch("/start", {
-            method: "POST",
-            body: "",
-        })
-        .then((response) => response.json())
-        .then((json) => {
-            //window.location = json['links']['dashboard'];
-            console.log(`Got response: ${JSON.stringify(json)}`);
-        });
-    };
-
-    var i = 0
-
-    document.getElementById('start-fake')!.onclick = (event) => {
-        reconstructions.push({'id': `id${i}`, 'status': "running"})
-        i += 1;
-        updateTable();
-    }
-
     socket = new WebSocket(`ws://${window.location.host}/listen`);
 
     socket.addEventListener("open", (event) => {
@@ -169,8 +85,7 @@ addEventListener("DOMContentLoaded", (event) => {
     socket.addEventListener("message", (event) => {
         console.log(`Socket event: ${event.data}`)
         let data = JSON.parse(event.data);
-        reconstructions = data.state;
-        updateTable();
+        store.set(reconstructions, (prev) => data.state);
     });
 
     socket.addEventListener("close", (event) => {
@@ -188,4 +103,3 @@ addEventListener("DOMContentLoaded", (event) => {
         })
     }
 });
-*/

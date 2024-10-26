@@ -15,14 +15,14 @@ class PipeEncoder(json.JSONEncoder):
     def default(self, obj: t.Any) -> t.Any:
         if isinstance(obj, numpy.ndarray):
             d = obj.__array_interface__
-            d['data'] = base64.encodebytes(obj.tobytes()).decode('ascii')
+            d['data'] = base64.urlsafe_b64encode(obj.tobytes()).decode('ascii')
             d['_ty'] = 'numpy'
             return d
 
         if isinstance(obj, bytes):
             return {
                 '_ty': 'bytes',
-                'data': base64.encodebytes(obj).decode('ascii')
+                'data': base64.urlsafe_b64decode(obj).decode('ascii')
             }
 
         return super().default(obj)
@@ -39,12 +39,12 @@ def _pipe_decode_obj(obj: t.Dict[t.Any, t.Any]) -> t.Any:
     ty = obj.pop('_ty')
 
     if ty == 'numpy':
-        obj['data'] = base64.decodebytes(obj['data'].encode('utf-8'))
+        obj['data'] = base64.urlsafe_b64encode(obj['data'].encode('utf-8'))
         obj['shape'] = tuple(obj['shape'])
         return numpy.array(_dummy(obj))
 
     if ty == 'bytes':
-        return base64.decodebytes(obj['data'].encode('utf-8'))
+        return base64.urlsafe_b64decode(obj['data'].encode('utf-8'))
 
     raise ValueError(f"Unknown custom type '{ty}', while parsing JSON object {obj}")
 

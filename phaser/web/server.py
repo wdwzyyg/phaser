@@ -8,10 +8,11 @@ import sys
 import socket
 import random
 import typing as t
+import threading
 
 from quart import Quart, render_template, request, abort, websocket, url_for
 
-from .util import pipe_deserialize
+from .util import pipe_deserialize, pipe_serialize
 
 ID: t.TypeAlias = str
 ReconstructionState: t.TypeAlias = t.Literal["queued", "starting", "running", "stopping", "stopped", "done"]
@@ -41,6 +42,7 @@ class ReconstructionStatus(t.TypedDict):
 
 class Reconstruction:
     def __init__(self, id: ID):
+        print(f"main thread id: {threading.get_ident()}")
         from phaser.main import main
 
         self.id: ID = id
@@ -60,6 +62,7 @@ class Reconstruction:
         })
 
     async def watch_conn(self):
+        print(f"watch_conn, thread id: {threading.get_ident()}")
         sock = socket.fromfd(self._conn.fileno(), socket.AF_UNIX, socket.SOCK_STREAM)
 
         loop = asyncio.get_event_loop()
@@ -86,10 +89,9 @@ class Reconstruction:
 
             try:
                 msg = pipe_deserialize(buf.getvalue())
-            except Exception as e:
+            except Exception:
                 logging.error("Error deserializing message", exc_info=sys.exc_info())
                 continue
-            print(msg)
 
             if msg['msg'] == 'update':
                 await self.message_subscribers({
@@ -149,11 +151,15 @@ class Reconstructions:
     async def add(self, recons: Reconstruction):
         self.inner[recons.id] = recons
         await recons.start()
-        #await self.message_subscribers(('started', recons.id))
+        await self.message_subscribers({
+            'msg': 'state_change',
+            'id': recons.id,
+            'state': 'running',
+        })
 
-    async def remove(self, recons: Reconstruction):
+    async def remove(self, id: ID):
         try:
-            recons = self.inner.pop(recons.id)
+            recons = self.inner.pop(id)
             #TODO send stop request
             await asyncio.to_thread(lambda: recons.join())
         except KeyError:
@@ -172,11 +178,11 @@ class Reconstructions:
         for subscriber in self.subscribers:
             await subscriber.put({'event': msg, 'state': self.state()})
 
-    def state(self) -> t.Any:
+    def state(self) -> t.List[ReconstructionStatus]:
         return [
             {
                 'id': recons.id,
-                'status': "running",
+                'state': "running",
                 'links': {
                     'dashboard': url_for('dashboard', id=recons.id),
                     'cancel': url_for('cancel', id=recons.id),
@@ -253,17 +259,16 @@ async def dashboard(id: ID):
 @app.post("/<string:id>/cancel")
 async def cancel(id: ID):
     print(f"cancel ID {id}")
+    await reconstructions.remove(id)
 
-    return {
-        'result': 'failed'
-    }
+    return {'result': 'success'}
 
 @app.websocket("/listen")
 async def manager_websocket():
     await websocket.accept()
 
     await websocket.send_json({
-        'event': 'connected',
+        'msg': 'connected',
         'state': reconstructions.state()
     })
 
@@ -272,10 +277,20 @@ async def manager_websocket():
 
 @app.websocket("/<string:id>/listen")
 async def dashboard_websocket(id: ID):
+    print(f"attempting websocket connection, id: {id}")
     try:
         recons = reconstructions[id]
     except KeyError:
         abort(404)
 
+    await websocket.accept()
+
+    await websocket.send_json({
+        'msg': 'connected',
+        'state': recons.state
+    })
+
+    print("subscribing")
     async for msg in recons.subscribe():
-        await websocket.send_json(msg)
+        print(f"sending message: {msg}")
+        await websocket.send(pipe_serialize(msg))

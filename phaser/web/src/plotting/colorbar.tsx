@@ -66,7 +66,7 @@ export function Colorbar(props: ColorBarProps) {
         ctx.putImageData(imageData, 0, 0);
     }, []);
 
-    return <Plot xaxis={xaxis} yaxis={yaxis}>
+    return <Plot xaxis={xaxis} yaxis={yaxis} yaxis_pos="right">
         <foreignObject x={0} y={0} width={width} height={height}>
             <canvas width={width} height={height} ref={canvasRef}></canvas>
         </foreignObject>
