@@ -22,7 +22,15 @@ export function Colorbar(props: ColorBarProps) {
     if (!fig.scales.has(props.scale)) {
         throw new Error("Invalid scale passed to component 'ColorBar'");
     }
+    return <></>;
+    /*
     const [scale, setScale] = useAtom(fig.scales.get(props.scale)!);
+
+    const range = scale.range;
+
+    if (!range) {
+        return <></>;
+    }
 
     const width = props.width ?? 20;
     const height = props.length ?? 200;
@@ -33,7 +41,7 @@ export function Colorbar(props: ColorBarProps) {
         show: false,
     };
     let yaxis: Axis = {
-        scale: new PlotScale(scale.scale?.domain()!, [0, height]),
+        scale: new PlotScale(range, [0, height]),
         label: scale.label,
         translateExtent: [-Infinity, Infinity],
         show: true,
@@ -71,4 +79,5 @@ export function Colorbar(props: ColorBarProps) {
             <canvas width={width} height={height} ref={canvasRef}></canvas>
         </foreignObject>
     </Plot>;
+    */
 }

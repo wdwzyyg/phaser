@@ -1,11 +1,13 @@
 import React from 'react';
-import { atom, useAtomValue, PrimitiveAtom } from 'jotai';
+import { atom, useAtom, useAtomValue, Atom, PrimitiveAtom } from 'jotai';
 
 import * as d3_format from 'd3-format';
 import * as d3_array from 'd3-array';
 import * as d3_scale from 'd3-scale';
+import { NArray } from 'wasm-array';
+import { np } from '../wasm-array';
 
-import { Transform1D } from './transform';
+import { Transform1D, Transform2D } from './transform';
 import { PlotScale, Pair } from './scale';
 import { Zoomer } from "./zoom";
 
@@ -52,7 +54,8 @@ function normalize_axis(axis: AxisSpec | PlotScale): Axis {
 }
 
 export interface ColorScale {
-    scale?: d3_scale.ScaleSequential<string>
+    cmap?: string
+    range?: [number, number]
     label?: string
 }
 
@@ -60,7 +63,8 @@ export interface FigureContextData<K> {
     axes: Map<K, Axis>
     transforms: Map<K, PrimitiveAtom<Transform1D>>
 
-    scales: Map<K, PrimitiveAtom<ColorScale>>
+    scales: Map<K, ColorScale>
+    currentRanges: Map<K, PrimitiveAtom<[number, number] | null>>
 
     zoomExtent: Pair
 }
@@ -87,11 +91,13 @@ export function Figure(props: FigureProps) {
         transforms.set(k, atom(new Transform1D()));
     }
 
-    const scales: Map<string, PrimitiveAtom<ColorScale>> = new Map();
+    const scales: Map<string, ColorScale> = new Map();
+    const currentRanges: Map<string, PrimitiveAtom<[number, number] | null>> = new Map();
 
     if (props.scales) {
         for (const [k, v] of props.scales) {
-            scales.set(k, atom(v));
+            scales.set(k, v);
+            currentRanges.set(k, atom(v.range ?? null));
         }
     }
 
@@ -100,6 +106,7 @@ export function Figure(props: FigureProps) {
         transforms: transforms,
         zoomExtent: props.zoomExtent || [1, Infinity],
         scales: scales,
+        currentRanges: currentRanges,
     };
 
     return <FigureContext.Provider value={ctx}>
@@ -486,3 +493,73 @@ on zoom, an event is tracked to a given x and y axis, which are updated
 
 
 */
+
+interface PlotImageProps {
+    data: NArray | null
+    scale: string
+
+    xlim?: [number, number] // [min, max]
+    ylim?: [number, number] // [min, max]
+}
+
+export function PlotImage(props: PlotImageProps) {
+    const fig = React.useContext(FigureContext);
+    const plot = React.useContext(PlotContext);
+    if (fig === undefined || plot === undefined) {
+        throw new Error("Component 'PlotImage' must be used inside a 'Plot'");
+    }
+
+    let xaxis = (typeof plot.xaxis === "string") ? fig.axes.get(plot.xaxis)! : plot.xaxis;
+    let yaxis = (typeof plot.yaxis === "string") ? fig.axes.get(plot.yaxis)! : plot.yaxis;
+
+    const scale = fig.scales.get(props.scale);
+    if (!scale) throw new Error(`Component 'PlotImage' passed invalid scale '${scale}'`);
+
+    const data = props.data;
+    if (!data) return null;
+
+    const [currentRange, setCurrentRange] = useAtom(fig.currentRanges.get(props.scale)!);
+
+    const [height, width] = data.shape.values();
+
+    const xlim = xaxis.scale.transform(props.xlim ?? xaxis.scale.domain);
+    const ylim = yaxis.scale.transform(props.ylim ?? xaxis.scale.domain);
+
+    let transform = Transform2D.fromBounds([0, width], [0, height]).compose(
+        Transform2D.fromBounds(xlim, ylim).invert()
+    );
+
+    /*let transform = Transform2D.fromBounds(xlim, ylim)
+        .scale(Math.abs(xlim[1] - xlim[0]) / width, Math.abs(ylim[1] - ylim[0]) / height);*/
+    //let transform = new Transform2D();
+
+    const canvasRef: React.MutableRefObject<HTMLCanvasElement | null> = React.useRef(null);
+
+    React.useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas || !np) return;
+
+        let range;
+        if (!scale.range) {
+            range = [np.nanmin(data), np.nanmax(data)];
+            setCurrentRange(range);
+        } else {
+            range = currentRange;
+        }
+
+        const ctx = canvas.getContext('2d')!;
+        const imageData = ctx.createImageData(width, height);
+
+        imageData.data.set(
+            np.expr`(${data} - ${range[0]}) / (${range[1]} - ${range[0]})`.apply_cmap(scale.cmap ?? 'magma')
+        );
+
+        ctx.putImageData(imageData, 0, 0);
+    }, [data, currentRange]);
+
+    return <g transform={transform.toString()}>
+    <foreignObject x={0} y={0} width={width} height={height}>
+        <canvas width={width} height={height} ref={canvasRef}></canvas>
+    </foreignObject>
+    </g>;
+}

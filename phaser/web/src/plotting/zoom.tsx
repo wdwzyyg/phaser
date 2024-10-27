@@ -28,7 +28,6 @@ export function Zoomer({children: children}: {children?: React.ReactNode}) {
     let setXTrans: (value: Transform1D) => void, setYTrans: (value: Transform1D) => void;
 
     if (typeof plot.xaxis === 'string') {
-        console.log(`zoomer got xaxis: ${plot.xaxis}`);
         xaxis = fig.axes.get(plot.xaxis)!;
         [xtrans, setXTrans] = useAtom(fig.transforms.get(plot.xaxis)!)
     } else {
@@ -37,7 +36,6 @@ export function Zoomer({children: children}: {children?: React.ReactNode}) {
         setXTrans = (_: Transform1D) => {};
     }
     if (typeof plot.yaxis === 'string') {
-        console.log(`zoomer got yaxis: ${plot.yaxis}`);
         yaxis = fig.axes.get(plot.yaxis)!;
         [ytrans, setYTrans] = useAtom(fig.transforms.get(plot.yaxis)!)
     } else {
@@ -49,9 +47,11 @@ export function Zoomer({children: children}: {children?: React.ReactNode}) {
     React.useEffect(() => {
         if (!managerRef.current) return;
         const manager = managerRef.current;
+        manager.setXTrans = setXTrans;
+        manager.setYTrans = setYTrans;
 
         manager.updateTransform(Transform2D.from_1d(xtrans, ytrans));
-    }, [xtrans, ytrans]);
+    }, [xtrans, setXTrans, ytrans, setYTrans]);
 
     React.useEffect(() => {
         if (!managerRef.current) {
@@ -67,9 +67,9 @@ export function Zoomer({children: children}: {children?: React.ReactNode}) {
 
         manager.register(childRef.current!);
 
-        () => {
+        return () => {
             manager.unregister(childRef.current!);
-        }
+        };
     }, [fig, plot.xaxis, plot.yaxis, xaxis, yaxis]);
 
     return React.cloneElement(child, {ref: childRef});
@@ -213,6 +213,7 @@ class ZoomManager {
 
     mousedown(elem: (HTMLElement & SVGElement), event: MouseEvent) {
         if (event.button != 0) { return; } // LMB only
+        console.log(`mousedown: ${elem}`);
         const [x, y] = this.transform.unapply(viewCoords(elem, [event.clientX, event.clientY]));
 
         this.state = "drag";

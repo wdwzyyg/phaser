@@ -22,7 +22,7 @@ class PipeEncoder(json.JSONEncoder):
         if isinstance(obj, bytes):
             return {
                 '_ty': 'bytes',
-                'data': base64.urlsafe_b64decode(obj).decode('ascii')
+                'data': base64.urlsafe_b64encode(obj).decode('ascii')
             }
 
         return super().default(obj)
@@ -39,7 +39,7 @@ def _pipe_decode_obj(obj: t.Dict[t.Any, t.Any]) -> t.Any:
     ty = obj.pop('_ty')
 
     if ty == 'numpy':
-        obj['data'] = base64.urlsafe_b64encode(obj['data'].encode('utf-8'))
+        obj['data'] = base64.urlsafe_b64decode(obj['data'].encode('utf-8'))
         obj['shape'] = tuple(obj['shape'])
         return numpy.array(_dummy(obj))
 
