@@ -6,6 +6,28 @@ import typing as t
 import numpy
 from numpy.typing import NDArray
 
+from phaser.utils.num import Sampling
+from phaser.utils.physics import Electron
+from .. import LoadEmpadProps, RawData
+
+
+def load_empad(args: None, props: LoadEmpadProps) -> RawData:
+    path = Path(props.path)
+
+    wavelength = Electron(props.kv * 1e3).wavelength
+
+    a = wavelength / (props.diff_step * 1e-3)  # recip. pixel size -> 1 / real space extent
+    sampling = Sampling((128, 128), extent=(a, a))
+
+    # TODO handle metadata here
+    return {
+        'patterns': numpy.fft.fftshift(load_4d(path), axes=(-1, -2)),
+        'sampling': sampling,
+        'wavelength': wavelength,
+        'scan': None,
+        'probe_options': None,
+    }
+
 
 def load_4d(path: t.Union[str, Path], scan_shape: t.Optional[t.Tuple[int, int]] = None,
             memmap: bool = False) -> NDArray[numpy.float32]:

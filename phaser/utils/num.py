@@ -4,7 +4,6 @@ General numeric utilities.
 
 from dataclasses import dataclass
 import typing as t
-from types import ModuleType
 
 import numpy
 
@@ -41,6 +40,12 @@ def get_array_module(*arrs: ArrayLike):
     except ImportError:
         pass
     return numpy
+
+
+def cast_array_module(xp: t.Any):
+    if t.TYPE_CHECKING:
+        return numpy
+    return xp
 
 
 def get_scipy_module(*arrs: ArrayLike):

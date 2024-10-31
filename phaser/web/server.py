@@ -12,10 +12,12 @@ import threading
 
 from quart import Quart, render_template, request, abort, websocket, url_for
 
+from phaser.plan import ReconsPlan
 from .util import pipe_deserialize, pipe_serialize
 
 ID: t.TypeAlias = str
 ReconstructionState: t.TypeAlias = t.Literal["queued", "starting", "running", "stopping", "stopped", "done"]
+PLAN: ReconsPlan
 
 
 class ReconstructionStateChange(t.TypedDict):
@@ -40,15 +42,36 @@ class ReconstructionStatus(t.TypedDict):
     links: t.Dict[str, str]
 
 
+def run_and_observe(plan: ReconsPlan, connection: Connection):
+    from phaser.execute import execute_plan
+    from phaser.utils.num import to_numpy
+    from phaser.web.util import ConnectionWrapper
+    from phaser.state import ReconsState
+
+    conn = ConnectionWrapper(connection)
+    conn.message("running")
+
+    def observe_state(state: ReconsState):
+        conn.update({
+            'probe': to_numpy(state.probe.data),
+            'obj': to_numpy(state.object.data),
+            'progress': (
+                state.errors.iters,
+                state.errors.detector_errors
+            ),
+        })
+
+    execute_plan(plan, [observe_state])
+
+
 class Reconstruction:
-    def __init__(self, id: ID):
+    def __init__(self, id: ID, plan: ReconsPlan):
         print(f"main thread id: {threading.get_ident()}")
-        from phaser.main import main
 
         self.id: ID = id
         (read, write) = multiprocessing.Pipe(duplex=True)
         self._conn: Connection = read
-        self.process: multiprocessing.Process = multiprocessing.Process(target=main, args=[write])
+        self.process: multiprocessing.Process = multiprocessing.Process(target=run_and_observe, args=[plan, write])
         self.subscribers: set[asyncio.Queue[ReconstructionMessage]] = set()
         self.task = None
         self.state: ReconstructionState = "queued"
@@ -136,7 +159,7 @@ class Reconstruction:
         await asyncio.to_thread(lambda: self.process.join())
         if self.state != "done":
             await self._state_change('stopped')
-        await reconstructions.remove(self)
+        await reconstructions.remove(self.id)
 
     def join(self, timeout: t.Optional[float] = None):
         if self.process.is_alive():
@@ -225,7 +248,10 @@ def make_id() -> ID:
         if id not in reconstructions:
             return id
 
-def run() -> None:
+def run(plan) -> None:
+    global PLAN
+    PLAN = plan
+
     logging.basicConfig(level=logging.INFO)
     app.run(port=5005, debug=True)
 
@@ -242,7 +268,7 @@ async def index():
 async def start_recons():
     _ = await request.get_data()
     id = make_id()
-    await reconstructions.add(Reconstruction(id))
+    await reconstructions.add(Reconstruction(id, PLAN))
     return {
         'id': id,
         'links': {'dashboard': url_for('dashboard', id=id)}
@@ -292,5 +318,4 @@ async def dashboard_websocket(id: ID):
 
     print("subscribing")
     async for msg in recons.subscribe():
-        print(f"sending message: {msg}")
         await websocket.send(pipe_serialize(msg))

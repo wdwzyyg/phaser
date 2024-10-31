@@ -294,7 +294,7 @@ class ObjectCutout(t.Generic[DTypeT]):
                 from ._cuda_kernels import add_cutouts
                 add_cutouts(self.obj, view, self._start_idxs)
                 return self
-            except (ImportError, NotImplementedError) as e:
+            except (ImportError, NotImplementedError):
                 pass
 
         for idx in numpy.ndindex(self.pos.shape[:-1]):

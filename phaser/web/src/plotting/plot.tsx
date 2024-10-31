@@ -523,7 +523,7 @@ export function PlotImage(props: PlotImageProps) {
     const [height, width] = data.shape.values();
 
     const xlim = xaxis.scale.transform(props.xlim ?? xaxis.scale.domain);
-    const ylim = yaxis.scale.transform(props.ylim ?? xaxis.scale.domain);
+    const ylim = yaxis.scale.transform(props.ylim ?? yaxis.scale.domain);
 
     let transform = Transform2D.fromBounds([0, width], [0, height]).compose(
         Transform2D.fromBounds(xlim, ylim).invert()

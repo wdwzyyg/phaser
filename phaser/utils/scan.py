@@ -33,7 +33,7 @@ def make_raster_scan(shape: t.Tuple[int, int], scan_step: ArrayLike,
     - `scan_step`: Scan step size `(s_y, s_x)`
     - `rotation`: Scan rotation to add (degrees CCW). Rotation is applied
       around the center of the scan.
-    - `dtype`: Datatype of positions to return. Defaults to `numpy.float_`.
+    - `dtype`: Datatype of positions to return. Defaults to `numpy.float64`.
     - `xp`: Array module
     """
     if xp is None:
