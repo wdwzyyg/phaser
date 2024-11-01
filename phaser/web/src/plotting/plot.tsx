@@ -8,7 +8,7 @@ import { NArray } from 'wasm-array';
 import { np } from '../wasm-array';
 
 import { Transform1D, Transform2D } from './transform';
-import { PlotScale, Pair } from './scale';
+import { PlotScale, Pair, isClose } from './scale';
 import { Zoomer } from "./zoom";
 
 export interface AxisSpec {
@@ -80,34 +80,91 @@ interface FigureProps {
     children?: React.ReactNode
 }
 
+// very hacky way to preserve figure contexts
+
+function mapEqual<K, V>(map1: Map<K, V>, map2: Map<K, V>, f: (val1: V, val2: V) => boolean): boolean {
+    if (map1.size !== map2.size) return false;
+
+    for (const [k, v1] of map1.entries()) {
+        const v2 = map2.get(k);
+        if (!v2 || !f(v1, v2)) return false;
+    }
+    return true;
+}
+
+function axisSpecEqual(old_spec: AxisSpec | PlotScale, new_spec: AxisSpec | PlotScale): boolean {
+    if (old_spec instanceof PlotScale) {
+        old_spec = {scale: old_spec} as AxisSpec
+    }
+    if (new_spec instanceof PlotScale) {
+        new_spec = {scale: new_spec} as AxisSpec
+    }
+
+    return (
+        old_spec.scale.isClose(new_spec.scale) &&
+        old_spec.label === new_spec.label &&
+        old_spec.show === new_spec.show &&
+        old_spec.ticks === new_spec.ticks &&
+        old_spec.tickFormat === new_spec.tickFormat &&
+        old_spec.tickLength === new_spec.tickLength &&
+        typeof old_spec.translateExtent === typeof new_spec.translateExtent &&
+        typeof old_spec.translateExtent == "object" ? isClose(old_spec.translateExtent, new_spec.translateExtent as Pair) : old_spec.translateExtent === new_spec.translateExtent
+    );
+}
+
+function figPropsEqual(old_props: FigureProps, new_props: FigureProps): boolean {
+    if (!mapEqual(old_props.axes, new_props.axes, axisSpecEqual)) return false;
+
+    if (typeof old_props.zoomExtent !== typeof new_props.zoomExtent) return false;
+    if (old_props.zoomExtent && !isClose(old_props.zoomExtent, new_props.zoomExtent!)) return false;
+
+    return true;
+}
+
 export function Figure(props: FigureProps) {
-    console.log("Redrawing Figure");
 
-    let axes: Map<string, Axis> = new Map();
-    let transforms: Map<string, PrimitiveAtom<Transform1D>> = new Map();
+    function make_context(props: FigureProps): FigureContextData<string> {
+        let axes: Map<string, Axis> = new Map();
+        let transforms: Map<string, PrimitiveAtom<Transform1D>> = new Map();
 
-    for (let [k, axis] of props.axes) {
-        axes.set(k, normalize_axis(axis));
-        transforms.set(k, atom(new Transform1D()));
-    }
-
-    const scales: Map<string, ColorScale> = new Map();
-    const currentRanges: Map<string, PrimitiveAtom<[number, number] | null>> = new Map();
-
-    if (props.scales) {
-        for (const [k, v] of props.scales) {
-            scales.set(k, v);
-            currentRanges.set(k, atom(v.range ?? null));
+        for (let [k, axis] of props.axes) {
+            axes.set(k, normalize_axis(axis));
+            transforms.set(k, atom(new Transform1D()));
         }
+
+        const scales: Map<string, ColorScale> = new Map();
+        const currentRanges: Map<string, PrimitiveAtom<[number, number] | null>> = new Map();
+
+        if (props.scales) {
+            for (const [k, v] of props.scales) {
+                scales.set(k, v);
+                currentRanges.set(k, atom(v.range ?? null));
+            }
+        }
+
+        return {
+            axes: axes,
+            transforms: transforms,
+            zoomExtent: props.zoomExtent || [1, Infinity],
+            scales: scales,
+            currentRanges: currentRanges,
+        };
     }
 
-    const ctx = {
-        axes: axes,
-        transforms: transforms,
-        zoomExtent: props.zoomExtent || [1, Infinity],
-        scales: scales,
-        currentRanges: currentRanges,
-    };
+    const ref: React.MutableRefObject<[FigureProps, FigureContextData<string>] | null> = React.useRef(null);
+
+    const ctx = React.useMemo(() => {
+        if (ref.current) {
+            const [old_props, ctx] = ref.current;
+            if (figPropsEqual(old_props, props)) {
+                return ctx;
+            }
+        }
+
+        console.log("Redrawing Figure");
+        ref.current = [props, make_context(props)];
+        return ref.current[1];
+    }, [props])
 
     return <FigureContext.Provider value={ctx}>
         {props.children}
@@ -256,7 +313,7 @@ interface PlotProps {
 }
 
 export function Plot(props: PlotProps) {
-    console.log("Redrawing Plot");
+    //console.log("Redrawing Plot");
 
     const fig = React.useContext(FigureContext);
     if (fig === undefined) {

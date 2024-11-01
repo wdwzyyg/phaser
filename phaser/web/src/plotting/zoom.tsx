@@ -55,6 +55,7 @@ export function Zoomer({children: children}: {children?: React.ReactNode}) {
 
     React.useEffect(() => {
         if (!managerRef.current) {
+            console.log("Constructing zoomer...");
             let transform = Transform2D.from_1d(xtrans, ytrans);
 
             managerRef.current = new ZoomManager(
@@ -66,6 +67,9 @@ export function Zoomer({children: children}: {children?: React.ReactNode}) {
         const manager = managerRef.current;
 
         manager.register(childRef.current!);
+        manager.setXTrans = setXTrans;
+        manager.setYTrans = setYTrans;
+        manager.setTransform(manager.transform);
 
         return () => {
             manager.unregister(childRef.current!);
@@ -213,7 +217,6 @@ class ZoomManager {
 
     mousedown(elem: (HTMLElement & SVGElement), event: MouseEvent) {
         if (event.button != 0) { return; } // LMB only
-        console.log(`mousedown: ${elem}`);
         const [x, y] = this.transform.unapply(viewCoords(elem, [event.clientX, event.clientY]));
 
         this.state = "drag";
