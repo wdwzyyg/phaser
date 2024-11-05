@@ -8,7 +8,7 @@ from phaser.utils.optics import fourier_shift_filter
 from phaser.utils.misc import create_groupings
 from phaser.hooks import EngineArgs
 from phaser.plan import ConventionalEngine
-from phaser.state import ReconsState, IterState, ErrorsState, StateObserver
+from phaser.state import ReconsState, IterState, ProgressState, StateObserver
 from .detector_models import modulus_constraint
 
 
@@ -76,9 +76,9 @@ def run_engine(args: EngineArgs, props: ConventionalEngine) -> ReconsState:
             state.probe.data += probe_update
 
         iteration_mse = numpy.mean(iteration_mses)
-        state.errors = ErrorsState(
-            numpy.concatenate([state.errors.iters, [iteration + start_iter]]),
-            numpy.concatenate([state.errors.detector_errors, [iteration_mse]]),
+        state.progress = ProgressState(
+            numpy.concatenate([state.progress.iters, [iteration + start_iter]]),
+            numpy.concatenate([state.progress.detector_errors, [iteration_mse]]),
         )
 
         logger.info(f"Iteration {iteration} finished, MSE: {iteration_mse}")

@@ -5,20 +5,21 @@ import { atom, PrimitiveAtom, useAtomValue, createStore, Provider } from 'jotai'
 
 
 import { np } from './wasm-array';
-import { ReconstructionStatus, ReconstructionUpdate, ProbeData, ObjectData, ProgressData } from './types';
+import { JobStatus, JobUpdate, DashboardMessage, ProbeData, ObjectData, ProgressData, PartialReconsData } from './types';
 import { Section } from './components';
 import { ProbePlot, ObjectPlot } from './plots';
+import { IArrayInterchange } from 'wasm-array';
 
 let socket: WebSocket | null = null;
-const statusState: PrimitiveAtom<ReconstructionStatus | null> = atom(null as ReconstructionStatus | null);
-const probeState: PrimitiveAtom<ProbeData> = atom(null as ProbeData);
-const objectState: PrimitiveAtom<ObjectData> = atom(null as ObjectData);
-const progressState: PrimitiveAtom<ProgressData> = atom(null as ProgressData);
+const statusState: PrimitiveAtom<JobStatus | null> = atom(null as JobStatus | null);
+const probeState: PrimitiveAtom<ProbeData | null> = atom(null as ProbeData | null);
+const objectState: PrimitiveAtom<ObjectData | null> = atom(null as ObjectData | null);
+const progressState: PrimitiveAtom<ProgressData | null> = atom(null as ProgressData | null);
 const store = createStore();
 
 
 function StatusBar(props: {}) {
-    let status = useAtomValue(statusState) ?? "Unknown";
+    let status = useAtomValue(statusState) ?? "Disconnected";
 
     const title_case = (s: string) => s[0].toUpperCase() + s.substring(1).toLowerCase();
 
@@ -60,15 +61,20 @@ addEventListener("DOMContentLoaded", (event) => {
             text = event.data;
         }
 
-        console.log(`Socket event: ${text}`)
-        let data = JSON.parse(text);
+        //console.log(`Socket event: ${text}`)
+        let data: DashboardMessage = JSON.parse(text);
 
-        if (data.msg === 'update') {
-            handleUpdate(data as ReconstructionUpdate);
-        } else if (data.msg === 'state_change' || data.msg === 'connected') {
-            store.set(statusState, (_: any) => data.state);
+        if (data.msg === 'job_update') {
+            updateState(data.state);
+        } else if (data.msg === 'status_change') {
+            store.set(statusState, (_: any) => data.status);
+        } else if (data.msg === 'job_stopped') {
+            store.set(statusState, (_: any) => 'stopped');
+        } else if (data.msg === 'connected') {
+            store.set(statusState, (_: any) => data.state.status);
+            updateState(data.state.state);
         } else {
-            console.warn(`Unknown message type: ${data.msg}`);
+            console.warn(`Unknown message type: ${data}`);
         }
     });
 
@@ -77,22 +83,35 @@ addEventListener("DOMContentLoaded", (event) => {
     });
 });
 
-async function handleUpdate(update: ReconstructionUpdate) {
-    if (!np) return;
-
-    if (update.state != store.get(statusState)) {
-        store.set(statusState, (_: any) => update.state);
+function decodeState(state: Record<any, any>): any {
+    if (state._ty !== undefined) {
+        if (state._ty === 'numpy') {
+            if (!np) return null;
+            return np.from_interchange(state as IArrayInterchange);
+        }
+        throw new Error(`Unknown custom type '${state._ty}'`);
     }
-    if ('probe' in update.data || 'init_probe' in update.data) {
-        const probe = np.from_interchange(update.data.probe ?? update.data.init_probe);
+
+    let out = {};
+    for (const [k, v] of Object.entries(state)) {
+        out[k] = (typeof v === 'object') ? decodeState(v) : v;
+    }
+    return out;
+}
+
+async function updateState(raw_state: Record<string, any>) {
+    const state = decodeState(raw_state) as PartialReconsData;
+
+    if (state.probe) {
+        const probe = state.probe;
         store.set(probeState, (_: any) => probe);
     }
-    if ('obj' in update.data || 'init_obj' in update.data) {
-        const object = np.from_interchange(update.data.obj ?? update.data.init_obj);
+    if (state.object) {
+        const object = state.object;
         store.set(objectState, (_: any) => object);
     }
-    if ('progress' in update.data) {
-        const [iters, errors] = [np.from_interchange(update.data.progress[0]), np.from_interchange(update.data.progress[0])];
-        store.set(progressState, (_: any) => { return {iters: iters, errors: errors}; });
+    if (state.progress) {
+        const progress = state.progress;
+        store.set(progressState, (_: any) => progress);
     }
 }

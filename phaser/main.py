@@ -24,10 +24,18 @@ def run(path: t.Union[str, Path]):
 @cli.command('serve')
 @click.argument('path', type=click.Path(exists=True, dir_okay=False))
 def serve(path: t.Union[str, Path]):
-    from phaser.web.server import run
+    from phaser.web.server import server
 
     plan = ReconsPlan.from_yaml(path)
-    run(plan)
+    server.run(plan)
+
+
+@cli.command('worker')
+@click.argument('url', type=str, required=True)
+def worker(url: str):
+    from phaser.web.worker import run_worker
+
+    run_worker(url)
 
 
 if __name__ == '__main__':

@@ -14,19 +14,20 @@ import { HBox } from './components';
 
 
 interface ObjectPlotProps {
-    state: PrimitiveAtom<ObjectData>
+    state: PrimitiveAtom<ObjectData | null>
 }
 
 export function ObjectPlot(props: ObjectPlotProps) {
     let object = useAtomValue(props.state);
     if (!object || !np) return <div></div>;
+    let object_data = object.data;
 
-    while (object.shape.length > 2) {
-        object = np.nanmean(object, [0]);
+    while (object_data.shape.length > 2) {
+        object_data = np.nanmean(object_data, [0]);
     }
-    const [ny, nx] = object.shape.values();
+    const [ny, nx] = object_data.shape.values();
 
-    const phase = np.angle(object);
+    const phase = np.angle(object_data);
     const [vmin, vmax]: [number, number] = [
         np.nanmin(phase).toNestedArray() as number,
         np.nanmax(phase).toNestedArray() as number
@@ -62,16 +63,17 @@ export function ObjectPlot(props: ObjectPlotProps) {
 }
 
 interface ProbePlotProps {
-    state: PrimitiveAtom<ProbeData>
+    state: PrimitiveAtom<ProbeData | null>
 }
 
 export function ProbePlot(props: ProbePlotProps) {
     const probes = useAtomValue(props.state);
     if (!probes || !np) return <div></div>;
+    let probes_data = probes.data;
 
-    const [nprobes, ny, nx] = probes.shape.values();
+    const [nprobes, ny, nx] = probes_data.shape.values();
 
-    const intensities = np.abs2(probes);
+    const intensities = np.abs2(probes_data);
     const [vmin, vmax]: [number, number] = [
         np.nanmin(intensities).toNestedArray() as number,
         np.nanmax(intensities).toNestedArray() as number

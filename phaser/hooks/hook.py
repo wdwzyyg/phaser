@@ -63,6 +63,17 @@ class Hook(t.Generic[T, U], abc.ABC):
         return HookConverter(cls, handlers)
 
 
+def _to_dict(val: t.Any) -> dict:
+    import dataclasses
+    import pane
+
+    if dataclasses.is_dataclass(val):
+        return dataclasses.asdict(val)  # type: ignore
+    if isinstance(val, pane.PaneBase):
+        return val.into_data()         # type: ignore
+    return val.__dict__
+
+
 class HookConverter(t.Generic[T, U], Converter[Hook[T, U]]):
     def __init__(self, cls: t.Type[Hook[T, U]], handlers: ConverterHandlers):
         self.cls = cls
@@ -77,7 +88,7 @@ class HookConverter(t.Generic[T, U], Converter[Hook[T, U]]):
         if val.props is not None:
             return {
                 'type': val.func_ref(),
-                **val.props.to_dict()
+                **_to_dict(val.props)
             }
         return val.func_ref()
 

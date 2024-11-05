@@ -1,74 +1,97 @@
 import base64
-import json
-from multiprocessing.connection import Connection
+import dataclasses
 import typing as t
 
 import numpy
+from pane.converters import Converter
+from pane.errors import ProductErrorNode, WrongTypeError, ParseInterrupt
 
 
-class ReconstructionMessage(t.TypedDict):
-    msg: t.Literal['update', 'running', 'done']
-    data: t.Dict[str, t.Any]
-
-
-class PipeEncoder(json.JSONEncoder):
-    def default(self, obj: t.Any) -> t.Any:
-        if isinstance(obj, numpy.ndarray):
-            d = obj.__array_interface__
-            d['data'] = base64.urlsafe_b64encode(obj.tobytes()).decode('ascii')
-            d['_ty'] = 'numpy'
-            return d
-
-        if isinstance(obj, bytes):
-            return {
-                '_ty': 'bytes',
-                'data': base64.urlsafe_b64encode(obj).decode('ascii')
-            }
-
-        return super().default(obj)
-
-
-class _dummy():
+class _array_dummy():
     def __init__(self, array_interface: t.Any):
         self.__array_interface__ = array_interface
 
 
-def _pipe_decode_obj(obj: t.Dict[t.Any, t.Any]) -> t.Any:
-    if '_ty' not in obj:
+def encode_obj(obj: t.Any, to_numpy: bool = True) -> t.Any:
+    if isinstance(obj, numpy.ndarray):
+        if not to_numpy:
+            return obj.tolist()
+        d = obj.__array_interface__
+        d['data'] = base64.urlsafe_b64encode(obj.tobytes()).decode('ascii')
+        d['_ty'] = 'numpy'
+        return d
+
+    if isinstance(obj, bytes):
+        return {
+            '_ty': 'bytes',
+            'data': base64.urlsafe_b64encode(obj).decode('ascii')
+        }
+
+    if isinstance(obj, dict):
+        d = obj
+    elif dataclasses.is_dataclass(obj):
+        d = obj.asdict()  # type: ignore
+    else:
         return obj
-    ty = obj.pop('_ty')
+
+    return {k: encode_obj(v, to_numpy and k not in ('sampling',)) for (k, v) in d.items()}
+
+
+def decode_obj(obj: t.Any) -> t.Any:
+    if isinstance(obj, dict):
+        d = obj
+    elif dataclasses.is_dataclass(obj):
+        d = obj.asdict()  # type: ignore
+    else:
+        return obj
+
+    if '_ty' not in d:
+        return {k: decode_obj(v) for (k, v) in d.items()}
+    ty = d.pop('_ty')
 
     if ty == 'numpy':
-        obj['data'] = base64.urlsafe_b64decode(obj['data'].encode('utf-8'))
-        obj['shape'] = tuple(obj['shape'])
-        return numpy.array(_dummy(obj))
+        d['data'] = base64.urlsafe_b64decode(d['data'].encode('utf-8'))
+        d['shape'] = tuple(d['shape'])
+        return numpy.array(_array_dummy(d))
 
     if ty == 'bytes':
-        return base64.urlsafe_b64decode(obj['data'].encode('utf-8'))
+        return base64.urlsafe_b64decode(d['data'].encode('utf-8'))
 
-    raise ValueError(f"Unknown custom type '{ty}', while parsing JSON object {obj}")
-
-
-def pipe_serialize(obj: t.Any) -> bytes:
-    return json.dumps(obj, cls=PipeEncoder).encode('utf-8')
+    raise ValueError(f"Unknown custom type '{ty}', while parsing reconstruction state update")
 
 
-def pipe_deserialize(buf: bytes) -> t.Any:
-    return json.loads(buf, object_hook=_pipe_decode_obj)
+class ReconsStateConverter(Converter[t.Dict[str, t.Any]]):
+    def __init__(self):
+        ...
 
+    def expected(self, plural: bool = False) -> str:
+        return "reconstruction state"
 
-class ConnectionWrapper():
-    def __init__(self, conn: Connection):
-        self.inner = conn
+    def into_data(self, val: t.Any) -> t.Any:
+        return encode_obj(val)
 
-    def send(self, msg: ReconstructionMessage):
-        self.inner.send_bytes(pipe_serialize(msg))
+    def try_convert(self, val: t.Any) -> t.Dict[str, t.Any]:
+        try:
+            val = decode_obj(val)
+        except Exception:
+            raise ParseInterrupt()
+        #if not isinstance(val, t.Mapping) or ({'iter', 'wavelength'} - val.keys()):
+        #    raise ParseInterrupt()
 
-    def update(self, data: t.Any):
-        self.send({'msg': 'update', 'data': data})
+        return val  # type: ignore
 
-    def message(self, msg: t.Literal['running', 'done']):
-        self.send({'msg': msg, 'data': {}})
+    def collect_errors(self, val: t.Any) -> t.Union[ProductErrorNode, WrongTypeError, None]:
+        try:
+            val = decode_obj(val)
+        except Exception as e:
+            import traceback
 
-    def recv(self) -> t.Any:
-        return pipe_deserialize(self.inner.recv_bytes())
+            tb = e.__traceback__.tb_next  # type: ignore
+            tb = traceback.TracebackException(type(e), e, tb)
+            return WrongTypeError(self.expected(), val, tb)
+        if not isinstance(val, t.Mapping):
+            return WrongTypeError(self.expected(), val)
+        #if (missing := {'iter', 'wavelength'} - val.keys()):
+        #    return ProductErrorNode(self.expected(), {}, val, missing)
+
+        return None

@@ -1,23 +1,125 @@
 import { NArray } from 'wasm-array';
 
-export type ReconstructionStatus = "queued" | "starting" | "running" | "stopping" | "stopped" | "done";
+export type WorkerStatus = "queued" | "starting" | "idle" | "running" | "stopping" | "stopped" | "unknown";
+export type JobStatus = "queued" | "starting" | "running" | "stopping" | "stopped";
+export type Result = "finished" | "errored" | "cancelled" | "interrupted";
 
-export interface Reconstruction {
-    id: string;
-    state: ReconstructionStatus;
+export interface WorkerState {
+    worker_id: string;
+    status: WorkerStatus;
     links: Record<string, string>;
-};
-
-export interface ReconstructionUpdate {
-    msg: 'update';
-    id: string;
-    state: ReconstructionStatus;
-    data: any;
 }
 
-export type ProbeData = NArray | null;
-export type ObjectData = NArray | null;
-export type ProgressData = {
-    iters: NArray,
-    errors: NArray,
-} | null;
+export interface WorkerUpdate {
+    worker_id: string;
+    status: WorkerStatus;
+
+    msg: "status_change";
+}
+
+export interface JobState {
+    job_id: string;
+    status: JobStatus;
+    links: Record<string, string>;
+
+    state: PartialReconsData;
+    worker_id: string | null;
+};
+
+export interface JobStatusChange {
+    status: JobStatus;
+    job_id: string;
+
+    msg: "status_change";
+}
+
+export interface JobUpdate {
+    state: PartialReconsData;
+    job_id: string;
+
+    msg: "job_update";
+}
+
+export interface JobStopped {
+    result: Result;
+    error: string | null;
+
+    msg: "job_stopped";
+}
+
+export type JobMessage = JobStatusChange | JobUpdate | JobStopped;
+
+export interface DashboardConnected {
+    state: JobState;
+    msg: "connected";
+}
+
+export type DashboardMessage = JobMessage | DashboardConnected;
+
+export interface JobsUpdate {
+    event: JobMessage;
+    state: Array<JobState>;
+
+    msg: "jobs_update";
+}
+
+export interface WorkersUpdate {
+    event: WorkerUpdate;
+    state: Array<WorkerState>;
+
+    msg: "workers_update";
+}
+
+export interface ManagerConnected {
+    workers: Array<WorkerState>;
+    jobs: Array<JobState>;
+    msg: "connected";
+}
+
+export type ManagerMessage = JobsUpdate | WorkersUpdate | ManagerConnected;
+
+export interface ReconsData {
+    iter: IterData;
+    probe: ProbeData;
+    object: ObjectData;
+    scan: NArray;
+    progress: ProgressData;
+}
+
+export type PartialReconsData = { [P in keyof ReconsData]?: ReconsData[P] | null | undefined };
+
+export interface IterData {
+    engine_num: number;
+    engine_iter: number;
+    total_iter: number;
+}
+
+export interface Sampling {
+    shape: [number, number];
+    extent: [number, number];
+    sampling: [number, number];
+}
+
+export interface ObjectSampling {
+    shape: [number, number];
+    sampling: [number, number];
+    corner: [number, number];
+    region_min: [number, number] | null;
+    region_max: [number, number] | null;
+}
+
+export interface ProbeData {
+    sampling: Sampling;
+    data: NArray;
+};
+
+export interface ObjectData {
+    sampling: ObjectSampling;
+    data: NArray;
+    zs: NArray;
+};
+
+export interface ProgressData {
+    iters: NArray;
+    detector_errors: NArray;
+}

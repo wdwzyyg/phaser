@@ -1,9 +1,13 @@
 ---
+
+# raw data source
 raw_data:
   type: empad
   path: "/Users/colin/Downloads/mos2/1/mos2/mos2_0.00_dstep1.0_x64_y64_4DSTEM.raw"
   diff_step: 1.0  # mrad/px
   kv: 120.        # keV
+
+# initialization
 
 init_probe:
   type: 'focused'
@@ -17,7 +21,11 @@ init_scan:
   shape: [64, 64] # ny, nx
   step_size: 0.6  # angstrom
 
+# for each reconstruction engine
 engines:
+   # how to transition from previous state to current reconstruction state
+   # how to reconstruct
+   # how to output/save
  - type: 'conventional'
    probe_modes: 4
    niter: 20

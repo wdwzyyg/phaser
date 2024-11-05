@@ -4,6 +4,10 @@ import numpy
 import pane
 
 
+class Cancelled(BaseException):
+    ...
+
+
 class Dataclass(pane.PaneBase, kw_only=True, allow_extra=False):
     ...
 

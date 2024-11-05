@@ -7,7 +7,7 @@ from numpy.typing import NDArray
 from phaser.utils.num import cast_array_module
 from phaser.utils.object import ObjectSampling
 from .plan import ReconsPlan, Engine
-from .state import ReconsState, IterState, ErrorsState, StateObserver
+from .state import ReconsState, IterState, ProgressState, StateObserver
 
 
 def execute_plan(plan: ReconsPlan, observers: t.Sequence[StateObserver] = ()):
@@ -60,7 +60,7 @@ def execute_plan(plan: ReconsPlan, observers: t.Sequence[StateObserver] = ()):
         probe=probe,
         object=obj,
         scan=scan,
-        errors=ErrorsState(iters=numpy.array([]), detector_errors=numpy.array([])),
+        progress=ProgressState(iters=numpy.array([]), detector_errors=numpy.array([])),
         wavelength=wavelength
     )
 

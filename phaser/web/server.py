@@ -1,321 +1,337 @@
 import asyncio
+from collections import deque
 import logging
-import multiprocessing
-from multiprocessing.connection import Connection
-import struct
-import io
-import sys
-import socket
 import random
+import multiprocessing
 import typing as t
-import threading
 
-from quart import Quart, render_template, request, abort, websocket, url_for
+from quart import Quart, url_for
 
 from phaser.plan import ReconsPlan
-from .util import pipe_deserialize, pipe_serialize
 
-ID: t.TypeAlias = str
-ReconstructionState: t.TypeAlias = t.Literal["queued", "starting", "running", "stopping", "stopped", "done"]
-PLAN: ReconsPlan
+from .types import (
+    JobID, WorkerID,
+    # worker - server communication
+    WorkerMessage, JobResponse, CancelResponse, OkResponse, ServerResponse,
+    # server - client communication
+    WorkerStatus, WorkerState, WorkerUpdate, WorkersUpdate, 
+    JobStatus, JobState, JobStatusChange, JobUpdate, JobStopped, JobMessage, JobsUpdate,
+)
 
-
-class ReconstructionStateChange(t.TypedDict):
-    msg: t.Literal['state_change']
-    id: ID
-    state: ReconstructionState
-
-
-class ReconstructionUpdate(t.TypedDict):
-    msg: t.Literal['update']
-    id: ID
-    state: ReconstructionState
-    data: t.Any
+T = t.TypeVar('T')
 
 
-ReconstructionMessage = ReconstructionUpdate | ReconstructionStateChange
+class Subscribable(t.Generic[T]):
+    def __init__(self):
+        self.subscribers: set[asyncio.Queue[T]] = set()
 
-
-class ReconstructionStatus(t.TypedDict):
-    id: ID
-    state: ReconstructionState
-    links: t.Dict[str, str]
-
-
-def run_and_observe(plan: ReconsPlan, connection: Connection):
-    from phaser.execute import execute_plan
-    from phaser.utils.num import to_numpy
-    from phaser.web.util import ConnectionWrapper
-    from phaser.state import ReconsState
-
-    conn = ConnectionWrapper(connection)
-    conn.message("running")
-
-    def observe_state(state: ReconsState):
-        conn.update({
-            'probe': to_numpy(state.probe.data),
-            'obj': to_numpy(state.object.data),
-            'progress': (
-                state.errors.iters,
-                state.errors.detector_errors
-            ),
-        })
-
-    execute_plan(plan, [observe_state])
-
-
-class Reconstruction:
-    def __init__(self, id: ID, plan: ReconsPlan):
-        print(f"main thread id: {threading.get_ident()}")
-
-        self.id: ID = id
-        (read, write) = multiprocessing.Pipe(duplex=True)
-        self._conn: Connection = read
-        self.process: multiprocessing.Process = multiprocessing.Process(target=run_and_observe, args=[plan, write])
-        self.subscribers: set[asyncio.Queue[ReconstructionMessage]] = set()
-        self.task = None
-        self.state: ReconstructionState = "queued"
-
-    async def _state_change(self, new_state: ReconstructionState):
-        self.state = new_state
-        await self.message_subscribers({
-            'msg': 'state_change',
-            'id': self.id,
-            'state': new_state
-        })
-
-    async def watch_conn(self):
-        print(f"watch_conn, thread id: {threading.get_ident()}")
-        sock = socket.fromfd(self._conn.fileno(), socket.AF_UNIX, socket.SOCK_STREAM)
-
-        loop = asyncio.get_event_loop()
-        stream_reader = asyncio.StreamReader()
-        transport, protocol = await loop.connect_accepted_socket(lambda: asyncio.StreamReaderProtocol(stream_reader), sock)
-
-        while True:
-            size, = struct.unpack("!i", await stream_reader.readexactly(4))
-            if size == -1:
-                # long size
-                size, = struct.unpack("!Q", await stream_reader.readexactly(8))
-
-            buf = io.BytesIO()
-            remaining = size
-            while remaining > 0:
-                chunk = await stream_reader.read(remaining)
-                if len(chunk) == 0:
-                    if remaining == size:
-                        raise EOFError()
-                    else:
-                        raise OSError("got end of file during message")
-                buf.write(chunk)
-                remaining -= len(chunk)
-
-            try:
-                msg = pipe_deserialize(buf.getvalue())
-            except Exception:
-                logging.error("Error deserializing message", exc_info=sys.exc_info())
-                continue
-
-            if msg['msg'] == 'update':
-                await self.message_subscribers({
-                    'msg': 'update',
-                    'id': self.id,
-                    'state': self.state,
-                    'data': msg['data']
-                })
-            elif msg['msg'] == 'running':
-                await self._state_change('running')
-            elif msg['msg'] == 'done':
-                await self._state_change('done')
-            else:
-                logging.error(f"Unknown message type {msg['msg']}")
-                continue
-
-    async def subscribe(self) -> t.AsyncGenerator[ReconstructionMessage, None]:
-        connection: asyncio.Queue[ReconstructionMessage] = asyncio.Queue()
+    async def subscribe(self) -> t.AsyncIterator[T]:
+        connection: asyncio.Queue[T] = asyncio.Queue()
         self.subscribers.add(connection)
         try:
             while True:
                 yield await connection.get()
-        finally:  # called when connection closes
+        finally:  # called when future is cancelled
             self.subscribers.remove(connection)
 
-    async def message_subscribers(self, msg: ReconstructionMessage):
+    async def message_subscribers(self, msg: T):
         for subscriber in self.subscribers:
             await subscriber.put(msg)
 
-    async def start(self):
-        self.process.start()
-        app.add_background_task(self.watch_conn)
-        self.task = asyncio.create_task(self._process_future())
-        await self._state_change('starting')
 
-    async def stop(self):
-        # TODO request stop
-        await self._state_change('stopping')
-        await asyncio.to_thread(lambda: self.process.join())
+class Worker(Subscribable[WorkerUpdate]):
+    def __init__(self, worker_id: WorkerID):
+        super().__init__()
+        self.status: WorkerStatus = 'queued'
+        self.id: WorkerID = worker_id
 
-    async def _process_future(self):
-        await asyncio.to_thread(lambda: self.process.join())
-        if self.state != "done":
-            await self._state_change('stopped')
-        await reconstructions.remove(self.id)
-
-    def join(self, timeout: t.Optional[float] = None):
-        if self.process.is_alive():
-            self.process.join(timeout)
-
-
-class Reconstructions:
-    def __init__(self):
-        self.inner: t.Dict[ID, Reconstruction] = {}
-        self.subscribers: set[asyncio.Queue] = set()
-
-    async def add(self, recons: Reconstruction):
-        self.inner[recons.id] = recons
-        await recons.start()
-        await self.message_subscribers({
-            'msg': 'state_change',
-            'id': recons.id,
-            'state': 'running',
+    def state(self) -> WorkerState:
+        return WorkerState(self.id, self.status, {
+            'shutdown': url_for('shutdown_worker', worker_id=self.id),
         })
 
-    async def remove(self, id: ID):
+    async def cancel(self):
+        await self.set_status('stopping')
+
+    def should_cancel(self) -> bool:
+        return self.status == 'stopping'
+
+    async def set_status(self, status: WorkerStatus):
+        self.status = status
+        await self.message_subscribers(WorkerUpdate(self.id, status))
+
+        if status == 'stopped':
+            server.workers.schedule_for_removal(self.id, 5.0)
+
+    async def handle_message(self, msg: WorkerMessage) -> ServerResponse:
+        if msg.msg == 'shutdown':
+            await self.set_status('stopped')
+            return OkResponse()
+
+        if self.status in ('queued', 'starting'):
+            await self.set_status('idle')
+
+        if (job_id := getattr(msg, 'job_id', None)):
+            job = server.jobs[job_id]
+            await job.handle_update(msg)
+
+            if job.should_cancel():
+                return CancelResponse(self.should_cancel())
+
+        if self.should_cancel():
+            return CancelResponse(True)
+
+        if msg.msg in ('poll', 'job_result'):
+            if len(server.job_queue):
+                # send a new job if available
+                job = server.job_queue.popleft()
+                await self.set_status('running')
+                await job.set_status('starting')
+                return JobResponse(job.id, job.plan)
+            else:
+                # otherwise don't
+                await self.set_status('idle')
+
+        return OkResponse()
+
+    async def finalize(self):
+        pass
+
+
+class LocalWorker(Worker):
+    def __init__(self, worker_id: WorkerID):
+        from phaser.web.worker import run_worker
+
+        super().__init__(worker_id)
+
+        self.process = multiprocessing.Process(target=run_worker, args=[server.get_worker_url(worker_id)], daemon=True)
+        self.status = 'starting'
+        self.process.start()
+
+        self._fut: asyncio.Task[None] = asyncio.create_task(asyncio.to_thread(self._watch_process))
+
+    def _watch_process(self):
+        self.process.join()
+        # TODO call set_status here
+        self.status = 'stopped'
+
+    async def finalize(self):
+        self.process.terminate()
+        await self._fut
+
+
+class ManualWorker(Worker):
+    def __init__(self, worker_id: WorkerID):
+        url = server.get_worker_url(worker_id)
+        print(f"Worker command: python -m phaser worker {url}")
+        super().__init__(worker_id)
+
+
+class Workers(Subscribable[WorkersUpdate]):
+    def __init__(self):
+        super().__init__()
+        self.inner: t.Dict[WorkerID, Worker] = {}
+        self._futs: t.List[asyncio.Task[None]] = []
+
+    def state(self) -> t.List[WorkerState]:
+        return [worker.state() for worker in self.inner.values()]
+
+    async def _subscribe_to_worker(self, worker: Worker):
+        async for msg in worker.subscribe():
+            if msg.msg == 'status_change':
+                await self.message_subscribers(
+                    WorkersUpdate(msg, self.state())
+                )
+
+    async def add(self, worker: Worker):
+        self.inner[worker.id] = worker
+
+        event = WorkerUpdate(worker.id, worker.status)
+        await self.message_subscribers(WorkersUpdate(event, self.state()))
+        self._futs.append(asyncio.create_task(self._subscribe_to_worker(worker)))
+
+    def schedule_for_removal(self, worker_id: WorkerID, delay: float = 30.0):
+        if worker_id not in self:
+            return
+
+        async def task():
+            async with server.app.app_context():
+                await asyncio.sleep(delay)
+                await self.remove(worker_id)
+
+        self._futs.append(asyncio.create_task(task()))
+
+    async def remove(self, worker_id: WorkerID):
         try:
-            recons = self.inner.pop(id)
-            #TODO send stop request
-            await asyncio.to_thread(lambda: recons.join())
+            worker = self.inner.pop(worker_id)
         except KeyError:
-            pass
+            return
 
-    async def subscribe(self) -> t.AsyncGenerator[ReconstructionMessage, None]:
-        connection = asyncio.Queue()
-        self.subscribers.add(connection)
-        try:
-            while True:
-                yield await connection.get()
-        finally:
-            self.subscribers.remove(connection)
+        await worker.finalize()
+        await self.message_subscribers(
+            WorkersUpdate(None, self.state())
+        )
 
-    async def message_subscribers(self, msg: ReconstructionMessage):
-        for subscriber in self.subscribers:
-            await subscriber.put({'event': msg, 'state': self.state()})
-
-    def state(self) -> t.List[ReconstructionStatus]:
-        return [
-            {
-                'id': recons.id,
-                'state': "running",
-                'links': {
-                    'dashboard': url_for('dashboard', id=recons.id),
-                    'cancel': url_for('cancel', id=recons.id),
-                }
-            }
-            for recons in self.values()
-        ]
-
-    def __contains__(self, item: t.Any) -> bool:
+    def __contains__(self, item: WorkerID) -> bool:
         return self.inner.__contains__(item)
 
-    def __getitem__(self, item: ID) -> Reconstruction:
+    def __getitem__(self, item: WorkerID) -> Worker:
         return self.inner[item]
 
-    def items(self) -> t.ItemsView[ID, Reconstruction]:
+    def items(self) -> t.ItemsView[WorkerID, Worker]:
         return self.inner.items()
 
-    def keys(self) -> t.KeysView[ID]:
+    def keys(self) -> t.KeysView[WorkerID]:
         return self.inner.keys()
 
-    def values(self) -> t.ValuesView[Reconstruction]:
+    def values(self) -> t.ValuesView[Worker]:
         return self.inner.values()
 
+    async def finalize(self):
+        for fut in self._futs:
+            fut.cancel()
+        await asyncio.gather(*(worker.finalize() for worker in self.inner.values()))
 
-app = Quart(
-    __name__,
-    static_url_path="/static",
-    static_folder="dist",
-)
 
-app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 5
+class Job(Subscribable[JobMessage]):
+    def __init__(self, id: JobID, plan: str):
+        super().__init__()
+        self.id: JobID = id
+        self.plan: str = plan
+        self.status: JobStatus = 'queued'
+        # cached job state
+        self.cache: t.Dict[str, t.Any] = {}
 
-reconstructions: Reconstructions = Reconstructions()
+    async def set_status(self, status: JobStatus):
+        if self.status == status:
+            return
+        self.status = status
+        await self.message_subscribers(
+            JobStatusChange(status, self.id)
+        )
+
+    async def cancel(self):
+        await self.set_status('stopping')
+
+    def should_cancel(self) -> bool:
+        return self.status == 'stopping'
+
+    def state(self) -> JobState:
+        return JobState(self.id, self.status, {
+            'dashboard': url_for('job_dashboard', job_id=self.id),
+            'cancel': url_for('cancel_job', job_id=self.id), 
+        })
+
+    async def handle_update(self, msg: WorkerMessage):
+        if msg.msg == 'job_update':
+            if self.status in ('queued', 'starting'):
+                await self.set_status('running')
+
+            self.cache.update(msg.state)
+
+            await self.message_subscribers(
+                JobUpdate.make_unchecked(msg.state, msg.job_id)
+            )
+        elif msg.msg == 'job_result':
+            self.status = 'stopped'
+            await self.message_subscribers(
+                JobStopped(msg.result, msg.error)
+            )
+
+
+class Jobs(Subscribable[JobsUpdate]):
+    def __init__(self):
+        super().__init__()
+        self.inner: t.Dict[JobID, Job] = {}
+        self._futs: t.List[asyncio.Task[None]] = []
+
+    def state(self) -> t.List[JobState]:
+        return [job.state() for job in self.inner.values()]
+
+    async def _subscribe_to_job(self, job: Job):
+        async for msg in job.subscribe():
+            if msg.msg in ('status_change', 'job_stopped'):
+                await self.message_subscribers(
+                    JobsUpdate.make_unchecked(msg, self.state())
+                )
+
+    async def add(self, job: Job):
+        self.inner[job.id] = job
+        self._futs.append(asyncio.create_task(self._subscribe_to_job(job)))
+        server.job_queue.append(job)
+
+        event = JobStatusChange(job.status, job.id)
+        await self.message_subscribers(
+            JobsUpdate.make_unchecked(event, self.state())
+        )
+
+    def __contains__(self, item: JobID) -> bool:
+        return self.inner.__contains__(item)
+
+    def __getitem__(self, item: JobID) -> Job:
+        return self.inner[item]
+
+    def items(self) -> t.ItemsView[JobID, Job]:
+        return self.inner.items()
+
+    def keys(self) -> t.KeysView[JobID]:
+        return self.inner.keys()
+
+    def values(self) -> t.ValuesView[Job]:
+        return self.inner.values()
+
+    async def finalize(self):
+        for fut in self._futs:
+            fut.cancel()
+
 
 _ID_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 
-def make_id() -> ID:
-    while True:
-        id = "".join(_ID_CHARS[random.randrange(0, len(_ID_CHARS))] for _ in range(10))
-        if id not in reconstructions:
-            return id
 
-def run(plan) -> None:
-    global PLAN
-    PLAN = plan
+class Server:
+    def __init__(self):
+        self.workers: Workers = Workers()
+        self.jobs: Jobs = Jobs()
+        self.job_queue: deque[Job] = deque()
 
-    logging.basicConfig(level=logging.INFO)
-    app.run(port=5005, debug=True)
+        self.app: Quart = Quart(
+            __name__,
+            static_url_path="/static",
+            static_folder="dist",
+        )
+        self.app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 5
 
-@app.after_serving
-async def shutdown():
-    for recons in reconstructions.values():
-        recons.join()
+        self.app.add_background_task
 
-@app.get("/")
-async def index():
-    return await render_template("manager.html")
+        @self.app.after_serving
+        async def shutdown():
+            await asyncio.gather(self.jobs.finalize(), self.workers.finalize())
 
-@app.post("/start")
-async def start_recons():
-    _ = await request.get_data()
-    id = make_id()
-    await reconstructions.add(Reconstruction(id, PLAN))
-    return {
-        'id': id,
-        'links': {'dashboard': url_for('dashboard', id=id)}
-    }
+    def run(self, plan: ReconsPlan):
+        import json
+        self.plan: str = json.dumps(plan.into_data())
+        logging.basicConfig(level=logging.INFO)
+        multiprocessing.set_start_method('spawn', True)
 
-@app.get("/<string:id>")
-async def dashboard(id: ID):
-    if id == "fake":
-        return await render_template("dashboard.html")
-    if id not in reconstructions:
-        abort(404)
-    return await render_template("dashboard.html")
+        self.app.run(port=5005, debug=True)
 
-@app.post("/<string:id>/cancel")
-async def cancel(id: ID):
-    print(f"cancel ID {id}")
-    await reconstructions.remove(id)
+    def get_worker_url(self, worker_id: WorkerID) -> str:
+        url = url_for('worker_update', worker_id=worker_id, _external=True)
+        return url
 
-    return {'result': 'success'}
+    def make_workerid(self) -> WorkerID:
+        while True:
+            id = "".join(_ID_CHARS[random.randrange(0, len(_ID_CHARS))] for _ in range(10))
+            if id not in self.workers:
+                return id
 
-@app.websocket("/listen")
-async def manager_websocket():
-    await websocket.accept()
+    def make_jobid(self) -> JobID:
+        while True:
+            id = "".join(_ID_CHARS[random.randrange(0, len(_ID_CHARS))] for _ in range(10))
+            if id not in self.jobs:
+                return id
 
-    await websocket.send_json({
-        'msg': 'connected',
-        'state': reconstructions.state()
-    })
 
-    async for msg in reconstructions.subscribe():
-        await websocket.send_json(msg)
+server: Server = Server()
 
-@app.websocket("/<string:id>/listen")
-async def dashboard_websocket(id: ID):
-    print(f"attempting websocket connection, id: {id}")
-    try:
-        recons = reconstructions[id]
-    except KeyError:
-        abort(404)
-
-    await websocket.accept()
-
-    await websocket.send_json({
-        'msg': 'connected',
-        'state': recons.state
-    })
-
-    print("subscribing")
-    async for msg in recons.subscribe():
-        await websocket.send(pipe_serialize(msg))
+from . import routes  # noqa: E402, F401
