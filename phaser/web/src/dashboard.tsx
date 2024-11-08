@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { atom, PrimitiveAtom, useAtomValue, createStore, Provider } from 'jotai';
 
 
-import { np } from './wasm-array';
+import { np_fut, np } from './wasm-array';
 import { JobStatus, JobUpdate, DashboardMessage, ProbeData, ObjectData, ProgressData, PartialReconsData } from './types';
 import { Section } from './components';
 import { ProbePlot, ObjectPlot } from './plots';
@@ -83,24 +83,28 @@ addEventListener("DOMContentLoaded", (event) => {
     });
 });
 
-function decodeState(state: Record<any, any>): any {
+async function decodeState(state: Record<any, any>): Promise<any> {
     if (state._ty !== undefined) {
         if (state._ty === 'numpy') {
-            if (!np) return null;
-            return np.from_interchange(state as IArrayInterchange);
+            return np!.from_interchange(state as IArrayInterchange);
         }
         throw new Error(`Unknown custom type '${state._ty}'`);
     }
 
     let out = {};
     for (const [k, v] of Object.entries(state)) {
-        out[k] = (typeof v === 'object') ? decodeState(v) : v;
+        out[k] = (typeof v === 'object' && v !== null) ? await decodeState(v) : v;
     }
     return out;
 }
 
 async function updateState(raw_state: Record<string, any>) {
-    const state = decodeState(raw_state) as PartialReconsData;
+    await np_fut;
+
+    console.log(`raw_state: ${JSON.stringify(raw_state)}`);
+
+    const state = (await decodeState(raw_state)) as PartialReconsData;
+    console.log(`state: ${JSON.stringify(state)}`);
 
     if (state.probe) {
         const probe = state.probe;

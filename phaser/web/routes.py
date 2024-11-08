@@ -84,6 +84,7 @@ async def manager_websocket():
 
 @app.websocket("/job/<string:job_id>/listen")
 async def dashboard_websocket(job_id: JobID):
+    #print("dashboard_websocket")
     try:
         job = server.jobs[job_id]
     except KeyError:
@@ -92,7 +93,7 @@ async def dashboard_websocket(job_id: JobID):
     await websocket.accept()
 
     await websocket.send(serialize(DashboardConnected(
-        job.state()
+        job.state(full=True)
     )))
 
     async for msg in job.subscribe():

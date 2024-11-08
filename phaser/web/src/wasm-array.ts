@@ -1,6 +1,10 @@
 
 export let np: null | typeof import("wasm-array") = null;
 
-import("wasm-array")
-    .then(mod => np = mod)
-    .catch(e => console.error("Error importing wasm-array:", e));
+export let np_fut: Promise<typeof import("wasm-array")> = import("wasm-array")
+    .then(mod => {
+        console.log("np module loaded");
+        np = mod;
+        return np;
+    })
+    .catch(e => { throw new Error(`Error importing wasm-array: ${e}`) });

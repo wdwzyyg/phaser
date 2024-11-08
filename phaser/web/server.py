@@ -216,11 +216,12 @@ class Job(Subscribable[JobMessage]):
     def should_cancel(self) -> bool:
         return self.status == 'stopping'
 
-    def state(self) -> JobState:
-        return JobState(self.id, self.status, {
+    def state(self, full: bool = False) -> JobState:
+        state = self.cache if full else {}
+        return JobState.make_unchecked(self.id, self.status,{
             'dashboard': url_for('job_dashboard', job_id=self.id),
             'cancel': url_for('cancel_job', job_id=self.id), 
-        })
+        }, state=state)
 
     async def handle_update(self, msg: WorkerMessage):
         if msg.msg == 'job_update':
