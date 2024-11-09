@@ -3,6 +3,7 @@ from collections import deque
 import logging
 import random
 import multiprocessing
+import weakref
 import typing as t
 
 from quart import Quart, url_for
@@ -45,6 +46,8 @@ class Worker(Subscribable[WorkerUpdate]):
         self.status: WorkerStatus = 'queued'
         self.id: WorkerID = worker_id
 
+        self.current_job: t.Optional[weakref.ref[Job]] = None
+
     def state(self) -> WorkerState:
         return WorkerState(self.id, self.status, {
             'shutdown': url_for('shutdown_worker', worker_id=self.id),
@@ -61,6 +64,8 @@ class Worker(Subscribable[WorkerUpdate]):
         await self.message_subscribers(WorkerUpdate(self.id, status))
 
         if status == 'stopped':
+            if self.current_job and (job := self.current_job()):
+                await job.set_status('stopped')
             server.workers.schedule_for_removal(self.id, 5.0)
 
     async def handle_message(self, msg: WorkerMessage) -> ServerResponse:
@@ -85,11 +90,13 @@ class Worker(Subscribable[WorkerUpdate]):
             if len(server.job_queue):
                 # send a new job if available
                 job = server.job_queue.popleft()
+                self.current_job = weakref.ref(job)
                 await self.set_status('running')
                 await job.set_status('starting')
                 return JobResponse(job.id, job.plan)
             else:
                 # otherwise don't
+                self.current_job = None
                 await self.set_status('idle')
 
         return OkResponse()
@@ -99,12 +106,12 @@ class Worker(Subscribable[WorkerUpdate]):
 
 
 class LocalWorker(Worker):
-    def __init__(self, worker_id: WorkerID):
+    def __init__(self, worker_id: WorkerID, url: str):
         from phaser.web.worker import run_worker
 
         super().__init__(worker_id)
 
-        self.process = multiprocessing.Process(target=run_worker, args=[server.get_worker_url(worker_id)], daemon=True)
+        self.process = multiprocessing.Process(target=run_worker, args=[url], daemon=True)
         self.status = 'starting'
         self.process.start()
 
@@ -295,6 +302,10 @@ class Server:
         self.jobs: Jobs = Jobs()
         self.job_queue: deque[Job] = deque()
 
+        from .slurm import SlurmManager
+
+        self.slurm_manager: SlurmManager = SlurmManager()
+
         self.app: Quart = Quart(
             __name__,
             static_url_path="/static",
@@ -302,11 +313,9 @@ class Server:
         )
         self.app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 5
 
-        self.app.add_background_task
-
         @self.app.after_serving
         async def shutdown():
-            await asyncio.gather(self.jobs.finalize(), self.workers.finalize())
+            await asyncio.gather(self.jobs.finalize(), self.workers.finalize(), self.slurm_manager.finalize())
 
     def run(self, plan: ReconsPlan):
         import json
@@ -314,7 +323,7 @@ class Server:
         logging.basicConfig(level=logging.INFO)
         multiprocessing.set_start_method('spawn', True)
 
-        self.app.run(port=5005, debug=True)
+        self.app.run(host='0.0.0.0', port=5050, debug=True)
 
     def get_worker_url(self, worker_id: WorkerID) -> str:
         url = url_for('worker_update', worker_id=worker_id, _external=True)

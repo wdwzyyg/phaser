@@ -44,6 +44,9 @@ jax = [
 ]
 web = [
     "Quart>=0.19.5",
+    "backoff==2.2.1",
+    "requests>=2.31.0",
+    "aiostream>=0.6.4",
 ]
 
 [tool.setuptools]

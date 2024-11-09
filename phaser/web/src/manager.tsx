@@ -55,19 +55,21 @@ export function Jobs(props: {}) {
     </table>;
 }
 
-function start_worker(e: React.MouseEvent) {
-    fetch("/worker/start", {
-        method: "POST",
-        body: "",
-    })
-    .then((response) => response.ok ? response.json() : Promise.reject(response))
-    .then((json) => {
-        console.log(`Got response: ${JSON.stringify(json)}`);
-    })
-    .catch((response: Response) => {
-        console.error(`Error: HTTP ${response.status} ${response.statusText}`)
-    });
-};
+function start_worker(worker_type: string): (e: React.MouseEvent) => void {
+    return (e: React.MouseEvent) => {
+        fetch(`/worker/${worker_type}/start`, {
+            method: "POST",
+            body: "",
+        })
+        .then((response) => response.ok ? response.json() : Promise.reject(response))
+        .then((json) => {
+            console.log(`Got response: ${JSON.stringify(json)}`);
+        })
+        .catch((response: Response) => {
+            console.error(`Error: HTTP ${response.status} ${response.statusText}`)
+        });
+    };
+}
 
 function shutdown_worker(worker: WorkerState, e: React.MouseEvent) {
     fetch(worker.links.shutdown, {
@@ -118,7 +120,8 @@ root.render(
     <StrictMode>
         <Provider store={store}>
             <Section name="Start reconstruction">
-                <button onClick={start_worker}>Start worker</button>
+                <button onClick={start_worker("local")}>Start local worker</button>
+                <button onClick={start_worker("slurm")}>Start slurm worker</button>
                 <button onClick={start_job}>Start reconstruction</button>
             </Section>
             <Section name="Workers">

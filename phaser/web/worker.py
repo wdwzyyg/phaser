@@ -90,14 +90,18 @@ def run_worker(url: str):
                 execute_plan(plan, [observer(resp.job_id)])
 
             except JobCancelled as e:
+                print("Job cancelled")
                 msg = JobResultMessage(resp.job_id, 'cancelled')
                 shutdown |= e.shutdown
             except KeyboardInterrupt:
+                print("Job interrupted")
                 msg = JobResultMessage(resp.job_id, 'interrupted')
             except Exception as e:
-                # TODO: format error better
-                msg = JobResultMessage(resp.job_id, 'errored', str(e))
+                print(f"Job errored:\n{e}")
+                s = traceback.format_exc()
+                msg = JobResultMessage(resp.job_id, 'errored', s)
             else:
+                print(f"Job finished")
                 msg = JobResultMessage(resp.job_id, 'finished')
 
             resp = send_result(msg)

@@ -2,7 +2,7 @@ import json
 import typing as t
 
 import aiostream.stream
-from quart import Quart, render_template, request, abort, websocket
+from quart import Quart, render_template, request, Response, abort, websocket
 
 import pane
 
@@ -21,11 +21,28 @@ app: Quart = server.app
 async def index():
     return await render_template("manager.html")
 
-@app.post("/worker/start")
-async def start_worker():
+@app.post("/worker/<string:worker_type>/start")
+async def start_worker(worker_type: str):
     _ = await request.get_data()
-    worker = LocalWorker(server.make_workerid())
-    #worker = ManualWorker(server.make_workerid())
+
+    worker_id = server.make_workerid()
+
+    if worker_type not in ('manual', 'local', 'slurm'):
+        abort(404)
+
+    if worker_type == 'manual':
+        worker = ManualWorker(worker_id)
+    elif worker_type == 'local':
+        worker = LocalWorker(worker_id, server.get_worker_url(worker_id))
+    elif worker_type == 'slurm':
+        try:
+            await server.slurm_manager.check_slurm_exists()
+        except RuntimeError as e:
+            abort(Response(f"Slurm not available: {e}", 400))
+        # TODO: this is hardcoded
+        url = server.get_worker_url(worker_id).replace('localhost', '172.22.254.14')
+        worker = await server.slurm_manager.make_worker(worker_id, url)
+
     await server.workers.add(worker)
     return serialize(worker.state())
 
