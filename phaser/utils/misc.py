@@ -75,15 +75,53 @@ def create_rng_group(n: int, seed: object = None, entropy: object = None) -> t.T
     return tuple(map(Generator, map(PCG64, t.cast(SeedSequence, seq).spawn(n))))
 
 
-def create_groupings(shape: t.Union[int, t.Iterable[int]], grouping: int = 8, seed: t.Any = None) -> list[NDArray[numpy.int64]]:
+def create_sparse_groupings(shape: t.Union[int, t.Iterable[int], NDArray[numpy.floating]], grouping: int = 8, seed: t.Any = None) -> list[NDArray[numpy.int64]]:
     """
-    Randomly split the indices of `shape` into groups of maximum size `grouping`.
+    Randomly partition the indices of `shape` into groups of maximum size `grouping`.
 
     Returns a list of groups. Each group can be used to index an array `arr` of shape `shape`:
     `arr[*group]`
     """
-    rng = create_rng(seed, 'groupings')
-    idxs = numpy.indices((shape,) if isinstance(shape, int) else tuple(shape))
+    if isinstance(shape, int):
+        shape = (shape,)
+    if not isinstance(shape, (tuple, list)):
+        # assume `shape` is a list of positions
+        shape = shape.shape[:-1]  # type: ignore
+
+    idxs = numpy.indices(shape)  # type: ignore
     idxs = idxs.reshape(idxs.shape[0], -1).T
+
+    rng = create_rng(seed, 'groupings')
     rng.shuffle(idxs)
     return numpy.array_split(idxs.T, numpy.ceil(idxs.shape[0] / grouping).astype(numpy.int64), axis=-1)
+
+
+def create_compact_groupings(positions: NDArray[numpy.floating], grouping: int = 8, seed: t.Any = None) -> list[NDArray[numpy.int64]]:
+    """
+    Partition the indices of `positions` into groups of maximum size `grouping`, such that each group is spatially compact.
+
+    Uses k-means clustering to ensure groups are spatially compact.
+
+    Returns a list of groups. Each group can be used to index an array `arr` of shape `shape`:
+    `arr[*group]`
+    """
+    from k_means_constrained import KMeansConstrained
+
+    rng = create_rng(seed, 'groupings')
+    random_state = numpy.random.RandomState(rng.bit_generator)
+
+    idxs = numpy.indices(positions.shape[:-1])
+    idxs = idxs.reshape(idxs.shape[0], -1)
+    n_groups = numpy.ceil(idxs.shape[-1] / grouping).astype(numpy.int64)
+
+    kmeans = KMeansConstrained(n_groups, size_max=grouping, init='random', n_init=1, random_state=random_state)
+    labels = kmeans.fit_predict(positions.reshape(-1, positions.shape[-1]))
+    #_, labels = kmeans2(
+    #    positions.reshape(-1, positions.shape[-1]),
+    #    n_groups, iter=20, minit='points', missing='raise', seed=rng
+    #)
+
+    return [
+        idxs[..., labels == i]
+        for i in range(n_groups)
+    ]
