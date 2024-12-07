@@ -226,11 +226,11 @@ def ifft2(a: ArrayLike) -> NDArray[numpy.complexfloating]:
     """
     Perform an inverse FFT on the last two axes of `a`.
     
-    Follows our convention of centering real space and normalizing reciprocal space.
+    Follows our convention of centering real space and normalizing intensities.
     """
 
     xp = get_array_module(a)
-    return xp.fft.fftshift(xp.fft.ifft2(a, norm='forward'), axes=(-2, -1))
+    return xp.fft.fftshift(xp.fft.ifft2(a, norm='ortho'), axes=(-2, -1))
 
 @t.overload
 def fft2(a: t.Union[NDArray[numpy.float64], NDArray[numpy.complex128]]) -> NDArray[numpy.complex128]:
@@ -252,11 +252,11 @@ def fft2(a: ArrayLike) -> NDArray[numpy.complexfloating]:
     """
     Perform a forward FFT on the last two axes of `a`.
 
-    Follows our convention of centering real space and normalizing reciprocal space.
+    Follows our convention of centering real space and normalizing intensities.
     """
 
     xp = get_array_module(a)
-    return xp.fft.fft2(xp.fft.ifftshift(a, axes=(-2, -1)), norm='forward')
+    return xp.fft.fft2(xp.fft.ifftshift(a, axes=(-2, -1)), norm='ortho')
 
 
 def split_array(arr: NDArray[DTypeT], axis: int = 0, *, keepdims: bool = False) -> t.Tuple[NDArray[DTypeT], ...]:

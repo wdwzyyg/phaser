@@ -13,21 +13,21 @@ from .num import to_complex_dtype, to_real_dtype, split_array
 
 @t.overload
 def make_focused_probe(ky: NDArray[numpy.float64], kx: NDArray[numpy.float64], wavelength: float,
-                    aperture: float, *, defocus: float = 0.) -> NDArray[numpy.complex128]:
+                       aperture: float, *, defocus: float = 0.) -> NDArray[numpy.complex128]:
     ...
 
 @t.overload
 def make_focused_probe(ky: NDArray[numpy.float32], kx: NDArray[numpy.float32], wavelength: float,
-                    aperture: float, *, defocus: float = 0.) -> NDArray[numpy.complex64]:
+                       aperture: float, *, defocus: float = 0.) -> NDArray[numpy.complex64]:
     ...
 
 @t.overload
 def make_focused_probe(ky: NDArray[numpy.floating], kx: NDArray[numpy.floating], wavelength: float,
-                    aperture: float, *, defocus: float = 0.) -> NDArray[numpy.complexfloating]:
+                       aperture: float, *, defocus: float = 0.) -> NDArray[numpy.complexfloating]:
     ...
 
 def make_focused_probe(ky: NDArray[numpy.floating], kx: NDArray[numpy.floating], wavelength: float,
-                    aperture: float, *, defocus: float = 0.) -> NDArray[numpy.complexfloating]:
+                       aperture: float, *, defocus: float = 0.) -> NDArray[numpy.complexfloating]:
     """
     Create a focused probe from a circular aperture of semi-angle `aperture` (in mrad).
 
@@ -44,8 +44,8 @@ def make_focused_probe(ky: NDArray[numpy.floating], kx: NDArray[numpy.floating],
     mask = theta2 <= (aperture * 1e-3)**2.
     probe *= mask
 
-    # normalize amplitude
-    probe /= xp.sqrt(xp.sum(xp.abs(probe)))
+    # normalize intensity of probe
+    probe /= xp.sqrt(xp.sum(abs2(probe)))
 
     return ifft2(probe)
 
@@ -114,8 +114,7 @@ def hermetian_modes(base_probe: NDArray[NumT], n_y: int, n_x: int) -> NDArray[Nu
                 modes[i] = mode
             i += 1
 
-    realspace_norm = numpy.sqrt(numpy.prod(base_probe.shape[-2:])).astype(real_dtype)
-    return modes.reshape((n_y, n_x, *base_probe.shape)) * realspace_norm
+    return modes.reshape((n_y, n_x, *base_probe.shape))
 
 
 @t.overload
