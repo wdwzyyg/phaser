@@ -140,7 +140,7 @@ _DTYPE_TO_KERNEL_TYPE: t.Dict[t.Type[numpy.generic], str] = {
 }
 
 @functools.cache
-def _get_cutout_kernel(dtype: numpy.dtype, operation: str) -> t.Union[cupy.RawKernel, NotImplementedType]:
+def _get_cutout_kernel(dtype: numpy.dtype, operation: str) -> cupy.RawKernel:
     try:
         ty = _DTYPE_TO_KERNEL_TYPE[dtype.type]
         op = _CUTOUT_OPERATIONS[operation]

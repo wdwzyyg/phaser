@@ -20,8 +20,10 @@ def load_empad(args: None, props: LoadEmpadProps) -> RawData:
     sampling = Sampling((128, 128), extent=(a, a))
 
     # TODO handle metadata here
+    patterns = numpy.fft.fftshift(load_4d(path), axes=(-1, -2))
     return {
-        'patterns': numpy.fft.fftshift(load_4d(path), axes=(-1, -2)),
+        'patterns': patterns,
+        'mask': numpy.ones_like(patterns, shape=patterns.shape[-2:]),
         'sampling': sampling,
         'wavelength': wavelength,
         'scan': None,

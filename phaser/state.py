@@ -92,3 +92,15 @@ class PartialReconsState:
 
 
 StateObserver: t.TypeAlias = t.Callable[[t.Union[ReconsState, PartialReconsState]], t.Any]
+
+
+try:
+    import jax.tree_util
+except ImportError:
+    pass
+else:
+    jax.tree_util.register_dataclass(
+        ReconsState,
+        ('probe', 'object', 'scan'),
+        ('progress', 'wavelength', 'iter')
+    )

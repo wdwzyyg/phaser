@@ -5,7 +5,7 @@ import numpy
 
 from phaser.utils.num import cast_array_module, fft2, ifft2, abs2
 from phaser.utils.optics import fourier_shift_filter
-from phaser.utils.misc import create_groupings
+from phaser.utils.misc import create_sparse_groupings
 from phaser.hooks import EngineArgs
 from phaser.plan import ConventionalEngine
 from phaser.state import ReconsState, IterState, ProgressState, StateObserver
@@ -38,7 +38,7 @@ def run_engine(args: EngineArgs, props: ConventionalEngine) -> ReconsState:
         for observe in observers:
             observe(state)
 
-        groups = create_groupings(patterns.shape[:-2], props.grouping or 64)
+        groups = create_sparse_groupings(patterns.shape[:-2], props.grouping or 64)
 
         iteration_mses = []
 
@@ -60,7 +60,7 @@ def run_engine(args: EngineArgs, props: ConventionalEngine) -> ReconsState:
 
             iteration_mses.append(float(xp.mean(xp.sum(abs2(model_intensity - group_patterns), axis=(-1, -2)))))
 
-            wave_diff = ifft2(modulus_constraint(xp, model_wave, model_intensity, patterns[*group], props.detector_model))
+            wave_diff = ifft2(modulus_constraint(xp, model_wave, model_intensity, patterns[*group], args['pattern_mask'], props.detector_model))
 
             # average object update across incoherent modes
             group_obj_update = alpha * xp.mean(group_probes.conj() / xp.max(abs2(group_probes), axis=(-1, -2), keepdims=True) * wave_diff, axis=1)

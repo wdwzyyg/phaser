@@ -30,6 +30,7 @@ def execute_plan(plan: ReconsPlan, observers: t.Sequence[StateObserver] = ()):
 
     sampling = raw_data['sampling']
     patterns = raw_data['patterns']
+    pattern_mask = raw_data['mask']
 
     # normalize pattern intensity
     patterns /= xp.mean(xp.sum(patterns, axis=(-1, -2)))
@@ -70,6 +71,7 @@ def execute_plan(plan: ReconsPlan, observers: t.Sequence[StateObserver] = ()):
         state = engine({
             'state': state,
             'patterns': patterns,
+            'pattern_mask': pattern_mask,
             'dtype': dtype,
             'xp': xp,
             'engine_i': engine_i,

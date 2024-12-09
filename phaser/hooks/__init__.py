@@ -15,6 +15,7 @@ from .hook import Hook
 
 class RawData(t.TypedDict):
     patterns: NDArray[numpy.floating]
+    mask: NDArray[numpy.floating]
     sampling: Sampling
     wavelength: t.Optional[float]
     scan: t.Optional[NDArray[numpy.floating]]
@@ -92,6 +93,7 @@ class ScanHook(Hook[ScanHookArgs, NDArray[numpy.floating]]):
 class EngineArgs(t.TypedDict):
     state: ReconsState
     patterns: NDArray[numpy.floating]
+    pattern_mask: NDArray[numpy.floating]
     dtype: DTypeLike
     xp: t.Any
     engine_i: int

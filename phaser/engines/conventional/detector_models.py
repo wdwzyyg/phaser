@@ -10,7 +10,9 @@ def modulus_constraint(
     model_wave: NDArray[numpy.complexfloating],
     model_intensity: NDArray[numpy.floating],
     exp_patterns: NDArray[numpy.floating],
+    mask: NDArray[numpy.floating],
     props: ModulusConstraint
 ) -> NDArray[numpy.complexfloating]:
     intensity_update = xp.sqrt((exp_patterns + props.bias) / (model_intensity + props.bias)) - 1.0
+    intensity_update *= mask
     return model_wave * intensity_update[:, None, ...]
