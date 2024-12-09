@@ -40,6 +40,11 @@ export interface JobUpdate {
     msg: "job_update";
 }
 
+export interface LogUpdate {
+    new_logs: Array<LogRecord>;
+    msg: "log";
+}
+
 export interface JobStopped {
     result: Result;
     error: string | null;
@@ -47,7 +52,7 @@ export interface JobStopped {
     msg: "job_stopped";
 }
 
-export type JobMessage = JobStatusChange | JobUpdate | JobStopped;
+export type JobMessage = JobStatusChange | JobUpdate | LogUpdate | JobStopped;
 
 export interface DashboardConnected {
     state: JobState;
@@ -77,6 +82,27 @@ export interface ManagerConnected {
 }
 
 export type ManagerMessage = JobsUpdate | WorkersUpdate | ManagerConnected;
+
+export interface LogRecord {
+    i: number;
+    timestamp: string;  // ISO 8601 format
+
+    log: string;
+    logger_name: string;
+    log_level: number;
+
+    line_number: number;
+    func_name: string | null;
+    stack_info: string | null;
+}
+
+export interface LogsData {
+    first: number;
+    last: number;
+    length: number;
+    total_length: number;
+    logs: ReadonlyArray<LogRecord>;
+}
 
 export interface ReconsData {
     iter: IterData;

@@ -15,8 +15,8 @@ from .types import (
     # worker - server communication
     WorkerMessage, JobResponse, CancelResponse, OkResponse, ServerResponse,
     # server - client communication
-    WorkerStatus, WorkerState, WorkerUpdate, WorkersUpdate, 
-    JobStatus, JobState, JobStatusChange, JobUpdate, JobStopped, JobMessage, JobsUpdate,
+    WorkerStatus, WorkerState, WorkerUpdate, WorkersUpdate, LogRecord,
+    JobStatus, JobState, JobStatusChange, JobUpdate, LogUpdate, JobStopped, JobMessage, JobsUpdate,
 )
 
 T = t.TypeVar('T')
@@ -208,6 +208,8 @@ class Job(Subscribable[JobMessage]):
         self.status: JobStatus = 'queued'
         # cached job state
         self.cache: t.Dict[str, t.Any] = {}
+        # and log messages
+        self.logs: t.List[LogRecord] = []
 
     async def set_status(self, status: JobStatus):
         if self.status == status:
@@ -225,9 +227,10 @@ class Job(Subscribable[JobMessage]):
 
     def state(self, full: bool = False) -> JobState:
         state = self.cache if full else {}
-        return JobState.make_unchecked(self.id, self.status,{
+        return JobState.make_unchecked(self.id, self.status, {
             'dashboard': url_for('job_dashboard', job_id=self.id),
             'cancel': url_for('cancel_job', job_id=self.id), 
+            'logs': url_for('job_logs', job_id=self.id),
         }, state=state)
 
     async def handle_update(self, msg: WorkerMessage):
@@ -236,9 +239,14 @@ class Job(Subscribable[JobMessage]):
                 await self.set_status('running')
 
             self.cache.update(msg.state)
-
             await self.message_subscribers(
                 JobUpdate.make_unchecked(msg.state, msg.job_id)
+            )
+        elif msg.msg == 'log':
+            record = msg.into_record(len(self.logs))
+            self.logs.append(record)
+            await self.message_subscribers(
+                LogUpdate.make_unchecked([record])
             )
         elif msg.msg == 'job_result':
             self.status = 'stopped'

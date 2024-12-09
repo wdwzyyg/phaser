@@ -1,3 +1,4 @@
+import datetime
 import logging
 import typing as t
 
@@ -65,6 +66,20 @@ class JobState(pane.PaneBase):
             self.job_id, self.status, self.links
         )
 
+class LogRecord(pane.PaneBase):
+    i: int
+
+    timestamp: datetime.datetime
+
+    log: str
+
+    logger_name: str
+    log_level: int
+
+    line_number: int
+    func_name: t.Optional[str] = None
+    stack_info: t.Optional[str] = None
+
 class JobStatusChange(pane.PaneBase):
     status: JobStatus
     job_id: JobID
@@ -77,6 +92,11 @@ class JobUpdate(pane.PaneBase):
 
     msg: t.Literal['job_update'] = 'job_update'
 
+class LogUpdate(pane.PaneBase):
+    new_logs: t.List[LogRecord]
+
+    msg: t.Literal['log'] = 'log'
+
 class JobStopped(pane.PaneBase):
     result: Result
     error: t.Optional[str] = None
@@ -84,7 +104,7 @@ class JobStopped(pane.PaneBase):
     msg: t.Literal['job_stopped'] = 'job_stopped'
 
 JobMessage: t.TypeAlias = t.Annotated[t.Union[
-    JobStatusChange, JobUpdate, JobStopped
+    JobStatusChange, JobUpdate, LogUpdate, JobStopped
 ], Tagged('msg')]
 
 class DashboardConnected(pane.PaneBase):
@@ -131,7 +151,9 @@ class UpdateMessage(pane.PaneBase):
 
 class LogMessage(pane.PaneBase):
     """Message corresponding to a log entry"""
-    job_id: WorkerID
+    job_id: t.Optional[JobID]
+
+    timestamp: datetime.datetime
 
     log: str
 
@@ -145,8 +167,10 @@ class LogMessage(pane.PaneBase):
     msg: t.Literal['log'] = 'log'
 
     @classmethod
-    def from_logrecord(cls, job_id: JobID, record: logging.LogRecord) -> t.Self:
+    def from_logrecord(cls, job_id: t.Optional[JobID], record: logging.LogRecord) -> t.Self:
+        timestamp = datetime.datetime.fromtimestamp(record.created)
         return cls(
+            timestamp=timestamp,
             log=record.getMessage(),
             job_id=job_id,
             logger_name=record.name,
@@ -154,6 +178,12 @@ class LogMessage(pane.PaneBase):
             line_number=record.lineno,
             func_name=record.funcName,
             stack_info=record.stack_info,
+        )
+
+    def into_record(self, i: int) -> LogRecord:
+        return LogRecord.make_unchecked(
+            i, self.timestamp, self.log, self.logger_name, self.log_level,
+            self.line_number, self.func_name, self.stack_info
         )
 
 class JobResultMessage(pane.PaneBase):

@@ -13,7 +13,7 @@ export class Transform1D {
     static fromScale(scale: PlotScale): Transform1D {
         let k: number = scale.rangeSize() / scale.domainSize();
         return new Transform1D(
-            k, scale.range[0] - k[0] * scale.domain[0]
+            k, scale.range[0] - k * scale.domain[0]
         );
     }
 
@@ -26,7 +26,7 @@ export class Transform1D {
 
     scale(k: number): Transform1D {
         return new Transform1D(
-            this.k[0] * k, this.p
+            this.k * k, this.p
         );
     }
 

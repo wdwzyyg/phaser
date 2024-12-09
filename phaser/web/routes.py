@@ -72,6 +72,29 @@ async def cancel_job(job_id: JobID):
 
     return serialize(OkResponse())
 
+@app.get("/job/<string:job_id>/logs")
+async def job_logs(job_id: JobID):
+    try:
+        job = server.jobs[job_id]
+    except KeyError:
+        abort(404)
+
+    limit = min(request.args.get('limit', 100, type=int), 100)
+    before = request.args.get('before', len(job.logs), type=int)
+
+    first = max(before-limit, 0)
+    last = before - 1
+    logs = job.logs[first:before]
+
+    return {
+        'first': first,
+        'last': last,
+        'length': len(logs),
+        'total_length': len(job.logs),
+        'logs': logs,
+    }
+
+
 @app.post("/worker/<string:worker_id>/shutdown")
 async def shutdown_worker(worker_id: WorkerID):
     print(f"Shutdown worker ID {id}")

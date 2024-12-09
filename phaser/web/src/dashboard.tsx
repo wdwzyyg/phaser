@@ -1,11 +1,11 @@
 
 import React, { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { atom, PrimitiveAtom, useAtomValue, createStore, Provider } from 'jotai';
+import { atom, PrimitiveAtom, useAtom, useAtomValue, createStore, Provider } from 'jotai';
 
 
 import { np_fut, np } from './wasm-array';
-import { JobStatus, JobUpdate, DashboardMessage, ProbeData, ObjectData, ProgressData, PartialReconsData } from './types';
+import { JobStatus, JobUpdate, DashboardMessage, LogRecord, LogsData, ProbeData, ObjectData, ProgressData, PartialReconsData } from './types';
 import { Section } from './components';
 import { ProbePlot, ObjectPlot } from './plots';
 import { IArrayInterchange } from 'wasm-array';
@@ -15,8 +15,8 @@ const statusState: PrimitiveAtom<JobStatus | null> = atom(null as JobStatus | nu
 const probeState: PrimitiveAtom<ProbeData | null> = atom(null as ProbeData | null);
 const objectState: PrimitiveAtom<ObjectData | null> = atom(null as ObjectData | null);
 const progressState: PrimitiveAtom<ProgressData | null> = atom(null as ProgressData | null);
+const logsState: PrimitiveAtom<Array<LogRecord>> = atom([] as Array<LogRecord>);
 const store = createStore();
-
 
 function StatusBar(props: {}) {
     let status = useAtomValue(statusState) ?? "Disconnected";
@@ -28,6 +28,37 @@ function StatusBar(props: {}) {
     </h2>;
 }
 
+function Logs(props: {}) {
+    const [logs, setLogs] = useAtom(logsState);
+    const ref = React.useRef<HTMLDivElement | null>(null);
+
+    const handleNewLogs = (data: LogsData) => {
+        if (logs.length && data.last !== logs[0].i - 1) {
+            throw new Error("Non-contiguous logs fetched");
+        }
+
+        setLogs([...data.logs, ...logs]);
+    }
+
+    React.useEffect(() => {
+        getLogs().then(handleNewLogs);
+    }, []);
+
+    const handleScroll = (event: React.UIEvent) => {
+        const first = (logs[0]) ? logs[0].i : undefined;
+
+        if (ref.current!.scrollTop === 0 && first !== 0) {
+            getLogs(first).then(handleNewLogs);
+        }
+    }
+
+    return <div ref={ref} onScroll={handleScroll} className='log-cont'>
+        {logs.map((log) => <div className="log" key={log.i}>
+            {log.log}
+        </div>)}
+    </div>
+}
+
 const root = createRoot(document.getElementById('app')!);
 root.render(
     <StrictMode>
@@ -36,9 +67,19 @@ root.render(
             <Section name="Progress"></Section>
             <Section name="Probe"><ProbePlot state={probeState}/></Section>
             <Section name="Object"><ObjectPlot state={objectState}/></Section>
+            <Section name="Logs"><Logs/></Section>
         </Provider>
     </StrictMode>
 );
+
+async function getLogs(before?: number): Promise<LogsData> {
+    const url = before ? `logs?before=${encodeURIComponent(before)}` : 'logs';
+    const response = await fetch(url);
+    if (!response.ok) {
+        throw new Error(`Failed to fetch logs: ${response.status} ${response.statusText}`);
+    }
+    return await response.json() as LogsData;
+}
 
 addEventListener("DOMContentLoaded", (event) => {
     socket = new WebSocket(`ws://${window.location.host}${window.location.pathname}/listen`);
@@ -66,6 +107,8 @@ addEventListener("DOMContentLoaded", (event) => {
 
         if (data.msg === 'job_update') {
             updateState(data.state);
+        } else if (data.msg == 'log') {
+            store.set(logsState, (logs) => [...logs, ...data.new_logs]);
         } else if (data.msg === 'status_change') {
             store.set(statusState, (_: any) => data.status);
         } else if (data.msg === 'job_stopped') {

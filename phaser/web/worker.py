@@ -19,10 +19,24 @@ from .types import (
 from .types import JobID, JobCancelled
 
 
-def run_worker(url: str):
-    logging.basicConfig(level=logging.INFO)
-    logger = logging.getLogger('worker')
+class LogHandler(logging.Handler):
+    def __init__(self, send_message: t.Callable[[WorkerMessage], ServerResponse]):
+        self.send_message = send_message
+        self.job_id: t.Optional[JobID] = None
 
+        super().__init__(logging.DEBUG)
+
+    def emit(self, record: logging.LogRecord):
+        if getattr(record, 'local', False):
+            # local-only logging event
+            return
+        try:
+            self.send_message(LogMessage.from_logrecord(self.job_id, record))
+        except Exception:
+            self.handleError(record)
+
+
+def run_worker(url: str):
     def send_message(msg: WorkerMessage) -> ServerResponse:
         resp: requests.Response = requests.post(url, json=pane.into_data(msg))
         resp.raise_for_status()
@@ -63,21 +77,27 @@ def run_worker(url: str):
                     job_id
                 ))
             except (requests.RequestException, pane.ConvertError):
-                logging.error("Failed to update server", exc_info=sys.exc_info())
+                logging.error("Failed to update server", exc_info=sys.exc_info(), extra={'local': True})
             else:
                 if resp.msg == 'cancel':
                     raise JobCancelled(resp.shutdown, resp.urgent)
 
         return observe
 
+    log_handler = LogHandler(send_message)
+    logging.basicConfig(level=logging.INFO, handlers=[logging.StreamHandler(), log_handler])
+    logger = logging.getLogger('worker')
+
     try:
         shutdown = False
         resp = startup()
+        logger.info("Worker connected to server, response: %r", resp, extra={'local': True})
 
         while True:
             if resp.msg == 'ok':
                 # poll for a new job
                 resp = poll()
+                logger.info("Worker polled server, response: %r", resp, extra={'local': True})
 
             if resp.msg == 'cancel':
                 break
@@ -86,34 +106,40 @@ def run_worker(url: str):
 
             try:
                 # run job
+                log_handler.job_id = resp.job_id
+
                 plan = ReconsPlan.from_jsons(resp.plan)
                 execute_plan(plan, [observer(resp.job_id)])
 
             except JobCancelled as e:
-                print("Job cancelled")
+                logger.info("Job cancelled", extra={'local': True})
                 msg = JobResultMessage(resp.job_id, 'cancelled')
                 shutdown |= e.shutdown
             except KeyboardInterrupt:
-                print("Job interrupted")
+                logger.info("Job interrupted", extra={'local': True})
                 msg = JobResultMessage(resp.job_id, 'interrupted')
-            except Exception as e:
-                print(f"Job errored:\n{e}")
+            except BaseException:
+                logger.info("Job stopped due to error", exc_info=True, stack_info=True, extra={'local': True})
                 s = traceback.format_exc()
                 msg = JobResultMessage(resp.job_id, 'errored', s)
             else:
-                print(f"Job finished")
+                logger.info("Job finished successfully", extra={'local': True})
+                print("Job finished")
                 msg = JobResultMessage(resp.job_id, 'finished')
 
             resp = send_result(msg)
+            log_handler.job_id = None
 
             if shutdown:
                 break
 
     except BaseException:
         # disconnect message
+        logger.error("Worker shutting down due to error", exc_info=True, stack_info=True, extra={'local': True})
         s = traceback.format_exc()
         send_message(WorkerShutdownMessage('errored', error=s))
 
     finally:
         # disconnect message
+        logger.info("Worker shutting down normally", extra={'local': True})
         send_message(WorkerShutdownMessage('finished'))

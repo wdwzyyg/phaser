@@ -616,7 +616,7 @@ export function PlotImage(props: PlotImageProps) {
 
     return <g transform={transform.toString()}>
     <foreignObject x={0} y={0} width={width} height={height}>
-        <canvas width={width} height={height} ref={canvasRef}></canvas>
+        <canvas width={width} height={height} ref={canvasRef} style={{imageRendering: "pixelated"}}></canvas>
     </foreignObject>
     </g>;
 }
