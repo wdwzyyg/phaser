@@ -66,7 +66,7 @@ class ReconsState:
             object=self.object.to_numpy(),
             scan=to_numpy(self.scan),
             progress=self.progress.to_numpy(),
-            wavelength=self.wavelength,
+            wavelength=float(self.wavelength),
         )
 
 
@@ -87,7 +87,7 @@ class PartialReconsState:
             object=self.object.to_numpy() if self.object is not None else None,
             scan=to_numpy(self.scan) if self.scan is not None else None,
             progress=self.progress.to_numpy() if self.progress is not None else None,
-            wavelength=self.wavelength,
+            wavelength=float(self.wavelength),
         )
 
 
@@ -99,8 +99,11 @@ try:
 except ImportError:
     pass
 else:
+    jax.tree_util.register_dataclass(ProbeState, ('data',), ('sampling',))
+    jax.tree_util.register_dataclass(ObjectState, ('data', 'zs'), ('sampling',))
+    jax.tree_util.register_dataclass(ProgressState, ('iters', 'detector_errors'), ())
+    jax.tree_util.register_dataclass(IterState, ('engine_num', 'engine_iter', 'total_iter'), ())
+
     jax.tree_util.register_dataclass(
-        ReconsState,
-        ('probe', 'object', 'scan'),
-        ('progress', 'wavelength', 'iter')
+        ReconsState, ('probe', 'object', 'scan', 'progress', 'wavelength', 'iter'), ()
     )

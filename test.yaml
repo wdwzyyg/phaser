@@ -30,3 +30,8 @@ engines:
    probe_modes: 4
    niter: 20
    grouping: 16
+
+   noise_model: 'anascombe'
+
+   solver:
+     type: 'lsqml'

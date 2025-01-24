@@ -188,5 +188,6 @@ def fresnel_propagator(ky: NDArray[numpy.floating], kx: NDArray[numpy.floating],
     (tiltx, tilty) = numpy.tan(tilt[0]*1e-3), numpy.tan(tilt[1]*1e-3)
 
     k2 = ky**2 + kx**2
-    return xp.exp(-1.j * numpy.pi * delta_z * (wavelength * k2 - 2.*(kx*tiltx + ky*tilty)))
+    return xp.exp(-1.j * numpy.pi * delta_z * (wavelength * k2 - 2.*(kx*tiltx + ky*tilty))) \
+        .astype(to_complex_dtype(k2.dtype))
 

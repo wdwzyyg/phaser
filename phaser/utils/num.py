@@ -124,6 +124,34 @@ def is_jax(arr: NDArray[DTypeT]) -> bool:
     return isinstance(arr, jax.Array)
 
 
+def jit(
+        f: t.Callable[P, T], *,
+        static_argnums: t.Union[int, t.Sequence[int], None] = None,
+        static_argnames: t.Union[str, t.Iterable[str], None] = None,
+        donate_argnums: t.Union[int, t.Sequence[int], None] = None,
+        donate_argnames: t.Union[str, t.Iterable[str], None] = None,
+        inline: bool = False,
+        compiler_options: t.Optional[t.Dict[str, t.Any]] = None
+) -> t.Callable[P, T]:
+    try:
+        import jax
+        return jax.jit(
+            f, static_argnums=static_argnums, static_argnames=static_argnames,
+            donate_argnums=donate_argnums, donate_argnames=donate_argnames,
+            inline=inline, compiler_options=compiler_options
+        )
+    except ImportError:
+        return f
+
+
+def debug_callback(callback: t.Callable[P, None], *args: P.args, **kwargs: P.kwargs):
+    try:
+        import jax.debug
+        return jax.debug.callback(callback, *args, **kwargs)
+    except ImportError:
+        callback(*args, **kwargs)
+
+
 _COMPLEX_MAP: t.Dict[t.Type[numpy.floating], t.Type[numpy.complexfloating]] = {
     numpy.floating: numpy.complexfloating,
     numpy.float32: numpy.complex64,

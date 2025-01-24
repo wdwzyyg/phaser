@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import abc
 from pathlib import Path
 import typing as t
 
@@ -9,7 +10,7 @@ from numpy.typing import NDArray, DTypeLike
 from phaser.utils.num import Sampling
 from phaser.utils.object import ObjectSampling
 from ..types import Dataclass
-from ..state import ObjectState, ProbeState, ReconsState
+from ..state import ObjectState, ProbeState, ReconsState, StateObserver
 from .hook import Hook
 
 

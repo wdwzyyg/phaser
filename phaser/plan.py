@@ -2,14 +2,12 @@ from __future__ import annotations
 
 import typing as t
 
-from pane.annotations import Tagged
-
 from .types import Dataclass, Slices
 from .hooks import RawDataHook, ProbeHook, ObjectHook, ScanHook, EngineHook
-from .hooks.conventional import UpdateHook
+from .hooks.solver import NoiseModelHook, ConventionalSolverHook
 
 
-class Engine(Dataclass, kw_only=True):
+class EnginePlan(Dataclass, kw_only=True):
     sim_shape: t.Optional[t.Tuple[int, int]] = None
     resize_method: t.Literal['pad_crop', 'resample'] = 'pad_crop'
 
@@ -22,37 +20,53 @@ class Engine(Dataclass, kw_only=True):
     compact: bool = False
 
 
-class ModulusConstraint(Dataclass, kw_only=True):
-    type: t.Literal['modulus'] = 'modulus'
+class AnascombeNoisePlan(Dataclass, kw_only=True):
+    type: t.Literal['anascombe'] = 'anascombe'
     bias: float = 1e-10
 
 
-class LSQMLUpdate(Dataclass, kw_only=True):
+class GaussianNoisePlan(Dataclass, kw_only=True):
+    type: t.Literal['gaussian'] = 'gaussian'
+
+
+NoiseModelHook.known['anascombe'] = ('phaser.engines.common.noise_models:AnascombeNoiseModel', AnascombeNoisePlan)
+NoiseModelHook.known['gaussian'] = ('phaser.engines.common.noise_models:GaussianNoiseModel', GaussianNoisePlan)
+
+
+class LSQMLSolverPlan(Dataclass, kw_only=True):
     type: t.Literal['lsqml'] = 'lsqml'
     stochastic: bool = True
 
+    beta_object: float = 1.0
+    beta_probe: float = 1.0
 
-class EPIEUpdate(Dataclass, kw_only=True):
+    illum_reg_object: float = 1e-2
+    illum_reg_probe: float = 1e-2
+
+    gamma: float = 1e-4
+
+
+class EPIESolverPlan(Dataclass, kw_only=True):
     type: t.Literal['epie'] = 'epie'
     stochastic: bool = True
 
 
-UpdateHook.known['lsqml'] = ('phaser.engines.conventional.update:LSQMLUpdater', LSQMLUpdate)
-UpdateHook.known['epie'] = ('phaser.engines.conventional.update:EPIEUpdater', EPIEUpdate)
+ConventionalSolverHook.known['lsqml'] = ('phaser.engines.conventional.solvers:LSQMLSolver', LSQMLSolverPlan)
+ConventionalSolverHook.known['epie'] = ('phaser.engines.conventional.solvers:EPIESolver', EPIESolverPlan)
 
 
-class ConventionalEngine(Engine, kw_only=True):
+class ConventionalEnginePlan(EnginePlan, kw_only=True):
     #detector_model: t.Annotated[t.Union[ModulusConstraint], Tagged('type')]
-    detector_model: ModulusConstraint = ModulusConstraint()
-    update: UpdateHook
+    noise_model: NoiseModelHook
+    solver: ConventionalSolverHook
 
 
-class GradientEngine(Engine):
+class GradientEnginePlan(EnginePlan):
     ...
 
 
-EngineHook.known['conventional'] = ('phaser.engines.conventional.run:run_engine', ConventionalEngine)
-EngineHook.known['gradient'] = ('phaser.engines.gradient.run:run_engine', GradientEngine)
+EngineHook.known['conventional'] = ('phaser.engines.conventional.run:run_engine', ConventionalEnginePlan)
+EngineHook.known['gradient'] = ('phaser.engines.gradient.run:run_engine', GradientEnginePlan)
 
 
 class ReconsPlan(Dataclass, kw_only=True):

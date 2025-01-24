@@ -6,7 +6,7 @@ from numpy.typing import NDArray
 
 from phaser.utils.num import cast_array_module
 from phaser.utils.object import ObjectSampling
-from .plan import ReconsPlan, Engine
+from .plan import ReconsPlan, EnginePlan
 from .state import ReconsState, IterState, ProgressState, StateObserver
 
 
@@ -67,7 +67,7 @@ def execute_plan(plan: ReconsPlan, observers: t.Sequence[StateObserver] = ()):
 
     for (engine_i, engine) in enumerate(plan.engines):
         logging.info(f"Preparing for engine #{engine_i + 1}...")
-        state, patterns = prepare_for_engine(state, patterns, t.cast(Engine, engine.props))
+        state, patterns = prepare_for_engine(state, patterns, t.cast(EnginePlan, engine.props))
         state = engine({
             'state': state,
             'patterns': patterns,
@@ -81,7 +81,7 @@ def execute_plan(plan: ReconsPlan, observers: t.Sequence[StateObserver] = ()):
     logging.info("Reconstruction finished!")
 
 
-def prepare_for_engine(state: ReconsState, patterns: NDArray[numpy.floating], engine: Engine) -> t.Tuple[ReconsState, NDArray[numpy.floating]]:
+def prepare_for_engine(state: ReconsState, patterns: NDArray[numpy.floating], engine: EnginePlan) -> t.Tuple[ReconsState, NDArray[numpy.floating]]:
     if engine.sim_shape is not None:
         if engine.sim_shape != state.probe.data.shape[-2:]:
             raise NotImplementedError()

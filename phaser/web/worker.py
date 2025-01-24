@@ -14,7 +14,7 @@ from phaser.state import ReconsState, PartialReconsState
 
 from .types import (
     PollMessage, UpdateMessage, LogMessage, JobResultMessage,
-    WorkerShutdownMessage, WorkerMessage, ServerResponse
+    WorkerShutdownMessage, WorkerMessage, ServerResponse, OkResponse
 )
 from .types import JobID, JobCancelled
 
@@ -36,9 +36,26 @@ class LogHandler(logging.Handler):
             self.handleError(record)
 
 
+def inspect(obj: t.Any, indent: str = ""):
+    if isinstance(obj, dict):
+        for (k, v) in obj.items():
+            print(f"{indent}{k}:")
+            inspect(v, f"{indent}  ")
+        return
+
+    if isinstance(obj, (list, tuple)):
+        for (i, v) in enumerate(obj):
+            print(f"{indent}{i}:")
+            inspect(v, f"{indent}  ")
+        return
+
+    print(f"{indent}{type(obj).__name__}")
+
+
 def run_worker(url: str):
     def send_message(msg: WorkerMessage) -> ServerResponse:
-        resp: requests.Response = requests.post(url, json=pane.into_data(msg))
+        body = msg.into_data()
+        resp: requests.Response = requests.post(url, json=body)
         resp.raise_for_status()
         return pane.convert(resp.json(), ServerResponse)  # type: ignore
 
@@ -71,6 +88,12 @@ def run_worker(url: str):
     # and observe state updates
     def observer(job_id: JobID):
         def observe(state: t.Union[ReconsState, PartialReconsState]):
+            #msg = UpdateMessage.make_unchecked(
+            #    {k: v for (k, v) in dataclasses.asdict(state.to_numpy()).items() if v is not None},
+            #        job_id
+            #)
+            #inspect(msg.into_data())
+            #return
             try:
                 resp = send_message(UpdateMessage.make_unchecked(
                     {k: v for (k, v) in dataclasses.asdict(state.to_numpy()).items() if v is not None},

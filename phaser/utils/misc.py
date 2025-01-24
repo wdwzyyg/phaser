@@ -125,3 +125,12 @@ def create_compact_groupings(positions: NDArray[numpy.floating], grouping: int =
         idxs[..., labels == i]
         for i in range(n_groups)
     ]
+
+
+class FloatKey(float):
+    def __hash__(self):
+        return float.__hash__(round(self, 5))
+
+    def __eq__(self, other: t.Any) -> bool:
+        return isinstance(other, float) and \
+            round(self, 5) == round(other, 5)
