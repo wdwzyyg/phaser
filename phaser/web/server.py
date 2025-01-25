@@ -54,7 +54,8 @@ class Worker(Subscribable[WorkerUpdate]):
         })
 
     async def cancel(self):
-        await self.set_status('stopping')
+        if self.status not in ('stopping', 'stopped'):
+            await self.set_status('stopping')
 
     def should_cancel(self) -> bool:
         return self.status == 'stopping'
@@ -220,7 +221,8 @@ class Job(Subscribable[JobMessage]):
         )
 
     async def cancel(self):
-        await self.set_status('stopping')
+        if self.status not in ('stopping', 'stopped'):
+            await self.set_status('stopping')
 
     def should_cancel(self) -> bool:
         return self.status == 'stopping'
