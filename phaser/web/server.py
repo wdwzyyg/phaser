@@ -1,3 +1,4 @@
+from __future__ import annotations
 import asyncio
 from collections import deque
 import logging
@@ -20,6 +21,15 @@ from .types import (
 )
 
 T = t.TypeVar('T')
+
+
+class Shutdown(Exception):
+    pass
+
+
+async def raise_on_shutdown():
+    await server.shutdown_event.wait()
+    raise Shutdown()
 
 
 class Subscribable(t.Generic[T]):
@@ -312,6 +322,8 @@ class Server:
         self.jobs: Jobs = Jobs()
         self.job_queue: deque[Job] = deque()
 
+        self.shutdown_event: asyncio.Event = asyncio.Event()
+
         from .slurm import SlurmManager
 
         self.slurm_manager: SlurmManager = SlurmManager()
@@ -325,15 +337,13 @@ class Server:
 
         @self.app.after_serving
         async def shutdown():
-            await asyncio.gather(self.jobs.finalize(), self.workers.finalize(), self.slurm_manager.finalize())
-
-    def run(self, plan: ReconsPlan):
-        import json
-        self.plan: str = json.dumps(plan.into_data())
-        logging.basicConfig(level=logging.INFO)
-        multiprocessing.set_start_method('spawn', True)
-
-        self.app.run(host='0.0.0.0', port=5050, debug=True)
+            print("Shutting down...")
+            try:
+                async with asyncio.timeout(5):
+                    await asyncio.gather(self.jobs.finalize(), self.workers.finalize(), self.slurm_manager.finalize())
+            except TimeoutError:
+                print("Cleanup didn't finish in time")
+                logging.warning("Cleanup didn't finish in time")
 
     def get_worker_url(self, worker_id: WorkerID) -> str:
         url = url_for('worker_update', worker_id=worker_id, _external=True)
@@ -350,6 +360,74 @@ class Server:
             id = "".join(_ID_CHARS[random.randrange(0, len(_ID_CHARS))] for _ in range(10))
             if id not in self.jobs:
                 return id
+
+    def _set_signals(self, loop: asyncio.AbstractEventLoop):
+        import signal
+
+        count = 0
+
+        def _signal_handler(*_: t.Any) -> None:
+            nonlocal count
+            count += 1
+
+            if count > 1:
+                self.shutdown_event.set()
+
+        for signal_name in {"SIGINT", "SIGTERM", "SIGBREAK"}:
+            if hasattr(signal, signal_name):
+                try:
+                    loop.add_signal_handler(getattr(signal, signal_name), _signal_handler)
+                except NotImplementedError:
+                    # Add signal handler may not be implemented on Windows
+                    signal.signal(getattr(signal, signal_name), _signal_handler)
+
+    def run(self, plan: ReconsPlan):
+        import json
+        from hypercorn.config import Config
+        from hypercorn.asyncio import serve
+
+        self.plan: str = json.dumps(plan.into_data())
+        logging.basicConfig(level=logging.INFO)
+        multiprocessing.set_start_method('spawn', True)
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        self._set_signals(loop)
+
+        try:
+            loop.run_until_complete(
+                serve(self.app, Config.from_mapping(
+                    bind="localhost:5050",
+                ), shutdown_trigger=self.shutdown_event.wait)
+            )
+        finally:
+            #loop.run_until_complete(self.app.shutdown())
+            try:
+                _cancel_all_tasks(loop)
+                loop.run_until_complete(loop.shutdown_asyncgens())
+            finally:
+                asyncio.set_event_loop(None)
+                loop.close()
+
+
+def _cancel_all_tasks(loop: asyncio.AbstractEventLoop) -> None:
+    tasks = [task for task in asyncio.all_tasks(loop) if not task.done()]
+    if not tasks:
+        return
+
+    for task in tasks:
+        task.cancel()
+    loop.run_until_complete(asyncio.gather(*tasks, return_exceptions=True))
+
+    for task in tasks:
+        if not task.cancelled() and task.exception() is not None:
+            loop.call_exception_handler(
+                {
+                    "message": "unhandled exception during shutdown",
+                    "exception": task.exception(),
+                    "task": task,
+                }
+            )
 
 
 server: Server = Server()

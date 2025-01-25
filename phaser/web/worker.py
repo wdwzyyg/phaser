@@ -112,11 +112,11 @@ def run_worker(url: str):
     logger = logging.getLogger('worker')
 
     try:
-        shutdown = False
+        shutdown: bool = False
         resp = startup()
         logger.info("Worker connected to server, response: %r", resp, extra={'local': True})
 
-        while True:
+        while not shutdown:
             if resp.msg == 'ok':
                 # poll for a new job
                 resp = poll()
@@ -141,28 +141,33 @@ def run_worker(url: str):
             except KeyboardInterrupt:
                 logger.info("Job interrupted", extra={'local': True})
                 msg = JobResultMessage(resp.job_id, 'interrupted')
+                resp = send_result(msg)
+                raise
             except BaseException:
                 logger.info("Job stopped due to error", exc_info=True, stack_info=True, extra={'local': True})
                 s = traceback.format_exc()
                 msg = JobResultMessage(resp.job_id, 'errored', s)
             else:
                 logger.info("Job finished successfully", extra={'local': True})
-                print("Job finished")
                 msg = JobResultMessage(resp.job_id, 'finished')
 
             resp = send_result(msg)
             log_handler.job_id = None
 
-            if shutdown:
-                break
-
-    except BaseException:
+    except BaseException as e:
         # disconnect message
-        logger.error("Worker shutting down due to error", exc_info=True, stack_info=True, extra={'local': True})
+        logger.error(
+            "Worker interrupted" if isinstance(e, KeyboardInterrupt) else "Worker shutting down due to error",
+            extra={'local': True}
+        )
         s = traceback.format_exc()
-        send_message(WorkerShutdownMessage('errored', error=s))
-
-    finally:
+        msg = WorkerShutdownMessage('interrupted' if isinstance(e, KeyboardInterrupt) else 'errored', error=s)
+    else:
         # disconnect message
         logger.info("Worker shutting down normally", extra={'local': True})
-        send_message(WorkerShutdownMessage('finished'))
+        msg = WorkerShutdownMessage('finished')
+
+    try:
+        send_message(msg)
+    except Exception as e:
+        logger.error(f"Failed to send shutdown message, error {type(e)}", extra={'local': True})

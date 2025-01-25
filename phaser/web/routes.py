@@ -1,3 +1,4 @@
+import asyncio
 import json
 import typing as t
 
@@ -8,7 +9,7 @@ import pane
 
 from .types import JobID, WorkerID, WorkerMessage
 from .types import ManagerConnected, DashboardConnected, OkResponse
-from .server import server, Job, LocalWorker, ManualWorker
+from .server import server, Job, LocalWorker, ManualWorker, Shutdown, raise_on_shutdown
 
 
 def serialize(obj: t.Any, ty: t.Any = None) -> bytes:
@@ -63,7 +64,7 @@ async def job_dashboard(job_id: JobID):
 
 @app.post("/job/<string:job_id>/cancel")
 async def cancel_job(job_id: JobID):
-    print(f"Shutdown job ID {id}")
+    print(f"Shutdown job ID {job_id}")
     try:
         job = server.jobs[job_id]
         await job.cancel()
@@ -97,7 +98,6 @@ async def job_logs(job_id: JobID):
 
 @app.post("/worker/<string:worker_id>/shutdown")
 async def shutdown_worker(worker_id: WorkerID):
-    print(f"Shutdown worker ID {id}")
     try:
         worker = server.workers[worker_id]
         await worker.cancel()
@@ -114,17 +114,26 @@ async def manager_websocket():
         server.workers.state(), server.jobs.state()
     )))
 
-    async with aiostream.stream.merge(
-        server.workers.subscribe(),
-        server.jobs.subscribe(),
-    ).stream() as stream:
-        async for msg in stream:
-            #print(f"manager msg: {msg}")
-            await websocket.send(serialize(msg))
+    async def send():
+        async with aiostream.stream.merge(
+            server.workers.subscribe(),
+            server.jobs.subscribe(),
+        ).stream() as stream:
+            async for msg in stream:
+                await websocket.send(serialize(msg))
+
+    async def recv():
+        while True:
+            data = await websocket.receive_json()
+            print(f"Received from websocket: {data}")
+
+    try:
+        await asyncio.gather(send(), recv(), raise_on_shutdown())
+    except Shutdown:
+        pass
 
 @app.websocket("/job/<string:job_id>/listen")
 async def dashboard_websocket(job_id: JobID):
-    #print("dashboard_websocket")
     try:
         job = server.jobs[job_id]
     except KeyError:
@@ -136,9 +145,15 @@ async def dashboard_websocket(job_id: JobID):
         job.state(full=True)
     )))
 
-    async for msg in job.subscribe():
-        #print(f"job msg: {msg}")
-        await websocket.send(serialize(msg))
+    async def send():
+        async for msg in job.subscribe():
+            #print(f"job msg: {msg}")
+            await websocket.send(serialize(msg))
+
+    try:
+        await asyncio.gather(send(), raise_on_shutdown())
+    except Shutdown:
+        pass
 
 @app.post("/worker/<string:worker_id>/update")
 async def worker_update(worker_id: WorkerID):

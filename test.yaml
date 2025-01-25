@@ -3,7 +3,7 @@
 # raw data source
 raw_data:
   type: empad
-  path: "/Users/colin/Downloads/mos2/1/mos2/mos2_0.00_dstep1.0_x64_y64_4DSTEM.raw"
+  path: "~/Downloads/mos2/1/mos2/mos2_0.00_dstep1.0_x64_y64_4DSTEM.raw"
   diff_step: 1.0  # mrad/px
   kv: 120.        # keV
 
@@ -27,8 +27,8 @@ engines:
    # how to reconstruct
    # how to output/save
  - type: 'conventional'
-   probe_modes: 4
-   niter: 20
+   probe_modes: 8
+   niter: 200
    grouping: 16
 
    noise_model: 'anascombe'

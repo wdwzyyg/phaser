@@ -12,7 +12,7 @@ from .. import LoadEmpadProps, RawData
 
 
 def load_empad(args: None, props: LoadEmpadProps) -> RawData:
-    path = Path(props.path)
+    path = Path(props.path).expanduser()
 
     wavelength = Electron(props.kv * 1e3).wavelength
 
