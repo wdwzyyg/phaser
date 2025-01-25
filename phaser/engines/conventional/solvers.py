@@ -47,6 +47,7 @@ class LSQMLSolver(ConventionalSolver):
         for (group_i, group) in enumerate(groups):
             (obj_mag, probe_mag) = group_dry_run(sim, props, group, obj_mag, probe_mag)
 
+
         # TODO: rescale probe intensity
 
         for i in range(self.niter):
@@ -158,7 +159,6 @@ def run_group(
 
     for slice_i in reversed(range(n_slices)):
         delta_O = xp.conj(psi[slice_i]) * chi
-        delta_P = xp.conj(group_obj[:, slice_i, None]) * chi
         alpha_O = xp.sum(xp.sum(xp.real(chi * xp.conj(delta_O * psi[slice_i])), axis=(-1, -2), keepdims=True), axis=1) / (xp.sum(abs2(delta_O * psi[slice_i])) + gamma)
 
         # average object update
@@ -170,13 +170,18 @@ def run_group(
         sim.state.object.data = at(sim.state.object.data, slice_i).add(obj_update)
 
         if slice_i == 0:
-            # update step per probe mode
-            alpha_P = xp.sum(xp.real(chi * xp.conj(delta_P * group_obj[:, slice_i, None])), axis=(-1, -2), keepdims=True) / (xp.sum(abs2(delta_P * group_obj[:, slice_i, None])) + gamma)
+            delta_P = xp.conj(group_obj[:, slice_i, None]) * chi
             delta_P_avg = ifft2(xp.sum(fft2(delta_P) / subpx_filters, axis=0))
             delta_P_avg /= (obj_mag + illum_reg_probe)
 
+            # update step per probe mode
+            alpha_P = xp.sum(xp.real(chi * xp.conj(delta_P * group_obj[:, slice_i, None])), axis=(-1, -2), keepdims=True) / (xp.sum(abs2(delta_P * group_obj[:, slice_i, None])) + gamma)
+
             probe_update = beta_probe * xp.sum(alpha_P * delta_P_avg * group_obj_mag, axis=0) / (group_obj_mag + eps)
-            probes += probe_update
+            sim.state.probe.data += probe_update
+
+            #import jax
+            #jax.debug.print("alpha_P: {}", alpha_P)
         else:
             chi = ifft2(fft2(delta_P) / props[slice_i - 1])
 

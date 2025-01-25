@@ -27,11 +27,13 @@ engines:
    # how to reconstruct
    # how to output/save
  - type: 'conventional'
-   probe_modes: 8
-   niter: 200
-   grouping: 16
+   probe_modes: 4
+   niter: 100
+   grouping: 128
 
    noise_model: 'anascombe'
 
    solver:
      type: 'lsqml'
+     beta_probe: 1.0
+     beta_object: 0.5
