@@ -1,11 +1,12 @@
 from functools import partial
 from itertools import zip_longest
+import logging
 import typing as t
 
 import numpy
 from numpy.typing import NDArray
 
-from phaser.utils.num import cast_array_module, abs2, fft2, ifft2, jit
+from phaser.utils.num import cast_array_module, at, abs2, fft2, ifft2, jit
 from phaser.utils.misc import create_compact_groupings, create_sparse_groupings
 from phaser.hooks.solver import ConventionalSolver, ConventionalSolverArgs
 from phaser.plan import LSQMLSolverPlan, EPIESolverPlan
@@ -21,6 +22,7 @@ class LSQMLSolver(ConventionalSolver):
         self.compact: bool = args['compact']
 
     def solve(self, sim: SimulationState, engine_i: int, observers: t.Sequence[StateObserver] = ()) -> SimulationState:
+        logger = logging.getLogger(__name__)
         xp = cast_array_module(sim.xp)
         real_dtype = sim.dtype
 
@@ -66,7 +68,7 @@ class LSQMLSolver(ConventionalSolver):
             obj_mag = new_obj_mag
             probe_mag = new_probe_mag
 
-            print(f"Finished iter #{i+1}")
+            logger.info(f"Finished iter {i+1:3}/{self.niter:3}")
 
             sim.state.iter = IterState(engine_i, i, start_i + i)
             for observer in observers:
@@ -92,7 +94,7 @@ def group_dry_run(
     n_slices = sim.state.object.data.shape[0]
 
     for slice_i, prop in zip_longest(range(n_slices), props):
-        probe_mag = probe_mag.at[slice_i].set(
+        probe_mag = at(probe_mag, slice_i).set(
             obj_grid.add_view_at_pos(probe_mag[slice_i], group_scan, xp.sum(abs2(psi), axis=1))
         )
 
@@ -126,16 +128,20 @@ def run_group(
 
     (probes, group_obj, group_scan, subpx_filters) = cutout_group(sim, group, return_filters=True)
     psi = xp.zeros((n_slices, *probes.shape), dtype=probes.dtype)
-    psi = psi.at[0].set(probes)
+    psi = at(psi, 0).set(probes)
 
     group_probe_mag = xp.zeros_like(probe_mag)
     group_obj_mag = xp.sum(abs2(xp.prod(group_obj, axis=1)), axis=0)
 
     for slice_i, prop in zip_longest(range(n_slices), props):
-        group_probe_mag = group_probe_mag.at[slice_i].set(obj_grid.add_view_at_pos(group_probe_mag[slice_i], group_scan, xp.sum(abs2(psi[slice_i]), axis=1)))
+        group_probe_mag = at(group_probe_mag, slice_i).set(
+            obj_grid.add_view_at_pos(group_probe_mag[slice_i], group_scan, xp.sum(abs2(psi[slice_i]), axis=1))
+        )
 
         if prop is not None:
-            psi = psi.at[slice_i + 1].set(ifft2(fft2(psi[slice_i] * group_obj[:, slice_i, None]) * prop))
+            psi = at(psi, slice_i + 1).set(
+                ifft2(fft2(psi[slice_i] * group_obj[:, slice_i, None]) * prop)
+            )
 
     new_obj_mag += group_obj_mag
     new_probe_mag += group_probe_mag
@@ -161,7 +167,7 @@ def run_group(
         delta_O_avg /= (probe_mag[slice_i] + illum_reg_object)
 
         obj_update = beta_object * xp.sum(alpha_O * delta_O_avg * group_probe_mag[slice_i], axis=0) / (group_probe_mag[slice_i] + eps)
-        sim.state.object.data = sim.state.object.data.at[slice_i].add(obj_update)
+        sim.state.object.data = at(sim.state.object.data, slice_i).add(obj_update)
 
         if slice_i == 0:
             # update step per probe mode

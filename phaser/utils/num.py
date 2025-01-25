@@ -9,13 +9,19 @@ import numpy
 
 from numpy.typing import ArrayLike, DTypeLike, NDArray
 
-
 NumT = t.TypeVar('NumT', bound=numpy.number)
 FloatT = t.TypeVar('FloatT', bound=numpy.floating)
 ComplexT = t.TypeVar('ComplexT', bound=numpy.complexfloating)
 DTypeT = t.TypeVar('DTypeT', bound=numpy.generic)
 T = t.TypeVar('T')
 P = t.ParamSpec('P')
+
+IndexLike: t.TypeAlias = t.Union[
+    int,
+    NDArray[numpy.integer[t.Any]],
+    NDArray[numpy.bool_],
+    t.Tuple[t.Union[int, NDArray[numpy.integer[t.Any]], NDArray[numpy.bool_]], ...],
+]
 
 
 try:
@@ -486,3 +492,59 @@ class Sampling:
         # also, shift pixel corners to centers
         shift = hp * (self.shape % 2) - hp * int(center)
         return (-kmax[1] + shift[1], kmax[1] + shift[1], kmax[0] + shift[0], -kmax[0] + shift[0])
+
+#_IndexingMode: t.TypeAlias = t.Literal['promise_in_bounds', 'clip', 'drop', 'fill']
+
+
+class _AtImpl(t.Generic[DTypeT]):
+    def __init__(self, arr: NDArray[DTypeT], idx: IndexLike):
+        self.arr: NDArray[DTypeT] = arr
+        self.idx: IndexLike = idx
+
+    def set(self, values: NDArray[DTypeT]) -> NDArray[DTypeT]:
+        self.arr[self.idx] = values
+        return self.arr
+
+    def add(self, values: NDArray[DTypeT]) -> NDArray[DTypeT]:
+        self.arr[self.idx] += values  # type: ignore
+        return self.arr
+
+    def subtract(self, values: NDArray[DTypeT]) -> NDArray[DTypeT]:
+        self.arr[self.idx] -= values  # type: ignore
+        return self.arr
+
+    def multiply(self, values: NDArray[DTypeT]) -> NDArray[DTypeT]:
+        self.arr[self.idx] *= values  # type: ignore
+        return self.arr
+
+    def divide(self, values: NDArray[DTypeT]) -> NDArray[DTypeT]:
+        self.arr[self.idx] /= values  # type: ignore
+        return self.arr
+
+    def power(self, values: NDArray[DTypeT]) -> NDArray[DTypeT]:
+        self.arr[self.idx] **= values  # type: ignore
+        return self.arr
+
+    def min(self, values: NDArray[DTypeT]) -> NDArray[DTypeT]:
+        xp = get_array_module(self.arr, values)
+        self.arr[self.idx] = xp.minimum(self.arr[self.idx], values)
+        return self.arr
+
+    def max(self, values: NDArray[DTypeT]) -> NDArray[DTypeT]:
+        xp = get_array_module(self.arr, values)
+        self.arr[self.idx] = xp.maximum(self.arr[self.idx], values)
+        return self.arr
+
+    #def apply(self, ufunc):
+    #    ...
+
+    def get(self) -> NDArray[DTypeT]:
+        self.arr = self.arr[self.idx]
+        return self.arr
+
+
+def at(arr: NDArray[DTypeT], idx: IndexLike) -> _AtImpl[DTypeT]:
+    if is_jax(arr) and not t.TYPE_CHECKING:
+        return arr.at[idx]
+
+    return _AtImpl(arr, idx)
