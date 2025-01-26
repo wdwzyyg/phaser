@@ -3,8 +3,8 @@
 # raw data source
 raw_data:
   type: empad
-  path: "~/Downloads/mos2/1/mos2/mos2_0.00_dstep0.8_x64_y64_4DSTEM.raw"
-  diff_step: 0.8  # mrad/px
+  path: "~/Downloads/mos2/1/mos2/mos2_0.00_dstep1.0_x64_y64_4DSTEM.raw"
+  diff_step: 1.0  # mrad/px
   kv: 120.        # keV
 
 # initialization
@@ -29,11 +29,16 @@ engines:
  - type: 'conventional'
    probe_modes: 4
    niter: 100
-   grouping: 128
+   grouping: 8
 
-   noise_model: 'anascombe'
+   noise_model:
+     type: 'anascombe'
+     bias: 1.0e-10
 
    solver:
      type: 'lsqml'
      beta_probe: 1.0
      beta_object: 0.5
+     illum_reg_object: 1.0e-2
+     illum_reg_probe: 1.0e-2
+     gamma: 1.0e-4

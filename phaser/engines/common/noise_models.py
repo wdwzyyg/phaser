@@ -44,7 +44,6 @@ class AnascombeNoiseModel(NoiseModel[None]):
             exp_patterns / (model_intensity + self.bias)
         ) - 1.0) * mask
 
-        # broacast across incoherent modes
         return (update * model_wave, state)
 
 

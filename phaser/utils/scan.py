@@ -47,8 +47,8 @@ def make_raster_scan(shape: t.Tuple[int, int], scan_step: ArrayLike,
         dtype = numpy.float64
 
     # TODO actually center this around (0, 0)
-    yy = xp2.arange(shape[0], dtype=dtype) - numpy.array(shape[0] / 2., dtype=dtype)
-    xx = xp2.arange(shape[1], dtype=dtype) - numpy.array(shape[1] / 2., dtype=dtype)
+    yy = xp2.arange(shape[0], dtype=dtype) - xp2.array(shape[0] / 2., dtype=dtype)
+    xx = xp2.arange(shape[1], dtype=dtype) - xp2.array(shape[1] / 2., dtype=dtype)
     pts = xp2.stack(xp2.meshgrid(yy, xx, indexing='ij'), axis=-1)
 
     if rotation != 0.:
@@ -56,4 +56,4 @@ def make_raster_scan(shape: t.Tuple[int, int], scan_step: ArrayLike,
         mat = xp2.array([[numpy.cos(theta), -numpy.sin(theta)], [numpy.sin(theta), numpy.cos(theta)]], dtype=dtype)
         pts = (pts @ mat.T)
 
-    return pts * xp2.broadcast_to(scan_step, (2,)).astype(dtype)
+    return pts * xp2.broadcast_to(xp2.array(scan_step), (2,)).astype(dtype)  # type: ignore

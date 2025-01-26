@@ -43,7 +43,7 @@ class SimulationState(t.Generic[StateT]):
         self.dtype = dtype
         self.state = state
         self.patterns = patterns
-        self.pattern_mask = pattern_mask
+        self.pattern_mask = xp.array(pattern_mask)
 
         self.noise_model = noise_model
         self.noise_model_state = noise_model_state or noise_model.init_state()

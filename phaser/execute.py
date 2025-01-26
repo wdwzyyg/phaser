@@ -12,6 +12,7 @@ from .state import ObjectState, ReconsState, IterState, ProgressState, StateObse
 
 def execute_plan(plan: ReconsPlan, observers: t.Sequence[StateObserver] = ()):
     import jax.numpy
+    #import cupy
 
     logging.basicConfig(level=logging.INFO)
 
@@ -48,7 +49,7 @@ def execute_plan(plan: ReconsPlan, observers: t.Sequence[StateObserver] = ()):
     else:
         scan = plan.init_scan({'dtype': dtype, 'seed': seed, 'xp': xp})
 
-    obj_sampling = ObjectSampling.from_scan(scan, sampling.sampling, sampling.extent / 2.)
+    obj_sampling = ObjectSampling.from_scan(scan, sampling.sampling, sampling.extent / 2. + 3. * sampling.sampling)
 
     logging.info("Initializing object...")
     obj = plan.init_object({

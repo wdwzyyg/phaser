@@ -114,9 +114,9 @@ def hermetian_modes(base_probe: NDArray[NumT], n_y: int, n_x: int) -> NDArray[Nu
     for y_power in range(n_y):
         for x_power in range(n_x):
             mode = yy**y_power * xx**x_power * base_probe
-            if y_power > 1 or x_power > 1:
-                mode = mode * xp.exp(-xx**2./(2 * var_x) - yy*2./(2 * var_y))
-                mode /= xp.sqrt(xp.sum(abs2(mode)))
+            #if y_power > 0 or x_power > 0:
+            #    mode = mode * xp.exp(-xx**2./(2 * var_x) - yy*2./(2 * var_y))
+            #    mode /= xp.sqrt(xp.sum(abs2(mode)))
 
             # orthogonalize to other modes
             for prev_i in range(i):  # TODO do this in a smarter way

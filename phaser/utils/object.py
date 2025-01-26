@@ -9,7 +9,7 @@ import typing as t
 import numpy
 from numpy.typing import ArrayLike, DTypeLike, NDArray
 
-from .num import get_array_module, to_real_dtype, is_cupy, is_jax, to_numpy, to_array
+from .num import get_array_module, to_real_dtype, is_cupy, is_jax, to_numpy, to_array, as_numpy
 from .num import NumT, ComplexT, DTypeT
 from .misc import create_rng
 
@@ -77,10 +77,10 @@ class ObjectSampling:
 
     def __init__(self, shape: t.Tuple[int, int], sampling: ArrayLike, corner: t.Optional[ArrayLike] = None,
                  region_min: t.Optional[ArrayLike] = None, region_max: t.Optional[ArrayLike] = None):
-        object.__setattr__(self, 'shape', numpy.broadcast_to(numpy.array(shape, dtype=numpy.int_), (2,)))
-        object.__setattr__(self, 'sampling', numpy.broadcast_to(numpy.array(sampling, dtype=numpy.float64), (2,)))
-        object.__setattr__(self, 'region_min', numpy.broadcast_to(numpy.array(region_min, dtype=numpy.float64), (2,)) if region_min is not None else None)
-        object.__setattr__(self, 'region_max', numpy.broadcast_to(numpy.array(region_max, dtype=numpy.float64), (2,)) if region_max is not None else None)
+        object.__setattr__(self, 'shape', numpy.broadcast_to(as_numpy(shape).astype(numpy.int_), (2,)))
+        object.__setattr__(self, 'sampling', numpy.broadcast_to(as_numpy(sampling).astype(numpy.float64), (2,)))
+        object.__setattr__(self, 'region_min', numpy.broadcast_to(as_numpy(region_min).astype(numpy.float64), (2,)) if region_min is not None else None)
+        object.__setattr__(self, 'region_max', numpy.broadcast_to(as_numpy(region_max).astype(numpy.float64), (2,)) if region_max is not None else None)
 
         if corner is None:
             corner = -self.extent / 2. + self.sampling/2. #* (self.shape % 2)
@@ -92,11 +92,11 @@ class ObjectSampling:
     @classmethod
     def from_scan(cls: t.Type[t.Self], scan_positions: NDArray[numpy.floating], sampling: ArrayLike, pad: ArrayLike = 0) -> t.Self:
         """Create an ObjectSampling around the given scan positions, padded by at least a radius `pad` in real-space."""
-        sampling = numpy.array(sampling, dtype=numpy.float64)
+        sampling = as_numpy(sampling).astype(numpy.float64)
         pad = numpy.broadcast_to(pad, (2,)).astype(numpy.int_)
 
-        y_min, y_max = numpy.nanmin(scan_positions[..., 0]), numpy.nanmax(scan_positions[:, 0])
-        x_min, x_max = numpy.nanmin(scan_positions[..., 1]), numpy.nanmax(scan_positions[:, 1])
+        y_min, y_max = float(numpy.nanmin(scan_positions[..., 0])), float(numpy.nanmax(scan_positions[:, 0]))
+        x_min, x_max = float(numpy.nanmin(scan_positions[..., 1])), float(numpy.nanmax(scan_positions[:, 1]))
 
         n_y = numpy.ceil((2.*pad[0] + y_max - y_min) / sampling[0]).astype(numpy.int_) + 1
         n_x = numpy.ceil((2.*pad[1] + x_max - x_min) / sampling[1]).astype(numpy.int_) + 1

@@ -6,7 +6,7 @@ import typing as t
 import numpy
 from numpy.typing import NDArray
 
-from phaser.utils.num import cast_array_module, at, abs2, fft2, ifft2, jit, check_finite
+from phaser.utils.num import cast_array_module, at, abs2, fft2, ifft2, jit, check_finite, to_complex_dtype
 from phaser.utils.misc import create_compact_groupings, create_sparse_groupings
 from phaser.hooks.solver import ConventionalSolver, ConventionalSolverArgs
 from phaser.plan import LSQMLSolverPlan, EPIESolverPlan
@@ -70,6 +70,9 @@ class LSQMLSolver(ConventionalSolver):
                     gamma=self.plan.gamma,
                 )
                 check_finite(sim.state.object.data, sim.state.probe.data, context=f"object or probe, group {group_i}")
+
+                assert sim.state.object.data.dtype == to_complex_dtype(sim.dtype)
+                assert sim.state.probe.data.dtype == to_complex_dtype(sim.dtype)
 
             obj_mag = new_obj_mag
             probe_mag = new_probe_mag
@@ -165,7 +168,7 @@ def run_group(
     # sum over incoherent modes
     model_intensity = xp.sum(abs2(model_wave), axis=1, keepdims=True)
     # experimental data
-    group_patterns = xp.array(sim.patterns[*group])
+    group_patterns = xp.array(sim.patterns[*group])[:, None]
     (chi, sim.noise_model_state) = sim.noise_model.calc_wave_update(model_wave, model_intensity, group_patterns, sim.pattern_mask, sim.noise_model_state)
     chi = ifft2(chi)
 

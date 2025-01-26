@@ -107,6 +107,21 @@ def to_numpy(arr: NDArray[DTypeT], stream=None) -> NDArray[DTypeT]:
     return arr
 
 
+def as_numpy(arr: ArrayLike, stream=None) -> NDArray:
+    """
+    Convert an ArrayLike to a numpy array.
+    For cupy backend, this is equivalent to `cupy.asnumpy`.
+    """
+    if not t.TYPE_CHECKING:
+        if is_jax(arr):
+            return numpy.array(arr)
+
+        if is_cupy(arr):
+            return arr.get(stream)
+
+    return numpy.asarray(arr)
+
+
 def to_array(arr: ArrayLike) -> numpy.ndarray:
     """
     Convert an ArrayLike to an array, but not necessarily
@@ -408,19 +423,19 @@ class Sampling:
                  extent: t.Optional[ArrayLike] = None,
                  sampling: t.Optional[ArrayLike] = None):
         try:
-            object.__setattr__(self, 'shape', numpy.broadcast_to(shape, (2,)).astype(numpy.int_))
+            object.__setattr__(self, 'shape', numpy.broadcast_to(as_numpy(shape).astype(numpy.int_), (2,)))
         except ValueError as e:
             raise ValueError(f"Expected a shape (n_y, n_x), instead got: {shape}") from e
 
         if extent is not None:
             try:
-                object.__setattr__(self, 'extent', numpy.broadcast_to(extent, (2,)).astype(numpy.float64))
+                object.__setattr__(self, 'extent', numpy.broadcast_to(as_numpy(extent).astype(numpy.float64), (2,)))
             except ValueError as e:
                 raise ValueError(f"Expected an extent (b, a), instead got: {extent}") from e
             object.__setattr__(self, 'sampling', self.extent / self.shape)
         elif sampling is not None:
             try:
-                object.__setattr__(self, 'sampling', numpy.broadcast_to(sampling, (2,)).astype(numpy.float64))
+                object.__setattr__(self, 'sampling', numpy.broadcast_to(as_numpy(sampling).astype(numpy.float64), (2,)))
             except ValueError as e:
                 raise ValueError(f"Expected a sampling (s_y, s_x), instead got: {sampling}") from e
             object.__setattr__(self, 'extent', self.sampling * self.shape)
