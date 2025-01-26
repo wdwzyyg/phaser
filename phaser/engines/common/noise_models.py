@@ -28,7 +28,7 @@ class AnascombeNoiseModel(NoiseModel[None]):
 
         return (xp.linalg.norm(
             mask * (xp.sqrt(exp_patterns + self.bias) - xp.sqrt(model_intensity + self.bias))
-        ) / model_wave.shape[0], state)
+        ) / model_wave.shape[0], state)  # type: ignore
 
     def calc_wave_update(
         self,
@@ -45,7 +45,7 @@ class AnascombeNoiseModel(NoiseModel[None]):
         ) - 1.0) * mask
 
         # broacast across incoherent modes
-        return (update[:, None] * model_wave, state)
+        return (update * model_wave, state)
 
 
 class GaussianNoiseModel(NoiseModel[None]):

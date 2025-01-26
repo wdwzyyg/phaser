@@ -14,6 +14,11 @@ class IterState():
     engine_iter: int
     total_iter: int
 
+    def to_numpy(self) -> t.Self:
+        return self.__class__(
+            int(self.engine_num), int(self.engine_iter), int(self.total_iter)
+        )
+
 
 @dataclass
 class ProbeState():
@@ -61,7 +66,7 @@ class ReconsState:
 
     def to_numpy(self) -> t.Self:
         return self.__class__(
-            iter=self.iter,
+            iter=self.iter.to_numpy(),
             probe=self.probe.to_numpy(),
             object=self.object.to_numpy(),
             scan=to_numpy(self.scan),
@@ -82,7 +87,7 @@ class PartialReconsState:
 
     def to_numpy(self) -> t.Self:
         return self.__class__(
-            iter=self.iter,
+            iter=self.iter.to_numpy(),
             probe=self.probe.to_numpy() if self.probe is not None else None,
             object=self.object.to_numpy() if self.object is not None else None,
             scan=to_numpy(self.scan) if self.scan is not None else None,

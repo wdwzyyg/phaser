@@ -3,8 +3,8 @@
 # raw data source
 raw_data:
   type: empad
-  path: "~/Downloads/mos2/1/mos2/mos2_0.00_dstep1.0_x64_y64_4DSTEM.raw"
-  diff_step: 1.0  # mrad/px
+  path: "~/Downloads/mos2/1/mos2/mos2_0.00_dstep0.8_x64_y64_4DSTEM.raw"
+  diff_step: 0.8  # mrad/px
   kv: 120.        # keV
 
 # initialization

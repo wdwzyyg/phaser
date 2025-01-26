@@ -50,7 +50,7 @@ def make_focused_probe(ky: NDArray[numpy.floating], kx: NDArray[numpy.floating],
     return ifft2(probe)
 
 
-def make_hermetian_modes(base_probe: NDArray[NumT], n_modes: int, powers: ArrayLike = 0.02) -> NDArray[NumT]:
+def make_hermetian_modes(base_probe: NDArray[NumT], n_modes: int, powers: ArrayLike = 0.05) -> NDArray[NumT]:
     """
     Create Hermitian-Gauss probe modes based on `base_probe`.
 
@@ -65,10 +65,26 @@ def make_hermetian_modes(base_probe: NDArray[NumT], n_modes: int, powers: ArrayL
     base_power = 1. - numpy.sum(powers)
     powers = numpy.concatenate(([base_power], powers))
 
-    n_y = numpy.ceil(numpy.sqrt(n_modes)).astype(numpy.int_)
-    n_x = numpy.ceil(n_modes / (n_y + 1)).astype(numpy.int_)
+    # we make modes like the following:
+    #       0 1 2 3 4
+    #     +----------
+    #   0 | 0 2 5   |
+    #   1 | 1 4 8   |
+    #   2 | 3 7     |
+    #   3 | 6       |
+    #   4 +----------
 
-    modes = hermetian_modes(base_probe, n_y, n_x).reshape((-1, *base_probe.shape[-2:]))[:n_modes]
+    # the diagonal each mode is on (indexing starting from 0):
+    i = numpy.arange(n_modes)
+    diag_num = numpy.ceil((numpy.sqrt(8*i + 9) - 3) / 2).astype(numpy.int_)
+
+    # and the corresponding grid indices
+    xx = (i - diag_num*(diag_num+1)/2).astype(numpy.int_)
+    yy = diag_num - xx
+
+    max_n = int(numpy.max(yy)) + 1
+
+    modes = hermetian_modes(base_probe, max_n, max_n)[yy, xx]
     modes *= xp.array(numpy.sqrt(powers)[:, None, None], dtype=modes.dtype)
     return t.cast(NDArray[NumT], modes)
 

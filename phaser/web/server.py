@@ -4,6 +4,7 @@ from collections import deque
 import logging
 import random
 import multiprocessing
+import time
 import weakref
 import typing as t
 
@@ -364,14 +365,18 @@ class Server:
     def _set_signals(self, loop: asyncio.AbstractEventLoop):
         import signal
 
-        count = 0
+        last_time: t.Optional[float] = None
 
         def _signal_handler(*_: t.Any) -> None:
-            nonlocal count
-            count += 1
+            nonlocal last_time
+            t = time.monotonic()
 
-            if count > 1:
+            if last_time is not None and t - last_time < 2:
                 self.shutdown_event.set()
+                return
+
+            logging.warning("Workers interrupted. Press CTRL + C twice to quit server")
+            last_time = t
 
         for signal_name in {"SIGINT", "SIGTERM", "SIGBREAK"}:
             if hasattr(signal, signal_name):

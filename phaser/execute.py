@@ -4,10 +4,10 @@ import typing as t
 import numpy
 from numpy.typing import NDArray
 
-from phaser.utils.num import cast_array_module
+from phaser.utils.num import cast_array_module, to_numpy
 from phaser.utils.object import ObjectSampling
 from .plan import ReconsPlan, EnginePlan
-from .state import ReconsState, IterState, ProgressState, StateObserver
+from .state import ObjectState, ReconsState, IterState, ProgressState, StateObserver
 
 
 def execute_plan(plan: ReconsPlan, observers: t.Sequence[StateObserver] = ()):
@@ -51,10 +51,13 @@ def execute_plan(plan: ReconsPlan, observers: t.Sequence[StateObserver] = ()):
     obj_sampling = ObjectSampling.from_scan(scan, sampling.sampling, sampling.extent / 2.)
 
     logging.info("Initializing object...")
-    obj = plan.init_object({'sampling': obj_sampling, 'wavelength': wavelength, 'dtype': dtype, 'seed': seed, 'xp': xp})
+    obj = plan.init_object({
+        'sampling': obj_sampling, 'slices': plan.slices, 'wavelength': wavelength,
+        'dtype': dtype, 'seed': seed, 'xp': xp
+    })
     if obj.data.ndim == 2:
         obj.data = obj.data.reshape((1, *obj.data.shape))
-        obj.zs = numpy.array([0.])
+        obj.zs = numpy.array([0.], dtype=dtype)
 
     state = ReconsState(
         iter=IterState(0, 0, 0),
@@ -95,12 +98,17 @@ def prepare_for_engine(state: ReconsState, patterns: NDArray[numpy.floating], en
         elif current_probe_modes == 1:
             from phaser.utils.optics import make_hermetian_modes
 
-            state.probe.data = make_hermetian_modes(state.probe.data[0], engine.probe_modes)
+            state.probe.data = make_hermetian_modes(state.probe.data[0], engine.probe_modes, powers=0.1)
         else:
             raise NotImplementedError()
 
     if engine.slices is not None:
         if not numpy.allclose(engine.slices.zs, state.object.zs):
-            raise NotImplementedError()
+            # TODO this is a quick hack
+            if len(state.object.zs) == 1:
+                new_obj = numpy.pad(state.object.data, ((len(engine.slices.zs) - 1, 0), (0, 0), (0, 0)), constant_values=1.0)
+                state.object = ObjectState(state.object.sampling, new_obj, numpy.array(engine.slices.zs))
+            else:
+                raise NotImplementedError()
 
     return state, patterns

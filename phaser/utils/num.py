@@ -3,6 +3,8 @@ General numeric utilities.
 """
 
 from dataclasses import dataclass
+from functools import wraps
+import logging
 import typing as t
 
 import numpy
@@ -23,10 +25,13 @@ IndexLike: t.TypeAlias = t.Union[
     t.Tuple[t.Union[int, NDArray[numpy.integer[t.Any]], NDArray[numpy.bool_]], ...],
 ]
 
+logger = logging.getLogger(__name__)
 
 try:
     import jax
     jax.config.update('jax_enable_x64', True)
+    #jax.config.update('jax_log_compiles', True)
+    #jax.config.update('jax_debug_nans', True)
 except ImportError:
     pass
 
@@ -140,9 +145,14 @@ def jit(
         compiler_options: t.Optional[t.Dict[str, t.Any]] = None
 ) -> t.Callable[P, T]:
     try:
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            logger.info(f"JIT-compiling kernel '{f.__qualname__}'...")
+            return f(*args, **kwargs)
+
         import jax
         return jax.jit(
-            f, static_argnums=static_argnums, static_argnames=static_argnames,
+            wrapper, static_argnums=static_argnums, static_argnames=static_argnames,
             donate_argnums=donate_argnums, donate_argnames=donate_argnames,
             inline=inline, compiler_options=compiler_options
         )
@@ -331,7 +341,7 @@ def abs2(x: ArrayLike) -> NDArray[numpy.floating]:
     This is cheaper than `abs(x)**2.`
     """
     x = get_array_module(x).array(x)
-    return x.real**2. + x.imag**2.
+    return x.real**2. + x.imag**2.  # type: ignore
 
 
 @t.overload
@@ -354,6 +364,15 @@ def ufunc_outer(ufunc: numpy.ufunc, x: ArrayLike, y: ArrayLike) -> numpy.ndarray
     return ufunc.outer(x, y)
 
 
+def check_finite(*arrs: NDArray[numpy.inexact], context: t.Optional[str] = None):
+    xp = get_array_module(*arrs)
+
+    if not all(xp.all(xp.isfinite(arr)) for arr in arrs):
+        if context:
+            raise ValueError(f"NaN or inf encountered in {context}")
+        raise ValueError("NaN or inf encountered")
+
+
 @dataclass(frozen=True, init=False)
 class Sampling:
     shape: NDArray[numpy.int_]
@@ -368,7 +387,7 @@ class Sampling:
         """
         Return maximum frequency (radius) of reciprocal space (1/(2s_y), 1/(2s_x))
         """
-        return 1/(2 * self.sampling)
+        return (1/(2 * self.sampling)).astype(numpy.float64)
 
     @t.overload
     def __init__(self,
@@ -462,9 +481,9 @@ class Sampling:
             kx = xp2.fft.fftshift(kx)
         return tuple(xp2.meshgrid(ky, kx, indexing='ij'))  # type: ignore (missing overload)
 
-    def bwlim(self, wavelength: float) -> float:
-        """Return the bandwidth limit (in radians) for this sampling grid with the given wavelength."""
-        return float(numpy.min(self.k_max) * 2./3. * wavelength)
+    def bwlim(self) -> float:
+        """Return the bandwidth limit (in inverse length units) for this sampling grid."""
+        return float(numpy.min(self.k_max) * 2./3.)
 
     def mpl_real_extent(self, center: bool = True) -> t.Tuple[float, float, float, float]:
         """

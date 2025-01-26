@@ -1,0 +1,46 @@
+---
+
+# raw data source
+raw_data:
+  type: empad
+  path: "~/Downloads/si-final4/Si_110_Sn_300kV_conv25_defocus10_tds/Si_110_Sn_300kV_conv25_defocus10_tds_199.70_dstep0.6_x80_y80_4DSTEM.raw"
+  diff_step: 0.6  # mrad/px
+  kv: 300.        # keV
+
+# initialization
+
+init_probe:
+  type: 'focused'
+  conv_angle: 25  # mrad
+  defocus: 10    # angstrom
+
+init_object: 'random'
+
+init_scan:
+  type: 'raster'
+  shape: [80, 80] # ny, nx
+  step_size: 0.3  # angstrom
+
+# for each reconstruction engine
+engines:
+   # how to transition from previous state to current reconstruction state
+   # how to reconstruct
+   # how to output/save
+ - type: 'conventional'
+   probe_modes: 4
+   slices:
+     n: 20
+     total_thickness: 200
+
+   niter: 15
+   grouping: 32
+
+   noise_model: 'anascombe'
+
+   solver:
+     type: 'lsqml'
+     beta_probe: 0.1
+     beta_object: 0.1
+     gamma: 1.0e-4
+
+     illum_reg_object: 1.0e-1

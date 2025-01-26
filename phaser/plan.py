@@ -81,5 +81,7 @@ class ReconsPlan(Dataclass, kw_only=True):
     init_object: ObjectHook
     init_scan: ScanHook
 
+    slices: t.Optional[Slices] = None
+
     engines: t.List[EngineHook]
     #engines: t.List[t.Annotated[t.Union[ConventionalEngine, GradientEngine], Tagged('type')]]

@@ -1,11 +1,10 @@
-import logging
 from dataclasses import dataclass
 import typing as t
 
 import numpy
 from numpy.typing import NDArray, DTypeLike
 
-from phaser.utils.num import cast_array_module, to_complex_dtype, fft2, ifft2
+from phaser.utils.num import cast_array_module, to_complex_dtype, fft2, ifft2, is_jax, to_numpy
 from phaser.utils.misc import FloatKey
 from phaser.utils.optics import fresnel_propagator, fourier_shift_filter
 from phaser.state import ReconsState
@@ -54,17 +53,24 @@ class SimulationState(t.Generic[StateT]):
         self.propagators = None
 
 
-def make_propagators(sim: SimulationState) -> NDArray[numpy.complexfloating]:
-    unique_zs = set(map(FloatKey, sim.state.object.zs))
+def make_propagators(sim: SimulationState) -> t.Optional[NDArray[numpy.complexfloating]]:
+    delta_zs = numpy.diff(to_numpy(sim.state.object.zs))
+    if len(delta_zs) == 0:
+        return None
+
+    unique_zs = set(map(FloatKey, delta_zs))
     complex_dtype = to_complex_dtype(sim.dtype)
 
+    k2 = sim.ky**2 + sim.kx**2
+    bwlim_mask = k2 <= sim.state.probe.sampling.bwlim()
+
     props = {
-        z: fresnel_propagator(sim.ky, sim.kx, sim.state.wavelength, z).astype(complex_dtype)
+        z: fresnel_propagator(sim.ky, sim.kx, sim.state.wavelength, z).astype(complex_dtype) * bwlim_mask
         for z in unique_zs
     }
 
     return cast_array_module(sim.xp).stack(
-        [props[FloatKey(z)] for z in sim.state.object.zs],
+        [props[FloatKey(z)] for z in delta_zs],
         axis = 0
     )
 
@@ -92,6 +98,48 @@ def cutout_group(sim: SimulationState, group: NDArray[numpy.integer], return_fil
         return (shifted_probes, group_obj, group_scan, group_subpx_filters)
 
     return (shifted_probes, group_obj, group_scan)
+
+
+def slice_forwards(
+    props: t.Optional[NDArray[numpy.complexfloating]],
+    state: StateT,
+    f: t.Callable[[int, t.Optional[NDArray[numpy.complexfloating]], StateT], StateT]
+) -> StateT:
+    if props is None:
+        return f(0, None, state)
+
+    n_slices = len(props) + 1
+
+    if is_jax(props):
+        import jax
+        state = jax.lax.fori_loop(0, n_slices - 1, lambda slice_i, state: f(slice_i, props[slice_i], state), state, unroll=False)
+        return f(n_slices - 1, None, state)
+
+    for slice_i in range(n_slices - 1):
+        state = f(slice_i, props[slice_i], state)
+
+    return f(n_slices - 1, None, state)
+
+
+def slice_backwards(
+    props: t.Optional[NDArray[numpy.complexfloating]],
+    state: StateT,
+    f: t.Callable[[int, t.Optional[NDArray[numpy.complexfloating]], StateT], StateT]
+) -> StateT:
+    if props is None:
+        return f(0, None, state)
+
+    n_slices = len(props) + 1
+
+    if is_jax(props):
+        import jax
+        state = jax.lax.fori_loop(1, n_slices, lambda i, state: f(n_slices - i, props[n_slices - i - 1], state), state, unroll=False)
+        return f(0, None, state)
+
+    for slice_i in range(n_slices - 1, 0, -1):
+        state = f(slice_i, props[slice_i - 1], state)
+
+    return f(0, None, state)
 
 
 try:

@@ -9,7 +9,7 @@ from numpy.typing import NDArray, DTypeLike
 
 from phaser.utils.num import Sampling
 from phaser.utils.object import ObjectSampling
-from ..types import Dataclass
+from ..types import Dataclass, Slices
 from ..state import ObjectState, ProbeState, ReconsState, StateObserver
 from .hook import Hook
 
@@ -58,6 +58,7 @@ class ProbeHook(Hook[ProbeHookArgs, ProbeState]):
 class ObjectHookArgs(t.TypedDict):
     sampling: ObjectSampling
     wavelength: float
+    slices: t.Optional[Slices]
     seed: t.Optional[object]
     dtype: DTypeLike
     xp: t.Any

@@ -21,6 +21,7 @@ def load_empad(args: None, props: LoadEmpadProps) -> RawData:
 
     # TODO handle metadata here
     patterns = numpy.fft.fftshift(load_4d(path), axes=(-1, -2))
+    patterns /= numpy.sum(patterns, axis=(-2, -1), keepdims=True)
     return {
         'patterns': patterns,
         'mask': numpy.ones_like(patterns, shape=patterns.shape[-2:]),
