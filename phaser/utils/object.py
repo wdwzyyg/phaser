@@ -85,7 +85,7 @@ class ObjectSampling:
         if corner is None:
             corner = -self.extent / 2. + self.sampling/2. #* (self.shape % 2)
         else:
-            corner = numpy.broadcast_to(numpy.array(corner, dtype=numpy.float64), (2,))
+            corner = numpy.broadcast_to(as_numpy(corner).astype(numpy.float64), (2,))
 
         object.__setattr__(self, 'corner', corner)
 
@@ -317,3 +317,11 @@ class ObjectCutout(t.Generic[DTypeT]):
 
     def __array__(self) -> NDArray[DTypeT]:
         return self.get()
+
+
+try:
+    import jax.tree_util
+except ImportError:
+    pass
+else:
+    jax.tree_util.register_dataclass(ObjectSampling, ('shape', 'sampling', 'corner', 'region_min', 'region_max'), ())

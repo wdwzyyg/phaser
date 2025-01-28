@@ -11,8 +11,9 @@ from .state import ObjectState, ReconsState, IterState, ProgressState, StateObse
 
 
 def execute_plan(plan: ReconsPlan, observers: t.Sequence[StateObserver] = ()):
-    import jax.numpy
-    #import cupy
+    #import jax.numpy
+    import cupy
+    xp = cast_array_module(cupy)
 
     logging.basicConfig(level=logging.INFO)
 
@@ -20,7 +21,6 @@ def execute_plan(plan: ReconsPlan, observers: t.Sequence[StateObserver] = ()):
 
     seed = None
     dtype: type = numpy.float32 if plan.dtype == 'float32' else numpy.float64
-    xp = cast_array_module(jax.numpy)
     logging.info(f"dtype: {dtype} array backend: {xp.__name__}")
 
     raw_data = plan.raw_data(None)

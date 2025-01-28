@@ -48,7 +48,9 @@ class LSQMLSolverPlan(Dataclass, kw_only=True):
 
 class EPIESolverPlan(Dataclass, kw_only=True):
     type: t.Literal['epie'] = 'epie'
-    stochastic: bool = True
+
+    beta_object: float = 1.0
+    beta_probe: float = 1.0
 
 
 ConventionalSolverHook.known['lsqml'] = ('phaser.engines.conventional.solvers:LSQMLSolver', LSQMLSolverPlan)

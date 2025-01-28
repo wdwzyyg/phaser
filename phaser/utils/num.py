@@ -582,3 +582,11 @@ def at(arr: NDArray[DTypeT], idx: IndexLike) -> _AtImpl[DTypeT]:
         return arr.at[idx]
 
     return _AtImpl(arr, idx)
+
+
+try:
+    import jax.tree_util
+except ImportError:
+    pass
+else:
+    jax.tree_util.register_dataclass(Sampling, ('shape', 'sampling'), (), ('extent',))
