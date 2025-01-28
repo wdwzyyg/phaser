@@ -4,6 +4,7 @@ import typing as t
 import numpy
 from numpy.typing import NDArray
 
+from phaser.hooks import RawData
 from phaser.utils.num import cast_array_module, to_numpy
 from phaser.utils.object import ObjectSampling
 from .plan import ReconsPlan, EnginePlan
@@ -11,9 +12,29 @@ from .state import ObjectState, ReconsState, IterState, ProgressState, StateObse
 
 
 def execute_plan(plan: ReconsPlan, observers: t.Sequence[StateObserver] = ()):
-    #import jax.numpy
     import cupy
     xp = cast_array_module(cupy)
+
+    raw_data, state = initialize_reconstruction(plan, xp, observers)
+
+    for (engine_i, engine) in enumerate(plan.engines):
+        logging.info(f"Preparing for engine #{engine_i + 1}...")
+        raw_data, state = prepare_for_engine(raw_data, state, t.cast(EnginePlan, engine.props))
+        state = engine({
+            'state': state,
+            'patterns': raw_data['patterns'],
+            'pattern_mask': raw_data['mask'],
+            'dtype': raw_data['patterns'].dtype,
+            'xp': xp,
+            'engine_i': engine_i,
+            'observers': observers,
+        })
+
+    logging.info("Reconstruction finished!")
+
+
+def initialize_reconstruction(plan: ReconsPlan, xp, observers: t.Sequence[StateObserver] = ()) -> t.Tuple[RawData, ReconsState]:
+    xp = cast_array_module(xp)
 
     logging.basicConfig(level=logging.INFO)
 
@@ -29,12 +50,13 @@ def execute_plan(plan: ReconsPlan, observers: t.Sequence[StateObserver] = ()):
     if wavelength is None:
         raise ValueError("`wavelength` must be specified by raw_data or manually")
 
-    sampling = raw_data['sampling']
-    patterns = raw_data['patterns']
-    pattern_mask = raw_data['mask']
-
     # normalize pattern intensity
-    patterns /= xp.mean(xp.sum(patterns, axis=(-1, -2)))
+    raw_data['patterns'] /= numpy.mean(numpy.sum(raw_data['patterns'], axis=(-1, -2)))
+    # ensure raw data is of the correct type
+    if raw_data['patterns'].dtype != dtype:
+        raw_data['patterns'] = raw_data['patterns'].astype(dtype)
+
+    sampling = raw_data['sampling']
 
     logging.info("Initializing probe...")
     probe = plan.init_probe({'sampling': sampling, 'wavelength': wavelength, 'dtype': dtype, 'seed': seed, 'xp': xp})
@@ -49,7 +71,7 @@ def execute_plan(plan: ReconsPlan, observers: t.Sequence[StateObserver] = ()):
     else:
         scan = plan.init_scan({'dtype': dtype, 'seed': seed, 'xp': xp})
 
-    obj_sampling = ObjectSampling.from_scan(scan, sampling.sampling, sampling.extent / 2. + 3. * sampling.sampling)
+    obj_sampling = ObjectSampling.from_scan(scan, sampling.sampling, sampling.extent / 2. + 2. * sampling.sampling)
 
     logging.info("Initializing object...")
     obj = plan.init_object({
@@ -69,23 +91,10 @@ def execute_plan(plan: ReconsPlan, observers: t.Sequence[StateObserver] = ()):
         wavelength=wavelength
     )
 
-    for (engine_i, engine) in enumerate(plan.engines):
-        logging.info(f"Preparing for engine #{engine_i + 1}...")
-        state, patterns = prepare_for_engine(state, patterns, t.cast(EnginePlan, engine.props))
-        state = engine({
-            'state': state,
-            'patterns': patterns,
-            'pattern_mask': pattern_mask,
-            'dtype': dtype,
-            'xp': xp,
-            'engine_i': engine_i,
-            'observers': observers,
-        })
-
-    logging.info("Reconstruction finished!")
+    return (raw_data, state)
 
 
-def prepare_for_engine(state: ReconsState, patterns: NDArray[numpy.floating], engine: EnginePlan) -> t.Tuple[ReconsState, NDArray[numpy.floating]]:
+def prepare_for_engine(raw_data: RawData, state: ReconsState, engine: EnginePlan) -> t.Tuple[RawData, ReconsState]:
     if engine.sim_shape is not None:
         if engine.sim_shape != state.probe.data.shape[-2:]:
             raise NotImplementedError()
@@ -112,4 +121,4 @@ def prepare_for_engine(state: ReconsState, patterns: NDArray[numpy.floating], en
             else:
                 raise NotImplementedError()
 
-    return state, patterns
+    return raw_data, state
