@@ -95,8 +95,8 @@ class ObjectSampling:
         sampling = as_numpy(sampling).astype(numpy.float64)
         pad = numpy.broadcast_to(pad, (2,)).astype(numpy.int_)
 
-        y_min, y_max = float(numpy.nanmin(scan_positions[..., 0])), float(numpy.nanmax(scan_positions[:, 0]))
-        x_min, x_max = float(numpy.nanmin(scan_positions[..., 1])), float(numpy.nanmax(scan_positions[:, 1]))
+        y_min, y_max = float(numpy.nanmin(scan_positions[..., 0])), float(numpy.nanmax(scan_positions[..., 0]))
+        x_min, x_max = float(numpy.nanmin(scan_positions[..., 1])), float(numpy.nanmax(scan_positions[..., 1]))
 
         n_y = numpy.ceil((2.*pad[0] + y_max - y_min) / sampling[0]).astype(numpy.int_) + 1
         n_x = numpy.ceil((2.*pad[1] + x_max - x_min) / sampling[1]).astype(numpy.int_) + 1
@@ -129,7 +129,7 @@ class ObjectSampling:
         """
 
         idxs = self._pos_to_object_idx(numpy.array(pos), cutout_shape)
-        (start_i, start_j) = numpy.round(idxs).astype(numpy.int64)
+        (start_i, start_j) = map(int, numpy.round(idxs).astype(numpy.int64))
         assert start_i >= 0 and start_j >= 0
         return (
             slice(start_i, start_i + cutout_shape[-2]),

@@ -335,6 +335,7 @@ class Server:
             static_folder="dist",
         )
         self.app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 5
+        self.app.config['MAX_CONTENT_LENGTH'] = 512 * 1024 * 1024  # 512 MiB
 
         @self.app.after_serving
         async def shutdown():
@@ -403,6 +404,8 @@ class Server:
             loop.run_until_complete(
                 serve(self.app, Config.from_mapping(
                     bind="localhost:5050",
+                    #websocket_max_message_size="512MiB",
+                    #wsgi_max_body_size="512MiB",
                 ), shutdown_trigger=self.shutdown_event.wait)
             )
         finally:

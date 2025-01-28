@@ -56,7 +56,11 @@ def run_worker(url: str):
     def send_message(msg: WorkerMessage) -> ServerResponse:
         body = msg.into_data()
         resp: requests.Response = requests.post(url, json=body)
-        resp.raise_for_status()
+        try:
+            resp.raise_for_status()
+        except requests.RequestException as e:
+            e.add_note(f"Request size: {len(t.cast(bytes, resp.request.body))} bytes")
+            raise 
         return pane.convert(resp.json(), ServerResponse)  # type: ignore
 
     # make inital connection to server

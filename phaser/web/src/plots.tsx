@@ -33,14 +33,19 @@ export function ObjectPlot(props: ObjectPlotProps) {
         np.nanmax(phase).toNestedArray() as number
     ];
 
+    const aspect = nx / ny;
+    const size = 400.0;
+    // keep area constant
+    const [x_size, y_size] = [Math.ceil(size * Math.sqrt(aspect)), Math.ceil(size / Math.sqrt(aspect))];
+
     const axes: Map<string, AxisSpec> = new Map([
         ["x", {
-            scale: new PlotScale([0, nx], [0.0, 400.0]),
+            scale: new PlotScale([0, nx], [0.0, x_size]),
             label: "X",
             show: 'one',
         }],
         ["y", {
-            scale: new PlotScale([0, ny], [0.0, 400.0]),
+            scale: new PlotScale([0, ny], [0.0, y_size]),
             label: "Y",
             show: 'one',
         }],
