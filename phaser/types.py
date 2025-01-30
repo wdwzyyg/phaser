@@ -4,6 +4,9 @@ import numpy
 import pane
 
 
+BackendName: t.TypeAlias = t.Literal['cuda', 'cupy', 'jax', 'cpu']
+
+
 class Cancelled(BaseException):
     ...
 
@@ -35,5 +38,5 @@ Slices: t.TypeAlias = t.Union[SliceList, SliceStep, SliceTotal]
 
 
 __all__ = [
-    'Dataclass',
+    'BackendName', 'Dataclass', 'Slices'
 ]

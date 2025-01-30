@@ -4,12 +4,15 @@ General numeric utilities.
 
 from dataclasses import dataclass
 from functools import wraps
+import functools
 import logging
 import typing as t
 
 import numpy
-
 from numpy.typing import ArrayLike, DTypeLike, NDArray
+
+from phaser.types import BackendName
+
 
 NumT = t.TypeVar('NumT', bound=numpy.number)
 FloatT = t.TypeVar('FloatT', bound=numpy.floating)
@@ -25,6 +28,7 @@ IndexLike: t.TypeAlias = t.Union[
     t.Tuple[t.Union[int, NDArray[numpy.integer[t.Any]], NDArray[numpy.bool_]], ...],
 ]
 
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -34,6 +38,46 @@ try:
     #jax.config.update('jax_debug_nans', True)
 except ImportError:
     pass
+
+
+def get_backend_module(backend: t.Optional[BackendName] = None):
+    """Get the module `xp` associated with a compute backend"""
+    if backend is None:
+        return get_default_backend_module()
+
+    backend = t.cast(BackendName, backend.lower())
+    if backend not in ('cuda', 'cupy', 'jax', 'cpu'):
+        raise ValueError(f"Unknown backend '{backend}'")
+
+    if not t.TYPE_CHECKING:
+        try:
+            if backend == 'jax':
+                import jax.numpy
+                return jax.numpy
+            if backend in ('cupy', 'cuda'):
+                import cupy
+                return cupy
+        except ImportError:
+            raise ValueError(f"Backend '{backend}' is not available")
+
+    return numpy
+
+
+def get_default_backend_module():
+    if not t.TYPE_CHECKING:
+        try:
+            import jax.numpy
+            return jax.numpy
+        except ImportError:
+            pass
+
+        try:
+            import cupy
+            return cupy
+        except ImportError:
+            pass
+
+    return numpy
 
 
 def get_array_module(*arrs: ArrayLike):
@@ -142,12 +186,69 @@ def is_cupy(arr: NDArray[DTypeT]) -> bool:
     return isinstance(arr, cupy.ndarray)
 
 
-def is_jax(arr: NDArray[DTypeT]) -> bool:
+def is_jax(arr: t.Any) -> bool:
     try:
         import jax  # type: ignore
     except ImportError:
         return False
-    return isinstance(arr, jax.Array)
+    return any(
+        isinstance(arr, jax.Array) for arr in jax.tree.leaves(arr)
+    )
+
+
+def xp_is_cupy(xp: t.Any) -> bool:
+    try:
+        import cupy
+        return xp is cupy
+    except ImportError:
+        return False
+
+
+def xp_is_jax(xp: t.Any) -> bool:
+    try:
+        import jax.numpy
+        return xp is jax.numpy
+    except ImportError:
+        return False
+
+
+class _JitKernel(t.Generic[P, T]):
+    def __init__(
+        self, f: t.Callable[P, T], *,
+        static_argnums: t.Union[int, t.Sequence[int], None] = None,
+        static_argnames: t.Union[str, t.Iterable[str], None] = None,
+        donate_argnums: t.Union[int, t.Sequence[int], None] = None,
+        donate_argnames: t.Union[str, t.Iterable[str], None] = None,
+        inline: bool = False,
+        compiler_options: t.Optional[t.Dict[str, t.Any]] = None
+    ):
+        self.inner = f
+        functools.update_wrapper(self, f)
+
+        # in jax: self.__call__ -> jax.jit -> jax_f -> f
+        # otherwise: self.__call__ -> f
+        try:
+            import jax
+        except ImportError:
+            self.jax_jit = None
+        else:
+            @functools.wraps(f)
+            def jax_f(*args: P.args, **kwargs: P.kwargs) -> T:
+                logger.info(f"JIT-compiling kernel '{self.__qualname__}'...")
+                return self.inner(*args, **kwargs)
+
+            self.jax_jit = jax.jit(
+                jax_f, static_argnums=static_argnums, static_argnames=static_argnames,
+                donate_argnums=donate_argnums, donate_argnames=donate_argnames,
+                inline=inline, compiler_options=compiler_options
+            )
+
+
+    def __call__(self, *args: P.args, **kwargs: P.kwargs) -> T:
+        if self.jax_jit and (any(map(is_jax, args)) or any(map(is_jax, kwargs.values()))):  # type: ignore
+            return self.jax_jit(*args, **kwargs)
+
+        return self.inner(*args, **kwargs)
 
 
 def jit(
@@ -159,20 +260,11 @@ def jit(
         inline: bool = False,
         compiler_options: t.Optional[t.Dict[str, t.Any]] = None
 ) -> t.Callable[P, T]:
-    try:
-        @wraps(f)
-        def wrapper(*args, **kwargs):
-            logger.info(f"JIT-compiling kernel '{f.__qualname__}'...")
-            return f(*args, **kwargs)
-
-        import jax
-        return jax.jit(
-            wrapper, static_argnums=static_argnums, static_argnames=static_argnames,
-            donate_argnums=donate_argnums, donate_argnames=donate_argnames,
-            inline=inline, compiler_options=compiler_options
-        )
-    except ImportError:
-        return f
+    return _JitKernel(
+        f, static_argnums=static_argnums, static_argnames=static_argnames,
+        donate_argnums=donate_argnums, donate_argnames=donate_argnames,
+        inline=inline, compiler_options=compiler_options
+    )
 
 
 def debug_callback(callback: t.Callable[P, None], *args: P.args, **kwargs: P.kwargs):
