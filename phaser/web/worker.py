@@ -2,6 +2,7 @@ import dataclasses
 import logging
 import sys
 import traceback
+import time
 import typing as t
 
 import backoff
@@ -9,11 +10,11 @@ import requests
 
 import pane
 
-from phaser.execute import execute_plan, ReconsPlan
+from phaser.execute import execute_plan, Observer, ReconsPlan
 from phaser.state import ReconsState, PartialReconsState
 
 from .types import (
-    PollMessage, UpdateMessage, LogMessage, JobResultMessage,
+    PollMessage, PingMessage, UpdateMessage, LogMessage, JobResultMessage,
     WorkerShutdownMessage, WorkerMessage, ServerResponse, OkResponse
 )
 from .types import JobID, JobCancelled
@@ -36,20 +37,49 @@ class LogHandler(logging.Handler):
             self.handleError(record)
 
 
-def inspect(obj: t.Any, indent: str = ""):
-    if isinstance(obj, dict):
-        for (k, v) in obj.items():
-            print(f"{indent}{k}:")
-            inspect(v, f"{indent}  ")
-        return
+class WorkerObserver(Observer):
+    def __init__(self, job_id: JobID, send_message: t.Callable[[WorkerMessage], ServerResponse]):
+        super().__init__()
 
-    if isinstance(obj, (list, tuple)):
-        for (i, v) in enumerate(obj):
-            print(f"{indent}{i}:")
-            inspect(v, f"{indent}  ")
-        return
+        self._send_message: t.Callable[[WorkerMessage], ServerResponse] = send_message
+        self.job_id = job_id
+        self.msg_time = time.monotonic()
 
-    print(f"{indent}{type(obj).__name__}")
+    def send_message(self, msg: WorkerMessage) -> ServerResponse:
+        try:
+            resp = self._send_message(msg)
+        except (requests.RequestException, pane.ConvertError):
+            logging.error("Failed to update server", exc_info=sys.exc_info(), extra={'local': True})
+        else:
+            self.msg_time = time.monotonic()
+            if resp.msg == 'cancel':
+                raise JobCancelled(resp.shutdown, resp.urgent)
+        return resp
+
+    def send_update(self, state: t.Union[ReconsState, PartialReconsState]):
+        self.send_message(UpdateMessage.make_unchecked(
+            {k: v for (k, v) in dataclasses.asdict(state.to_numpy()).items() if v is not None},
+            self.job_id
+        ))
+
+    def init_solver(self, init_state: ReconsState, engine_i: int):
+        super().init_solver(init_state, engine_i)
+        self.send_update(init_state)
+
+    def heartbeat(self):
+        if (time.monotonic() - self.msg_time) > 5:
+            self.send_message(PingMessage())
+
+    def update_group(self, state: t.Union[ReconsState, PartialReconsState]):
+        super().update_group(state)
+
+        # update if we haven't updated in a while
+        if (time.monotonic() - self.msg_time) > 10:
+            self.send_update(state)
+
+    def update_iteration(self, state: t.Union[ReconsState, PartialReconsState], i: int, n: int):
+        super().update_iteration(state, i, n)
+        self.send_update(state)
 
 
 def run_worker(url: str):
@@ -89,28 +119,6 @@ def run_worker(url: str):
     def send_result(msg: JobResultMessage) -> ServerResponse:
         return send_message(msg)
 
-    # and observe state updates
-    def observer(job_id: JobID):
-        def observe(state: t.Union[ReconsState, PartialReconsState]):
-            #msg = UpdateMessage.make_unchecked(
-            #    {k: v for (k, v) in dataclasses.asdict(state.to_numpy()).items() if v is not None},
-            #        job_id
-            #)
-            #inspect(msg.into_data())
-            #return
-            try:
-                resp = send_message(UpdateMessage.make_unchecked(
-                    {k: v for (k, v) in dataclasses.asdict(state.to_numpy()).items() if v is not None},
-                    job_id
-                ))
-            except (requests.RequestException, pane.ConvertError):
-                logging.error("Failed to update server", exc_info=sys.exc_info(), extra={'local': True})
-            else:
-                if resp.msg == 'cancel':
-                    raise JobCancelled(resp.shutdown, resp.urgent)
-
-        return observe
-
     log_handler = LogHandler(send_message)
     logging.basicConfig(level=logging.INFO, handlers=[logging.StreamHandler(), log_handler])
     logger = logging.getLogger('worker')
@@ -136,7 +144,7 @@ def run_worker(url: str):
                 log_handler.job_id = resp.job_id
 
                 plan = ReconsPlan.from_jsons(resp.plan)
-                execute_plan(plan, [observer(resp.job_id)])
+                execute_plan(plan, WorkerObserver(resp.job_id, send_message))
 
             except JobCancelled as e:
                 logger.info("Job cancelled", extra={'local': True})

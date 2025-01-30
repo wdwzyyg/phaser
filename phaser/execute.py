@@ -1,25 +1,83 @@
 import logging
+import time
 import typing as t
 
 import numpy
 from numpy.typing import NDArray
 
 from phaser.hooks import RawData
-from phaser.utils.num import cast_array_module, to_numpy
+from phaser.utils.num import cast_array_module, get_backend_module, is_jax, xp_is_jax
 from phaser.utils.object import ObjectSampling
-from .plan import ReconsPlan, EnginePlan
-from .state import ObjectState, ReconsState, IterState, ProgressState, StateObserver
+from .plan import GradientEnginePlan, ReconsPlan, EnginePlan
+from .state import ObjectState, ReconsState, PartialReconsState, IterState, ProgressState, StateObserver
 
 
-def execute_plan(plan: ReconsPlan, observers: t.Sequence[StateObserver] = ()):
-    import cupy
-    xp = cast_array_module(cupy)
+class Observer:
+    def __init__(self):
+        self.solver_start_time: t.Optional[float] = None
+        self.iter_start_time: t.Optional[float] = None
+        self.engine_i: int = 0
+        self.start_iter: int = 0
 
-    raw_data, state = initialize_reconstruction(plan, xp, observers)
+    def _format_hhmmss(self, seconds: float) -> str:
+        hh, ss = divmod(seconds, (60 * 60))
+        mm, ss = divmod(ss, 60)
+        return f"{int(hh):02d}:{int(mm):02d}:{ss:06.3f}"
+
+    def _format_mmss(self, seconds: float) -> str:
+        mm, ss = divmod(seconds, 60)
+        return f"{int(mm):02d}:{ss:06.3f}"
+
+    def init_solver(self, init_state: ReconsState, engine_i: int):
+        self.engine_i = engine_i
+        self.start_iter = init_state.iter.total_iter
+
+        init_state.iter = IterState(self.engine_i, 0, self.start_iter)
+
+    def start_solver(self):
+        logging.info("Engine initialized")
+        self.iter_start_time = self.solver_start_time = time.monotonic()
+
+    def heartbeat(self):
+        pass
+
+    def update_group(self, state: t.Union[ReconsState, PartialReconsState]):
+        pass
+
+    def update_iteration(self, state: t.Union[ReconsState, PartialReconsState], i: int, n: int):
+        finish_time = time.monotonic()
+
+        if self.iter_start_time is not None:
+            delta = finish_time - self.iter_start_time
+            time_s = f" [{self._format_mmss(delta)}]"
+        else:
+            time_s = ""
+
+        w = len(str(n))
+        logging.info(f"Finished iter {i+1:{w}}/{n}{time_s}")
+
+        state.iter = IterState(self.engine_i, i, self.start_iter + i)
+        self.iter_start_time = finish_time
+
+    def finish_solver(self):
+        logging.info(f"Solver finished!")
+        if self.solver_start_time is not None:
+            finish_time = time.monotonic()
+            delta = finish_time - self.solver_start_time
+            print(f"Total time: {self._format_hhmmss(delta)}")
+
+
+def execute_plan(plan: ReconsPlan, observer: t.Optional[Observer] = None):
+    xp = get_backend_module(plan.backend)
+
+    if observer is None:
+        observer = Observer()
+
+    raw_data, state = initialize_reconstruction(plan, xp, observer)
 
     for (engine_i, engine) in enumerate(plan.engines):
         logging.info(f"Preparing for engine #{engine_i + 1}...")
-        raw_data, state = prepare_for_engine(raw_data, state, t.cast(EnginePlan, engine.props))
+        raw_data, state = prepare_for_engine(raw_data, state, xp, t.cast(EnginePlan, engine.props))
         state = engine({
             'state': state,
             'patterns': raw_data['patterns'],
@@ -27,13 +85,13 @@ def execute_plan(plan: ReconsPlan, observers: t.Sequence[StateObserver] = ()):
             'dtype': raw_data['patterns'].dtype,
             'xp': xp,
             'engine_i': engine_i,
-            'observers': observers,
+            'observer': observer,
         })
 
     logging.info("Reconstruction finished!")
 
 
-def initialize_reconstruction(plan: ReconsPlan, xp, observers: t.Sequence[StateObserver] = ()) -> t.Tuple[RawData, ReconsState]:
+def initialize_reconstruction(plan: ReconsPlan, xp: t.Any, observer: Observer) -> t.Tuple[RawData, ReconsState]:
     xp = cast_array_module(xp)
 
     logging.basicConfig(level=logging.INFO)
@@ -71,7 +129,7 @@ def initialize_reconstruction(plan: ReconsPlan, xp, observers: t.Sequence[StateO
     else:
         scan = plan.init_scan({'dtype': dtype, 'seed': seed, 'xp': xp})
 
-    obj_sampling = ObjectSampling.from_scan(scan, sampling.sampling, sampling.extent / 2. + 2. * sampling.sampling)
+    obj_sampling = ObjectSampling.from_scan(scan, sampling.sampling, sampling.extent / 2. + 3. * sampling.sampling)
 
     logging.info("Initializing object...")
     obj = plan.init_object({
@@ -94,10 +152,13 @@ def initialize_reconstruction(plan: ReconsPlan, xp, observers: t.Sequence[StateO
     return (raw_data, state)
 
 
-def prepare_for_engine(raw_data: RawData, state: ReconsState, engine: EnginePlan) -> t.Tuple[RawData, ReconsState]:
+def prepare_for_engine(raw_data: RawData, state: ReconsState, xp: t.Any, engine: EnginePlan) -> t.Tuple[RawData, ReconsState]:
     if engine.sim_shape is not None:
         if engine.sim_shape != state.probe.data.shape[-2:]:
             raise NotImplementedError()
+
+    if isinstance(engine, GradientEnginePlan) and not xp_is_jax(xp):
+        raise ValueError("The gradient descent engine requires the jax backend.")
 
     current_probe_modes = state.probe.data.shape[0]
     if engine.probe_modes != current_probe_modes:

@@ -9,6 +9,7 @@ from phaser.utils.optics import fourier_shift_filter, fresnel_propagator
 from phaser.utils.misc import create_compact_groupings, create_sparse_groupings
 from phaser.hooks import EngineArgs
 from phaser.plan import ConventionalEnginePlan
+from phaser.execute import Observer
 from phaser.engines.common.simulation import SimulationState
 from phaser.state import ReconsState, IterState, ProgressState, StateObserver
 
@@ -17,7 +18,7 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
 
     xp = cast_array_module(args['xp'])
     dtype = args['dtype']
-    observers: t.Sequence[StateObserver] = args.get('observers', [])
+    observer: Observer = args.get('observer', [])
 
     logger.info(f"Starting engine #{args['engine_i'] + 1}...")
 
@@ -35,6 +36,6 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
         'grouping': props.grouping or 64,
     })
 
-    sim = solver.solve(sim, observers=observers, engine_i=args['engine_i'])
+    sim = solver.solve(sim, observer=observer, engine_i=args['engine_i'])
 
     return sim.state

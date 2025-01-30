@@ -54,7 +54,7 @@ web = [
 packages = ["phaser"]
 
 [project.scripts]
-phaser = "phaser.main:main"
+phaser = "phaser.main:cli"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

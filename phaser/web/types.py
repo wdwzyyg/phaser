@@ -143,6 +143,10 @@ class PollMessage(pane.PaneBase):
     """Message polling the server for a job"""
     msg: t.Literal['poll'] = 'poll'
 
+class PingMessage(pane.PaneBase):
+    """Message pinging the server, potentially receiving a cancellation"""
+    msg: t.Literal['ping'] = 'ping'
+
 class UpdateMessage(pane.PaneBase):
     """Message containing some state update"""
     state: t.Dict[str, t.Any] = pane.field(converter=ReconsStateConverter())
@@ -222,7 +226,7 @@ class OkResponse(pane.PaneBase):
     msg: t.Literal['ok'] = 'ok'
 
 WorkerMessage: t.TypeAlias = t.Annotated[t.Union[
-    PollMessage, UpdateMessage,
+    PollMessage, PingMessage, UpdateMessage,
     LogMessage, JobResultMessage, WorkerShutdownMessage,
 ], Tagged('msg')]
 

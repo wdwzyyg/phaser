@@ -10,7 +10,7 @@ from phaser.utils.num import cast_array_module, at, abs2, fft2, ifft2, jit, chec
 from phaser.utils.misc import create_compact_groupings, create_sparse_groupings
 from phaser.hooks.solver import ConventionalSolver, ConventionalSolverArgs
 from phaser.plan import LSQMLSolverPlan, EPIESolverPlan
-from phaser.state import IterState, StateObserver
+from phaser.execute import Observer
 from phaser.engines.common.simulation import SimulationState, make_propagators, cutout_group, slice_forwards, slice_backwards
 
 
@@ -21,16 +21,12 @@ class LSQMLSolver(ConventionalSolver):
         self.grouping: int = args['grouping']
         self.compact: bool = args['compact']
 
-    def solve(self, sim: SimulationState, engine_i: int, observers: t.Sequence[StateObserver] = ()) -> SimulationState:
+    def solve(self, sim: SimulationState, engine_i: int, observer: Observer) -> SimulationState:
         logger = logging.getLogger(__name__)
         xp = cast_array_module(sim.xp)
         real_dtype = sim.dtype
 
-        start_i = sim.state.iter.total_iter
-        sim.state.iter = IterState(engine_i, 0, start_i)
-
-        for observer in observers:
-            observer(sim.state)
+        observer.init_solver(sim.state, engine_i)
 
         if self.compact:
             groups = create_compact_groupings(sim.state.scan, self.grouping)
@@ -54,20 +50,17 @@ class LSQMLSolver(ConventionalSolver):
         rescale_factors = numpy.concatenate(rescale_factors, axis=0)
         rescale_factor = numpy.mean(rescale_factors)
 
-        logging.info("Pre-calculated intensities")
-        logging.info(f"Rescaling initial probe by {rescale_factor}")
+        logger.info("Pre-calculated intensities")
+        logger.info(f"Rescaling initial probe by {rescale_factor}")
         sim.state.probe.data *= rescale_factor
 
-        # TODO: rescale probe intensity
+        observer.start_solver()
 
         for i in range(self.niter):
             new_obj_mag = xp.zeros_like(obj_mag)
             new_probe_mag = xp.zeros_like(probe_mag)
 
             for (group_i, group) in enumerate(groups):
-                #if group_i % 10:
-                #    for observer in observers:
-                #        observer(sim.state)
                 (sim, obj_mag, probe_mag, new_obj_mag, new_probe_mag) = lsqml_run(
                     sim, group, props=props,
                     obj_mag=obj_mag, probe_mag=probe_mag,
@@ -83,19 +76,19 @@ class LSQMLSolver(ConventionalSolver):
                 assert sim.state.object.data.dtype == to_complex_dtype(sim.dtype)
                 assert sim.state.probe.data.dtype == to_complex_dtype(sim.dtype)
 
+                observer.update_group(sim.state)
+
             obj_mag = new_obj_mag
             probe_mag = new_probe_mag
 
-            logger.info(f"Finished iter {i+1:3}/{self.niter:3}")
+            observer.update_iteration(sim.state, i, self.niter)
 
-            sim.state.iter = IterState(engine_i, i, start_i + i)
-            for observer in observers:
-                observer(sim.state)
+        observer.finish_solver()
 
         return sim
 
 
-#@partial(jit, donate_argnames=('obj_mag', 'probe_mag'))
+@partial(jit, donate_argnames=('obj_mag', 'probe_mag'))
 def lsqml_dry_run(
     sim: SimulationState,
     props: t.Optional[NDArray[numpy.complexfloating]],
@@ -133,7 +126,7 @@ def lsqml_dry_run(
 
 # TODO: pass LSQMLSolverPlan in here for parameters
 
-#@partial(jit, donate_argnames=('sim', 'obj_mag', 'probe_mag', 'new_obj_mag', 'new_probe_mag'))
+@partial(jit, donate_argnames=('sim', 'obj_mag', 'probe_mag', 'new_obj_mag', 'new_probe_mag'))
 def lsqml_run(
     sim: SimulationState,
     group: NDArray[numpy.integer], *,
@@ -232,14 +225,10 @@ class EPIESolver(ConventionalSolver):
         self.grouping: int = args['grouping']
         self.compact: bool = args['compact']
 
-    def solve(self, sim: SimulationState, engine_i: int, observers: t.Sequence[StateObserver] = ()) -> SimulationState:
+    def solve(self, sim: SimulationState, engine_i: int, observer: Observer) -> SimulationState:
         logger = logging.getLogger(__name__)
 
-        start_i = sim.state.iter.total_iter
-        sim.state.iter = IterState(engine_i, 0, start_i)
-
-        for observer in observers:
-            observer(sim.state)
+        observer.init_solver(sim.state, engine_i)
 
         if self.compact:
             groups = create_compact_groupings(sim.state.scan, self.grouping)
@@ -257,15 +246,15 @@ class EPIESolver(ConventionalSolver):
         rescale_factors = numpy.concatenate(rescale_factors, axis=0)
         rescale_factor = numpy.mean(rescale_factors)
 
-        logging.info("Pre-calculated intensities")
-        logging.info(f"Rescaling initial probe by {rescale_factor}")
+        logger.info("Pre-calculated intensities")
+        logger.info(f"Rescaling initial probe by {rescale_factor}")
         sim.state.probe.data *= rescale_factor
+
+        observer.start_solver()
 
         for i in range(self.niter):
             for (group_i, group) in enumerate(groups):
-                if group_i % 50:
-                    for observer in observers:
-                        observer(sim.state)
+                observer.update_group(sim.state)
                 sim = epie_run(
                     sim, group, props=props,
                     beta_object=self.plan.beta_object,
@@ -276,16 +265,14 @@ class EPIESolver(ConventionalSolver):
                 assert sim.state.object.data.dtype == to_complex_dtype(sim.dtype)
                 assert sim.state.probe.data.dtype == to_complex_dtype(sim.dtype)
 
-            logger.info(f"Finished iter {i+1:3}/{self.niter:3}")
+            observer.update_iteration(sim.state, i, self.niter)
 
-            sim.state.iter = IterState(engine_i, i, start_i + i)
-            for observer in observers:
-                observer(sim.state)
+        observer.finish_solver()
 
         return sim
 
 
-#@partial(jit)
+@partial(jit)
 def epie_dry_run(
     sim: SimulationState,
     props: t.Optional[NDArray[numpy.complexfloating]],
@@ -311,7 +298,7 @@ def epie_dry_run(
     return rescale_factors
 
 
-#@partial(jit, donate_argnames=('sim',))
+@partial(jit, donate_argnames=('sim',))
 def epie_run(
     sim: SimulationState,
     group: NDArray[numpy.integer], *,

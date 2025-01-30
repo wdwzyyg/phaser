@@ -10,7 +10,7 @@ StateT = t.TypeVar('StateT')
 
 if t.TYPE_CHECKING:
     from phaser.engines.common.simulation import SimulationState
-    from phaser.state import StateObserver
+    from phaser.execute import Observer
 
 
 class NoiseModel(abc.ABC, t.Generic[StateT]):
@@ -67,7 +67,7 @@ class ConventionalSolver(abc.ABC):
         self,
         sim: 'SimulationState',
         engine_i: int,
-        observers: t.Sequence['StateObserver'] = ()
+        observer: 'Observer',
     ) -> 'SimulationState':
         ...
 

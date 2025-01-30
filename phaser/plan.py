@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import typing as t
 
-from .types import Dataclass, Slices
+from .types import Dataclass, Slices, BackendName
 from .hooks import RawDataHook, ProbeHook, ObjectHook, ScanHook, EngineHook
 from .hooks.solver import NoiseModelHook, ConventionalSolverHook
 
@@ -72,7 +72,7 @@ EngineHook.known['gradient'] = ('phaser.engines.gradient.run:run_engine', Gradie
 
 
 class ReconsPlan(Dataclass, kw_only=True):
-    backend: t.Optional[t.Literal['gpu', 'cpu']] = None
+    backend: t.Optional[BackendName] = None
     dtype: t.Literal['float32', 'float64'] = 'float32'
 
     wavelength: t.Optional[float] = None
