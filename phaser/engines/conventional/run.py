@@ -1,17 +1,14 @@
 import logging
 import typing as t
 
-import numpy
-from numpy.typing import NDArray
-
-from phaser.utils.num import cast_array_module, fft2, ifft2, abs2, jit
-from phaser.utils.optics import fourier_shift_filter, fresnel_propagator
-from phaser.utils.misc import create_compact_groupings, create_sparse_groupings
+from phaser.hooks.solver import ConstraintRegularizer
+from phaser.utils.num import cast_array_module
 from phaser.hooks import EngineArgs
 from phaser.plan import ConventionalEnginePlan
 from phaser.execute import Observer
 from phaser.engines.common.simulation import SimulationState
-from phaser.state import ReconsState, IterState, ProgressState, StateObserver
+from phaser.state import ReconsState
+
 
 def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
     logger = logging.getLogger(__name__)
@@ -23,19 +20,17 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
     logger.info(f"Starting engine #{args['engine_i'] + 1}...")
 
     noise_model = props.noise_model(None)
+    regularizers = t.cast(t.Tuple[ConstraintRegularizer, ...], tuple(
+        reg(None) for reg in props.regularizers
+    ))
 
     sim = SimulationState(
-        state=args['state'], noise_model=noise_model,
+        state=args['state'], noise_model=noise_model, regularizers=regularizers,
         patterns=args['patterns'], pattern_mask=args['pattern_mask'],
         xp=xp, dtype=dtype
     )
 
-    solver = props.solver({
-        'niter': props.niter,
-        'compact': props.compact,
-        'grouping': props.grouping or 64,
-    })
-
+    solver = props.solver(props)
     sim = solver.solve(sim, observer=observer, engine_i=args['engine_i'])
 
     return sim.state

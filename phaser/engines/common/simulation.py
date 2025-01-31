@@ -8,20 +8,21 @@ from phaser.utils.num import cast_array_module, to_complex_dtype, fft2, ifft2, i
 from phaser.utils.misc import FloatKey
 from phaser.utils.optics import fresnel_propagator, fourier_shift_filter
 from phaser.state import ReconsState
-from phaser.hooks.solver import NoiseModel, StateT
+from phaser.hooks.solver import NoiseModel, ConstraintRegularizer, StateT
 
 
 @dataclass(init=False)
-class SimulationState(t.Generic[StateT]):
+class SimulationState:
     state: ReconsState
-    noise_model_state: StateT
+    noise_model_state: t.Any
     patterns: NDArray[numpy.floating]
     pattern_mask: NDArray[numpy.floating]
 
     ky: NDArray[numpy.floating]
     kx: NDArray[numpy.floating]
 
-    noise_model: NoiseModel[StateT]
+    noise_model: NoiseModel
+    regularizers: t.Tuple[ConstraintRegularizer, ...]
     xp: t.Any
     dtype: DTypeLike
     start_iter: int
@@ -32,10 +33,12 @@ class SimulationState(t.Generic[StateT]):
         self, *,
         state: ReconsState,
         noise_model: NoiseModel[StateT],
+        regularizers: t.Tuple[ConstraintRegularizer, ...],
         patterns: NDArray[numpy.floating],
         pattern_mask: NDArray[numpy.floating],
         xp: t.Any,
         dtype: DTypeLike,
+        regularizer_states: t.Optional[t.Tuple[ConstraintRegularizer, ...]] = None,
         noise_model_state: t.Optional[StateT] = None,
         start_iter: t.Optional[int] = None
     ):
@@ -45,12 +48,18 @@ class SimulationState(t.Generic[StateT]):
         self.patterns = patterns
         self.pattern_mask = xp.array(pattern_mask)
 
+        self.regularizers = regularizers
         self.noise_model = noise_model
-        self.noise_model_state = noise_model_state or noise_model.init_state()
         (self.ky, self.kx) = state.probe.sampling.recip_grid(dtype=dtype, xp=xp)
 
         self.start_iter = start_iter if start_iter is not None else self.state.iter.total_iter
         self.propagators = None
+
+        self.noise_model_state = noise_model_state or noise_model.init_state(self)
+
+        self.regularizer_states = regularizer_states if regularizer_states is not None else tuple(
+            reg.init_state(self) for reg in regularizers
+        )
 
 
 def make_propagators(sim: SimulationState) -> t.Optional[NDArray[numpy.complexfloating]]:
@@ -150,6 +159,6 @@ else:
     jax.tree_util.register_dataclass(
         SimulationState,
         ('state', 'noise_model_state', 'patterns', 'pattern_mask', 'start_iter'),
-        ('xp', 'dtype', 'noise_model'),
+        ('xp', 'dtype', 'noise_model', 'regularizers'),
         ('ky', 'kx', 'propagators')
     )

@@ -8,18 +8,16 @@ from numpy.typing import NDArray
 
 from phaser.utils.num import cast_array_module, at, abs2, fft2, ifft2, jit, check_finite, to_complex_dtype, to_numpy
 from phaser.utils.misc import create_compact_groupings, create_sparse_groupings
-from phaser.hooks.solver import ConventionalSolver, ConventionalSolverArgs
-from phaser.plan import LSQMLSolverPlan, EPIESolverPlan
+from phaser.hooks.solver import ConstraintRegularizer, ConventionalSolver
+from phaser.plan import ConventionalEnginePlan, LSQMLSolverPlan, EPIESolverPlan
 from phaser.execute import Observer
 from phaser.engines.common.simulation import SimulationState, make_propagators, cutout_group, slice_forwards, slice_backwards
 
 
 class LSQMLSolver(ConventionalSolver):
-    def __init__(self, args: ConventionalSolverArgs, props: LSQMLSolverPlan):
+    def __init__(self, plan: ConventionalEnginePlan, props: LSQMLSolverPlan):
         self.plan: LSQMLSolverPlan = props
-        self.niter: int = args['niter']
-        self.grouping: int = args['grouping']
-        self.compact: bool = args['compact']
+        self.engine_plan: ConventionalEnginePlan = plan
 
     def solve(self, sim: SimulationState, engine_i: int, observer: Observer) -> SimulationState:
         logger = logging.getLogger(__name__)
@@ -28,10 +26,10 @@ class LSQMLSolver(ConventionalSolver):
 
         observer.init_solver(sim.state, engine_i)
 
-        if self.compact:
-            groups = create_compact_groupings(sim.state.scan, self.grouping)
+        if self.engine_plan.compact:
+            groups = create_compact_groupings(sim.state.scan, self.engine_plan.grouping or 64)
         else:
-            groups = create_sparse_groupings(sim.state.scan, self.grouping)
+            groups = create_sparse_groupings(sim.state.scan, self.engine_plan.grouping or 64)
 
         cutout_shape = sim.state.probe.data.shape[-2:]
         props = make_propagators(sim)
@@ -56,7 +54,7 @@ class LSQMLSolver(ConventionalSolver):
 
         observer.start_solver()
 
-        for i in range(self.niter):
+        for i in range(self.engine_plan.niter):
             new_obj_mag = xp.zeros_like(obj_mag)
             new_probe_mag = xp.zeros_like(probe_mag)
 
@@ -73,6 +71,8 @@ class LSQMLSolver(ConventionalSolver):
                 )
                 check_finite(sim.state.object.data, sim.state.probe.data, context=f"object or probe, group {group_i}")
 
+                sim = apply_regularizers_group(sim, group)
+
                 assert sim.state.object.data.dtype == to_complex_dtype(sim.dtype)
                 assert sim.state.probe.data.dtype == to_complex_dtype(sim.dtype)
 
@@ -81,7 +81,9 @@ class LSQMLSolver(ConventionalSolver):
             obj_mag = new_obj_mag
             probe_mag = new_probe_mag
 
-            observer.update_iteration(sim.state, i, self.niter)
+            sim = apply_regularizers_iter(sim)
+
+            observer.update_iteration(sim.state, i, self.engine_plan.niter)
 
         observer.finish_solver()
 
@@ -191,9 +193,9 @@ def lsqml_run(
         # average object update
         delta_O_avg = xp.zeros_like(sim.state.object.data[0])
         delta_O_avg = obj_grid.add_view_at_pos(delta_O_avg, group_scan, xp.sum(delta_O, axis=1))
-        delta_O_avg /= (group_probe_mag[slice_i] + illum_reg_object)
+        delta_O_avg /= (probe_mag[slice_i] + illum_reg_object * xp.max(probe_mag[slice_i]))
 
-        obj_update = beta_object * xp.sum(alpha_O * delta_O_avg * group_probe_mag[slice_i], axis=0) / (group_probe_mag[slice_i] + eps)
+        obj_update = beta_object/n_slices * xp.sum(alpha_O * delta_O_avg * group_probe_mag[slice_i], axis=0) / (group_probe_mag[slice_i] + eps)
         sim.state.object.data = at(sim.state.object.data, slice_i).add(obj_update)
 
         if prop is None:
@@ -219,21 +221,19 @@ def lsqml_run(
 
 
 class EPIESolver(ConventionalSolver):
-    def __init__(self, args: ConventionalSolverArgs, props: EPIESolverPlan):
+    def __init__(self, engine_plan: ConventionalEnginePlan, props: EPIESolverPlan):
+        self.engine_plan: ConventionalEnginePlan = engine_plan
         self.plan: EPIESolverPlan = props
-        self.niter: int = args['niter']
-        self.grouping: int = args['grouping']
-        self.compact: bool = args['compact']
 
     def solve(self, sim: SimulationState, engine_i: int, observer: Observer) -> SimulationState:
         logger = logging.getLogger(__name__)
 
         observer.init_solver(sim.state, engine_i)
 
-        if self.compact:
-            groups = create_compact_groupings(sim.state.scan, self.grouping)
+        if self.engine_plan.compact:
+            groups = create_compact_groupings(sim.state.scan, self.engine_plan.grouping or 64)
         else:
-            groups = create_sparse_groupings(sim.state.scan, self.grouping)
+            groups = create_sparse_groupings(sim.state.scan, self.engine_plan.grouping or 64)
 
         props = make_propagators(sim)
 
@@ -252,7 +252,7 @@ class EPIESolver(ConventionalSolver):
 
         observer.start_solver()
 
-        for i in range(self.niter):
+        for i in range(self.engine_plan.niter):
             for (group_i, group) in enumerate(groups):
                 observer.update_group(sim.state)
                 sim = epie_run(
@@ -262,10 +262,13 @@ class EPIESolver(ConventionalSolver):
                 )
                 check_finite(sim.state.object.data, sim.state.probe.data, context=f"object or probe, group {group_i}")
 
+                sim = apply_regularizers_group(sim, group)
+
                 assert sim.state.object.data.dtype == to_complex_dtype(sim.dtype)
                 assert sim.state.probe.data.dtype == to_complex_dtype(sim.dtype)
 
-            observer.update_iteration(sim.state, i, self.niter)
+            sim = apply_regularizers_iter(sim)
+            observer.update_iteration(sim.state, i, self.engine_plan.niter)
 
         observer.finish_solver()
 
@@ -356,5 +359,33 @@ def epie_run(
         return (sim, psi_opt)
 
     (sim, psi_opt) = slice_backwards(props, (sim, psi_opt), update_slice)
+
+    return sim
+
+
+def apply_regularizers_group(sim: SimulationState, group: NDArray[numpy.integer]) -> SimulationState:
+
+    def apply_reg(reg: ConstraintRegularizer, state: t.Any):
+        nonlocal sim
+        (sim, state) = reg.apply_group(group, sim, state)
+        return state
+
+    sim.regularizer_states = tuple(
+        apply_reg(reg, state) for (reg, state) in zip(sim.regularizers, sim.regularizer_states)
+    )
+
+    return sim
+
+
+def apply_regularizers_iter(sim: SimulationState) -> SimulationState:
+
+    def apply_reg(reg: ConstraintRegularizer, state: t.Any):
+        nonlocal sim
+        (sim, state) = reg.apply_iter(sim, state)
+        return state
+
+    sim.regularizer_states = tuple(
+        apply_reg(reg, state) for (reg, state) in zip(sim.regularizers, sim.regularizer_states)
+    )
 
     return sim

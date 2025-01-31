@@ -4,6 +4,7 @@ import typing as t
 import numpy
 from numpy.typing import NDArray
 
+from phaser.types import Dataclass
 from . import Hook
 
 StateT = t.TypeVar('StateT')
@@ -11,11 +12,12 @@ StateT = t.TypeVar('StateT')
 if t.TYPE_CHECKING:
     from phaser.engines.common.simulation import SimulationState
     from phaser.execute import Observer
+    from phaser.plan import ConventionalEnginePlan
 
 
 class NoiseModel(abc.ABC, t.Generic[StateT]):
     @abc.abstractmethod
-    def init_state(self) -> StateT:
+    def init_state(self, sim: 'SimulationState') -> StateT:
         ...
 
     @abc.abstractmethod
@@ -55,10 +57,41 @@ class NoiseModelHook(Hook[None, NoiseModel]):
     known = {}
 
 
-class ConventionalSolverArgs(t.TypedDict):
-    niter: int
-    grouping: int
-    compact: bool
+# refactoring:
+# HasState should be an interface, as well as the different ways of regularization + noise model
+# then there can be a list of each of these types in the engine
+
+
+class ConstraintRegularizer(abc.ABC, t.Generic[StateT]):
+    @abc.abstractmethod
+    def init_state(self, sim: 'SimulationState') -> StateT:
+        ...
+
+    def apply_group(self, group: NDArray[numpy.integer], sim: 'SimulationState', state: StateT) -> t.Tuple['SimulationState', StateT]:
+        return (sim, state)
+
+    def apply_iter(self, sim: 'SimulationState', state: StateT) -> t.Tuple['SimulationState', StateT]:
+        return (sim, state)
+
+
+class GradientRegularizer(abc.ABC, t.Generic[StateT]):
+    @abc.abstractmethod
+    def init_state(self, sim: 'SimulationState') -> StateT:
+        ...
+
+    @abc.abstractmethod
+    def calc_loss_group(self, group: NDArray[numpy.integer], sim: 'SimulationState', state: StateT) -> t.Tuple[float, StateT]:
+        ...
+
+
+class ClampObjectAmplitudeProps(Dataclass):
+    amplitude: float = 1.5
+
+
+class RegularizerHook(Hook[None, t.Union[ConstraintRegularizer, GradientRegularizer]]):
+    known = {
+        'clamp_object_amplitude': ('phaser.engines.common.regularizers:ClampObjectAmplitude', ClampObjectAmplitudeProps),
+    }
 
 
 class ConventionalSolver(abc.ABC):
@@ -72,5 +105,5 @@ class ConventionalSolver(abc.ABC):
         ...
 
 
-class ConventionalSolverHook(Hook[ConventionalSolverArgs, ConventionalSolver]):
+class ConventionalSolverHook(Hook['ConventionalEnginePlan', ConventionalSolver]):
     known = {}

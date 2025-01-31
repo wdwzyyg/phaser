@@ -7,13 +7,14 @@ from numpy.typing import NDArray
 from phaser.hooks.solver import NoiseModel
 from phaser.plan import AnascombeNoisePlan, GaussianNoisePlan
 from phaser.utils.num import get_array_module
+from .simulation import SimulationState
 
 
 class AnascombeNoiseModel(NoiseModel[None]):
     def __init__(self, args: None, props: AnascombeNoisePlan):
         self.bias: float = props.bias
 
-    def init_state(self) -> None:
+    def init_state(self, sim: SimulationState) -> None:
         return None
 
     def calc_loss(
@@ -51,7 +52,7 @@ class GaussianNoiseModel(NoiseModel[None]):
     def __init__(self, args: None, props: GaussianNoisePlan):
         pass
 
-    def init_state(self) -> None:
+    def init_state(self, sim: SimulationState) -> None:
         return None
 
     def calc_loss(
@@ -66,7 +67,7 @@ class GaussianNoiseModel(NoiseModel[None]):
 
         return (xp.linalg.norm(
             mask * (exp_patterns - model_intensity)
-        ) / model_wave.shape[0], state)
+        ) / model_wave.shape[0], state)  # type: ignore
 
     def calc_wave_update(
         self,

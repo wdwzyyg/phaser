@@ -4,7 +4,7 @@ import typing as t
 
 from .types import Dataclass, Slices, BackendName
 from .hooks import RawDataHook, ProbeHook, ObjectHook, ScanHook, EngineHook
-from .hooks.solver import NoiseModelHook, ConventionalSolverHook
+from .hooks.solver import NoiseModelHook, ConventionalSolverHook, RegularizerHook
 
 
 class EnginePlan(Dataclass, kw_only=True):
@@ -61,6 +61,8 @@ class ConventionalEnginePlan(EnginePlan, kw_only=True):
     #detector_model: t.Annotated[t.Union[ModulusConstraint], Tagged('type')]
     noise_model: NoiseModelHook
     solver: ConventionalSolverHook
+
+    regularizers: t.List[RegularizerHook]
 
 
 class GradientEnginePlan(EnginePlan):
