@@ -88,9 +88,14 @@ class ClampObjectAmplitudeProps(Dataclass):
     amplitude: float = 1.1
 
 
+class LimitProbeSupportProps(Dataclass):
+    max_angle: float
+
+
 class RegularizerHook(Hook[None, t.Union[ConstraintRegularizer, GradientRegularizer]]):
     known = {
         'clamp_object_amplitude': ('phaser.engines.common.regularizers:ClampObjectAmplitude', ClampObjectAmplitudeProps),
+        'limit_probe_support': ('phaser.engines.common.regularizers:LimitProbeSupport', LimitProbeSupportProps),
     }
 
 

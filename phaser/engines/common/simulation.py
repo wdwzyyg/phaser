@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import logging
 import typing as t
 
 import numpy
@@ -9,6 +10,8 @@ from phaser.utils.misc import FloatKey
 from phaser.utils.optics import fresnel_propagator, fourier_shift_filter
 from phaser.state import ReconsState
 from phaser.hooks.solver import NoiseModel, ConstraintRegularizer, StateT
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(init=False)
@@ -70,8 +73,11 @@ def make_propagators(sim: SimulationState) -> t.Optional[NDArray[numpy.complexfl
     unique_zs = set(map(FloatKey, delta_zs))
     complex_dtype = to_complex_dtype(sim.dtype)
 
+    bwlim = numpy.min(sim.state.probe.sampling.k_max) * 0.9 #* 2./3.
+
     k2 = sim.ky**2 + sim.kx**2
-    bwlim_mask = k2 <= sim.state.probe.sampling.bwlim()
+    bwlim_mask = k2 <= bwlim**2
+    logger.info(f"Bandwidth limit: {bwlim * sim.state.wavelength * 1e3:6.2f} mrad")
 
     props = {
         z: fresnel_propagator(sim.ky, sim.kx, sim.state.wavelength, z).astype(complex_dtype) * bwlim_mask

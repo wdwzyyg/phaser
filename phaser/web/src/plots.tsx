@@ -22,15 +22,32 @@ export function ObjectPlot(props: ObjectPlotProps) {
     if (!object || !np) return <div></div>;
     let object_data = object.data;
 
-    while (object_data.shape.length > 2) {
-        object_data = np.nanmean(object_data, [0]);
+    let phase = np.angle(object_data);
+    while (phase.shape.length > 2) {
+        phase = np.nansum(phase, [0]);
     }
-    const [ny, nx] = object_data.shape.values();
 
-    const phase = np.angle(object_data);
+    const [ny, nx] = phase.shape.values();
+
+    let phase_cropped;
+    if (object.sampling.region_min && object.sampling.region_max) {
+        // y position = y index * sampling + corner
+        // y index = (y position - corner) / sampling
+        const [y_min, y_max, x_min, x_max] = [
+            Math.ceil((object.sampling.region_min[0] - object.sampling.corner[0]) / object.sampling.sampling[0]),
+            Math.floor((object.sampling.region_max[0] - object.sampling.corner[0]) / object.sampling.sampling[0]),
+            Math.ceil((object.sampling.region_min[1] - object.sampling.corner[1]) / object.sampling.sampling[1]),
+            Math.floor((object.sampling.region_max[1] - object.sampling.corner[1]) / object.sampling.sampling[1]),
+        ];
+
+        phase_cropped = phase.slice(new np.Slice(y_min, y_max), new np.Slice(x_min, x_max));
+    } else {
+        phase_cropped = phase;
+    }
+
     const [vmin, vmax]: [number, number] = [
-        np.nanmin(phase).toNestedArray() as number,
-        np.nanmax(phase).toNestedArray() as number
+        np.nanmin(phase_cropped).toNestedArray() as number,
+        np.nanmax(phase_cropped).toNestedArray() as number
     ];
 
     const aspect = nx / ny;
@@ -40,12 +57,12 @@ export function ObjectPlot(props: ObjectPlotProps) {
 
     const axes: Map<string, AxisSpec> = new Map([
         ["x", {
-            scale: new PlotScale([0, nx], [0.0, x_size]),
+            scale: new PlotScale([object.sampling.corner[1], object.sampling.corner[1] + nx * object.sampling.sampling[1]], [0.0, x_size]),
             label: "X",
             show: 'one',
         }],
         ["y", {
-            scale: new PlotScale([0, ny], [0.0, y_size]),
+            scale: new PlotScale([object.sampling.corner[0], object.sampling.corner[0] + ny * object.sampling.sampling[0]], [0.0, y_size]),
             label: "Y",
             show: 'one',
         }],

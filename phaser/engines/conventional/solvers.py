@@ -65,8 +65,6 @@ class LSQMLSolver(ConventionalSolver):
             iter_update_object = update_object({'state': sim.state, 'niter': self.engine_plan.niter})
             iter_update_probe = update_probe({'state': sim.state, 'niter': self.engine_plan.niter})
 
-            print(f"update object: {iter_update_object}  probe: {iter_update_probe}")
-
             for (group_i, group) in enumerate(groups):
                 (sim, obj_mag, probe_mag, new_obj_mag, new_probe_mag) = lsqml_run(
                     sim, group, props=props,

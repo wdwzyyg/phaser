@@ -1,4 +1,5 @@
 ---
+backend: cupy
 
 # raw data source
 raw_data:
@@ -29,16 +30,20 @@ engines:
  - type: 'conventional'
    probe_modes: 4
    niter: 100
-   grouping: 8
+   grouping: 128
 
    noise_model:
      type: 'anascombe'
-     bias: 1.0e-10
+     bias: 1.0e-3
 
    solver:
      type: 'lsqml'
-     beta_probe: 1.0
-     beta_object: 0.5
+     beta_probe: 0.1
+     beta_object: 1.0
      illum_reg_object: 1.0e-2
      illum_reg_probe: 1.0e-2
-     gamma: 1.0e-4
+     gamma: 1.0e-8
+
+   regularizers: []
+
+   update_probe: {after: 5}
