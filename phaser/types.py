@@ -3,6 +3,9 @@ import typing as t
 import numpy
 import pane
 
+if t.TYPE_CHECKING:
+    from phaser.hooks import FlagArgs
+
 
 BackendName: t.TypeAlias = t.Literal['cuda', 'cupy', 'jax', 'cpu']
 
@@ -37,6 +40,23 @@ class SliceTotal(Dataclass):
 Slices: t.TypeAlias = t.Union[SliceList, SliceStep, SliceTotal]
 
 
+class Flag(Dataclass):
+    after: int = 0
+    every: int = 1
+    before: t.Optional[int] = None
+
+    def __call__(self, args: 'FlagArgs') -> bool:
+        i = args['state'].iter.engine_iter
+        return (
+            (i < self.before if self.before is not None else True)
+            and i > self.after
+            and (i - self.after) % self.every == 0
+        )
+
+    def resolve(self) -> t.Self:
+        return self
+
+
 __all__ = [
-    'BackendName', 'Dataclass', 'Slices'
+    'BackendName', 'Dataclass', 'Slices', 'Flag',
 ]

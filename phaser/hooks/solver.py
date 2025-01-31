@@ -5,7 +5,7 @@ import numpy
 from numpy.typing import NDArray
 
 from phaser.types import Dataclass
-from . import Hook
+from . import Hook, FlagArgs
 
 StateT = t.TypeVar('StateT')
 
@@ -85,7 +85,7 @@ class GradientRegularizer(abc.ABC, t.Generic[StateT]):
 
 
 class ClampObjectAmplitudeProps(Dataclass):
-    amplitude: float = 1.5
+    amplitude: float = 1.1
 
 
 class RegularizerHook(Hook[None, t.Union[ConstraintRegularizer, GradientRegularizer]]):
@@ -101,6 +101,8 @@ class ConventionalSolver(abc.ABC):
         sim: 'SimulationState',
         engine_i: int,
         observer: 'Observer',
+        update_probe: t.Callable[[FlagArgs], bool],
+        update_object: t.Callable[[FlagArgs], bool],
     ) -> 'SimulationState':
         ...
 

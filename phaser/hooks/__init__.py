@@ -7,17 +7,19 @@ import typing as t
 import numpy
 from numpy.typing import NDArray, DTypeLike
 
-from phaser.utils.num import Sampling
-from phaser.utils.object import ObjectSampling
 from ..types import Dataclass, Slices
-from ..state import ObjectState, ProbeState, ReconsState, StateObserver
 from .hook import Hook
+
+if t.TYPE_CHECKING:
+    from phaser.utils.num import Sampling
+    from phaser.utils.object import ObjectSampling
+    from ..state import ObjectState, ProbeState, ReconsState
 
 
 class RawData(t.TypedDict):
     patterns: NDArray[numpy.floating]
     mask: NDArray[numpy.floating]
-    sampling: Sampling
+    sampling: 'Sampling'
     wavelength: t.Optional[float]
     scan: t.Optional[NDArray[numpy.floating]]
     probe_options: t.Any
@@ -37,7 +39,7 @@ class RawDataHook(Hook[None, RawData]):
 
 
 class ProbeHookArgs(t.TypedDict):
-    sampling: Sampling
+    sampling: 'Sampling'
     wavelength: float
     seed: t.Optional[object]
     dtype: DTypeLike
@@ -49,14 +51,14 @@ class FocusedProbeProps(Dataclass):
     conv_angle: float  # semiconvergence angle [mrad]
 
 
-class ProbeHook(Hook[ProbeHookArgs, ProbeState]):
+class ProbeHook(Hook[ProbeHookArgs, 'ProbeState']):
     known = {
         'focused': ('phaser.hooks.probe:focused_probe', FocusedProbeProps),
     }
 
 
 class ObjectHookArgs(t.TypedDict):
-    sampling: ObjectSampling
+    sampling: 'ObjectSampling'
     wavelength: float
     slices: t.Optional[Slices]
     seed: t.Optional[object]
@@ -68,7 +70,7 @@ class RandomObjectProps(Dataclass):
     sigma: float = 1e-6
 
 
-class ObjectHook(Hook[ObjectHookArgs, ObjectState]):
+class ObjectHook(Hook[ObjectHookArgs, 'ObjectState']):
     known = {
         'random': ('phaser.hooks.object:random_object', RandomObjectProps),
     }
@@ -93,7 +95,7 @@ class ScanHook(Hook[ScanHookArgs, NDArray[numpy.floating]]):
 
 
 class EngineArgs(t.TypedDict):
-    state: ReconsState
+    state: 'ReconsState'
     patterns: NDArray[numpy.floating]
     pattern_mask: NDArray[numpy.floating]
     dtype: DTypeLike
@@ -101,5 +103,14 @@ class EngineArgs(t.TypedDict):
     engine_i: int
 
 
-class EngineHook(Hook[EngineArgs, ReconsState]):
+class EngineHook(Hook[EngineArgs, 'ReconsState']):
     known = {}  # filled in by plan.py
+
+
+class FlagArgs(t.TypedDict):
+    state: 'ReconsState'
+    niter: int
+
+
+class FlagHook(Hook[FlagArgs, bool]):
+    known = {}

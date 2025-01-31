@@ -8,6 +8,7 @@ from numpy.typing import NDArray
 
 from phaser.utils.num import cast_array_module, at, abs2, fft2, ifft2, jit, check_finite, to_complex_dtype, to_numpy
 from phaser.utils.misc import create_compact_groupings, create_sparse_groupings
+from phaser.hooks import FlagArgs
 from phaser.hooks.solver import ConstraintRegularizer, ConventionalSolver
 from phaser.plan import ConventionalEnginePlan, LSQMLSolverPlan, EPIESolverPlan
 from phaser.execute import Observer
@@ -19,7 +20,11 @@ class LSQMLSolver(ConventionalSolver):
         self.plan: LSQMLSolverPlan = props
         self.engine_plan: ConventionalEnginePlan = plan
 
-    def solve(self, sim: SimulationState, engine_i: int, observer: Observer) -> SimulationState:
+    def solve(
+        self, sim: SimulationState, engine_i: int, observer: Observer,
+        update_probe: t.Callable[[FlagArgs], bool],
+        update_object: t.Callable[[FlagArgs], bool]
+    ) -> SimulationState:
         logger = logging.getLogger(__name__)
         xp = cast_array_module(sim.xp)
         real_dtype = sim.dtype
@@ -54,9 +59,13 @@ class LSQMLSolver(ConventionalSolver):
 
         observer.start_solver()
 
-        for i in range(self.engine_plan.niter):
+        for i in range(1, self.engine_plan.niter+1):
             new_obj_mag = xp.zeros_like(obj_mag)
             new_probe_mag = xp.zeros_like(probe_mag)
+            iter_update_object = update_object({'state': sim.state, 'niter': self.engine_plan.niter})
+            iter_update_probe = update_probe({'state': sim.state, 'niter': self.engine_plan.niter})
+
+            print(f"update object: {iter_update_object}  probe: {iter_update_probe}")
 
             for (group_i, group) in enumerate(groups):
                 (sim, obj_mag, probe_mag, new_obj_mag, new_probe_mag) = lsqml_run(
@@ -65,6 +74,8 @@ class LSQMLSolver(ConventionalSolver):
                     new_obj_mag=new_obj_mag, new_probe_mag=new_probe_mag,
                     beta_object=self.plan.beta_object,
                     beta_probe=self.plan.beta_probe,
+                    update_object=iter_update_object,
+                    update_probe=iter_update_probe,
                     illum_reg_object=self.plan.illum_reg_object,
                     illum_reg_probe=self.plan.illum_reg_probe,
                     gamma=self.plan.gamma,
@@ -128,7 +139,11 @@ def lsqml_dry_run(
 
 # TODO: pass LSQMLSolverPlan in here for parameters
 
-@partial(jit, donate_argnames=('sim', 'obj_mag', 'probe_mag', 'new_obj_mag', 'new_probe_mag'))
+@partial(
+    jit,
+    donate_argnames=('sim', 'obj_mag', 'probe_mag', 'new_obj_mag', 'new_probe_mag'),
+    static_argnames=('update_object', 'update_probe'),
+)
 def lsqml_run(
     sim: SimulationState,
     group: NDArray[numpy.integer], *,
@@ -139,6 +154,8 @@ def lsqml_run(
     new_probe_mag: NDArray[numpy.floating],
     beta_object: float = 0.9,
     beta_probe: float = 0.9,
+    update_object: bool = True,
+    update_probe: bool = True,
     illum_reg_object: float,
     illum_reg_probe: float,
     gamma: float,
@@ -187,18 +204,22 @@ def lsqml_run(
         (sim, chi) = state
 
         delta_P = chi * xp.conj(group_obj[:, slice_i, None])
-        delta_O = chi * xp.conj(psi[slice_i])
-        alpha_O = xp.sum(xp.sum(xp.real(chi * xp.conj(delta_O * psi[slice_i])), axis=(-1, -2), keepdims=True), axis=1) / (xp.sum(abs2(delta_O * psi[slice_i]) + gamma))
 
-        # average object update
-        delta_O_avg = xp.zeros_like(sim.state.object.data[0])
-        delta_O_avg = obj_grid.add_view_at_pos(delta_O_avg, group_scan, xp.sum(delta_O, axis=1))
-        delta_O_avg /= (probe_mag[slice_i] + illum_reg_object * xp.max(probe_mag[slice_i]))
+        if update_object:
+            delta_O = chi * xp.conj(psi[slice_i])
+            alpha_O = xp.sum(xp.sum(xp.real(chi * xp.conj(delta_O * psi[slice_i])), axis=(-1, -2), keepdims=True), axis=1) / (xp.sum(abs2(delta_O * psi[slice_i]) + gamma))
 
-        obj_update = beta_object/n_slices * xp.sum(alpha_O * delta_O_avg * group_probe_mag[slice_i], axis=0) / (group_probe_mag[slice_i] + eps)
-        sim.state.object.data = at(sim.state.object.data, slice_i).add(obj_update)
+            # average object update
+            delta_O_avg = xp.zeros_like(sim.state.object.data[0])
+            delta_O_avg = obj_grid.add_view_at_pos(delta_O_avg, group_scan, xp.sum(delta_O, axis=1))
+            delta_O_avg /= (probe_mag[slice_i] + illum_reg_object * xp.max(probe_mag[slice_i]))
 
-        if prop is None:
+            obj_update = beta_object/n_slices * xp.sum(alpha_O * delta_O_avg * group_probe_mag[slice_i], axis=0) / (group_probe_mag[slice_i] + eps)
+            sim.state.object.data = at(sim.state.object.data, slice_i).add(obj_update)
+
+        if prop is not None:
+            chi = ifft2(fft2(delta_P) * prop.conj())
+        elif update_probe:
             delta_P_avg = ifft2(xp.sum(fft2(delta_P) * subpx_filters.conj(), axis=0))
             delta_P_avg /= (group_obj_mag + illum_reg_probe)
 
@@ -207,11 +228,6 @@ def lsqml_run(
 
             probe_update = beta_probe * xp.sum(alpha_P * delta_P_avg * group_obj_mag, axis=0) / (group_obj_mag + eps)
             sim.state.probe.data += probe_update
-
-            #import jax
-            #jax.debug.print("alpha_P: {}", alpha_P)
-        else:
-            chi = ifft2(fft2(delta_P) * prop.conj())
 
         return (sim, chi)
 
@@ -225,7 +241,11 @@ class EPIESolver(ConventionalSolver):
         self.engine_plan: ConventionalEnginePlan = engine_plan
         self.plan: EPIESolverPlan = props
 
-    def solve(self, sim: SimulationState, engine_i: int, observer: Observer) -> SimulationState:
+    def solve(
+        self, sim: SimulationState, engine_i: int, observer: Observer,
+        update_probe: t.Callable[[FlagArgs], bool],
+        update_object: t.Callable[[FlagArgs], bool]
+    ) -> SimulationState:
         logger = logging.getLogger(__name__)
 
         observer.init_solver(sim.state, engine_i)
@@ -252,13 +272,18 @@ class EPIESolver(ConventionalSolver):
 
         observer.start_solver()
 
-        for i in range(self.engine_plan.niter):
+        for i in range(1, self.engine_plan.niter+1):
+            iter_update_object = update_object({'state': sim.state, 'niter': self.engine_plan.niter})
+            iter_update_probe = update_probe({'state': sim.state, 'niter': self.engine_plan.niter})
+
             for (group_i, group) in enumerate(groups):
                 observer.update_group(sim.state)
                 sim = epie_run(
                     sim, group, props=props,
                     beta_object=self.plan.beta_object,
                     beta_probe=self.plan.beta_probe,
+                    update_object=iter_update_object,
+                    update_probe=iter_update_probe,
                 )
                 check_finite(sim.state.object.data, sim.state.probe.data, context=f"object or probe, group {group_i}")
 
@@ -301,13 +326,15 @@ def epie_dry_run(
     return rescale_factors
 
 
-@partial(jit, donate_argnames=('sim',))
+@partial(jit, donate_argnames=('sim',), static_argnames=('update_object', 'update_probe'))
 def epie_run(
     sim: SimulationState,
     group: NDArray[numpy.integer], *,
     props: t.Optional[NDArray[numpy.complexfloating]],
     beta_object: float = 0.9,
     beta_probe: float = 0.9,
+    update_object: bool = True,
+    update_probe: bool = True,
 ) -> SimulationState:
     xp = cast_array_module(sim.xp)
     obj_grid = sim.state.object.sampling
@@ -338,20 +365,22 @@ def epie_run(
     def update_slice(slice_i: int, prop: t.Optional[NDArray[numpy.complexfloating]], state):
         (sim, psi_opt) = state
         chi = psi_opt - psi[slice_i]
-        group_obj_update = xp.sum(
-            beta_object * psi[slice_i].conj() / xp.max(abs2(psi[slice_i]), axis=(-1, -2), keepdims=True) * chi,
-            axis=1
-        )
 
-        sim.state.object.data = at(sim.state.object.data, slice_i).set(
-            obj_grid.add_view_at_pos(sim.state.object.data[slice_i], group_scan, group_obj_update)
-        )
+        if update_object:
+            group_obj_update = xp.sum(
+                beta_object * psi[slice_i].conj() / xp.max(abs2(psi[slice_i]), axis=(-1, -2), keepdims=True) * chi,
+                axis=1
+            )
+
+            sim.state.object.data = at(sim.state.object.data, slice_i).set(
+                obj_grid.add_view_at_pos(sim.state.object.data[slice_i], group_scan, group_obj_update)
+            )
 
         probe_update = beta_probe * group_obj[:, slice_i, None].conj() / xp.max(abs2(group_obj[:, slice_i, None]), axis=(-1, -2), keepdims=True) * chi
 
         if prop is not None:
             psi_opt = ifft2(fft2(psi[slice_i] + probe_update) * prop.conj())
-        else:
+        elif update_probe:
             # average probe updates in group
             probe_update = ifft2(xp.mean(fft2(probe_update) * subpx_filters.conj(), axis=0))
             sim.state.probe.data += probe_update

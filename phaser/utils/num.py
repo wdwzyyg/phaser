@@ -220,10 +220,18 @@ class _JitKernel(t.Generic[P, T]):
         donate_argnums: t.Union[int, t.Sequence[int], None] = None,
         donate_argnames: t.Union[str, t.Iterable[str], None] = None,
         inline: bool = False,
-        compiler_options: t.Optional[t.Dict[str, t.Any]] = None
+        compiler_options: t.Optional[t.Dict[str, t.Any]] = None,
+        cupy_fuse: bool = False
     ):
         self.inner = f
         functools.update_wrapper(self, f)
+
+        if cupy_fuse:
+            try:
+                import cupy
+                self.inner = cupy.fuse()(self.inner)
+            except ImportError:
+                pass
 
         # in jax: self.__call__ -> jax.jit -> jax_f -> f
         # otherwise: self.__call__ -> f
@@ -258,12 +266,13 @@ def jit(
         donate_argnums: t.Union[int, t.Sequence[int], None] = None,
         donate_argnames: t.Union[str, t.Iterable[str], None] = None,
         inline: bool = False,
-        compiler_options: t.Optional[t.Dict[str, t.Any]] = None
+        compiler_options: t.Optional[t.Dict[str, t.Any]] = None,
+        cupy_fuse: bool = False,
 ) -> t.Callable[P, T]:
     return _JitKernel(
         f, static_argnums=static_argnums, static_argnames=static_argnames,
         donate_argnums=donate_argnums, donate_argnames=donate_argnames,
-        inline=inline, compiler_options=compiler_options
+        inline=inline, compiler_options=compiler_options, cupy_fuse=cupy_fuse
     )
 
 

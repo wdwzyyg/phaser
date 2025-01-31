@@ -5,10 +5,10 @@ import typing as t
 import numpy
 from numpy.typing import NDArray
 
-from phaser.hooks import RawData
+from phaser.hooks import RawData, FlagArgs
 from phaser.utils.num import cast_array_module, get_backend_module, is_jax, xp_is_jax
 from phaser.utils.object import ObjectSampling
-from .plan import GradientEnginePlan, ReconsPlan, EnginePlan
+from .plan import GradientEnginePlan, ReconsPlan, EnginePlan, FlagLike
 from .state import ObjectState, ReconsState, PartialReconsState, IterState, ProgressState, StateObserver
 
 
@@ -54,7 +54,7 @@ class Observer:
             time_s = ""
 
         w = len(str(n))
-        logging.info(f"Finished iter {i+1:{w}}/{n}{time_s}")
+        logging.info(f"Finished iter {i:{w}}/{n}{time_s}")
 
         state.iter = IterState(self.engine_i, i, self.start_iter + i)
         self.iter_start_time = finish_time
@@ -65,6 +65,13 @@ class Observer:
             finish_time = time.monotonic()
             delta = finish_time - self.solver_start_time
             print(f"Total time: {self._format_hhmmss(delta)}")
+
+
+def process_flag(flag: FlagLike) -> t.Callable[[FlagArgs], bool]:
+    if isinstance(flag, bool):
+        return lambda args: flag
+    else:
+        return flag.resolve()
 
 
 def execute_plan(plan: ReconsPlan, observer: t.Optional[Observer] = None):

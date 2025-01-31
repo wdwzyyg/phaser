@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import typing as t
 
-from .types import Dataclass, Slices, BackendName
-from .hooks import RawDataHook, ProbeHook, ObjectHook, ScanHook, EngineHook
+from .types import Dataclass, Slices, BackendName, Flag
+from .hooks import RawDataHook, ProbeHook, ObjectHook, ScanHook, EngineHook, FlagHook, FlagArgs
 from .hooks.solver import NoiseModelHook, ConventionalSolverHook, RegularizerHook
 
+
+FlagLike: t.TypeAlias = t.Union[bool, Flag, FlagHook]
 
 class EnginePlan(Dataclass, kw_only=True):
     sim_shape: t.Optional[t.Tuple[int, int]] = None
@@ -18,6 +20,13 @@ class EnginePlan(Dataclass, kw_only=True):
     niter: int = 10
     grouping: t.Optional[int] = None
     compact: bool = False
+
+    regularizers: t.List[RegularizerHook]
+
+    update_probe: FlagLike = True
+    update_object: FlagLike = True
+
+    save: FlagLike = Flag(every=10)
 
 
 class AnascombeNoisePlan(Dataclass, kw_only=True):
@@ -58,15 +67,12 @@ ConventionalSolverHook.known['epie'] = ('phaser.engines.conventional.solvers:EPI
 
 
 class ConventionalEnginePlan(EnginePlan, kw_only=True):
-    #detector_model: t.Annotated[t.Union[ModulusConstraint], Tagged('type')]
     noise_model: NoiseModelHook
     solver: ConventionalSolverHook
 
-    regularizers: t.List[RegularizerHook]
-
 
 class GradientEnginePlan(EnginePlan):
-    ...
+    pass
 
 
 EngineHook.known['conventional'] = ('phaser.engines.conventional.run:run_engine', ConventionalEnginePlan)
