@@ -4,7 +4,7 @@ import typing as t
 import numpy
 from numpy.typing import NDArray
 
-from phaser.utils.num import get_array_module, jit, fft2, ifft2
+from phaser.utils.num import get_array_module, jit, fft2, ifft2, abs2
 from phaser.hooks.solver import (
     GradientRegularizer, ConstraintRegularizer, ClampObjectAmplitudeProps,
     LimitProbeSupportProps
@@ -44,5 +44,8 @@ class LimitProbeSupport(ConstraintRegularizer[NDArray[numpy.bool_]]):
 
     def apply_iter(self, sim: SimulationState, state: NDArray[numpy.bool_]) -> t.Tuple[SimulationState, NDArray[numpy.bool_]]:
         mask = state
+        xp = get_array_module(sim.state.probe.data)
+        print(f"intensity before: {xp.sum(abs2(sim.state.probe.data))}")
         sim.state.probe.data = ifft2(fft2(sim.state.probe.data) * mask)
+        print(f"intensity after: {xp.sum(abs2(sim.state.probe.data))}")
         return (sim, mask)

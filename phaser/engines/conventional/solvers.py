@@ -85,7 +85,7 @@ class LSQMLSolver(ConventionalSolver):
                 assert sim.state.object.data.dtype == to_complex_dtype(sim.dtype)
                 assert sim.state.probe.data.dtype == to_complex_dtype(sim.dtype)
 
-                observer.update_group(sim.state)
+                observer.update_group(sim.state, self.engine_plan.update_every_group)
 
             obj_mag = new_obj_mag
             probe_mag = new_probe_mag
@@ -219,7 +219,7 @@ def lsqml_run(
             chi = ifft2(fft2(delta_P) * prop.conj())
         elif update_probe:
             delta_P_avg = ifft2(xp.sum(fft2(delta_P) * subpx_filters.conj(), axis=0))
-            delta_P_avg /= (group_obj_mag + illum_reg_probe)
+            delta_P_avg /= (obj_mag + illum_reg_probe)
 
             # update step per probe mode
             alpha_P = xp.sum(xp.real(chi * xp.conj(delta_P * group_obj[:, slice_i, None])), axis=(-1, -2), keepdims=True) / (xp.sum(abs2(delta_P * group_obj[:, slice_i, None]) + gamma))
@@ -275,7 +275,6 @@ class EPIESolver(ConventionalSolver):
             iter_update_probe = update_probe({'state': sim.state, 'niter': self.engine_plan.niter})
 
             for (group_i, group) in enumerate(groups):
-                observer.update_group(sim.state)
                 sim = epie_run(
                     sim, group, props=props,
                     beta_object=self.plan.beta_object,
@@ -286,9 +285,13 @@ class EPIESolver(ConventionalSolver):
                 check_finite(sim.state.object.data, sim.state.probe.data, context=f"object or probe, group {group_i}")
 
                 sim = apply_regularizers_group(sim, group)
-
                 assert sim.state.object.data.dtype == to_complex_dtype(sim.dtype)
                 assert sim.state.probe.data.dtype == to_complex_dtype(sim.dtype)
+
+                #print(f"total probe intensity: {xp.sum(abs2(sim.state.probe.data))}")
+                #print(f"mean object intensity: {xp.mean(abs2(sim.state.object.data))}")
+
+                observer.update_group(sim.state, self.engine_plan.update_every_group)
 
             sim = apply_regularizers_iter(sim)
             observer.update_iteration(sim.state, i, self.engine_plan.niter)
@@ -364,24 +367,22 @@ def epie_run(
         (sim, psi_opt) = state
         chi = psi_opt - psi[slice_i]
 
+        probe_update = group_obj[:, slice_i, None].conj() * chi / xp.max(abs2(group_obj[:, slice_i, None]), axis=(-1, -2), keepdims=True)
+
         if update_object:
-            group_obj_update = xp.sum(
-                beta_object * psi[slice_i].conj() / xp.max(abs2(psi[slice_i]), axis=(-1, -2), keepdims=True) * chi,
-                axis=1
-            )
+            total_probe_int = xp.sum(abs2(psi[slice_i]), axis=1)
+            group_obj_update = beta_object * xp.sum(psi[slice_i].conj() * chi, axis=1) / xp.max(total_probe_int, axis=(-1, -2), keepdims=True)
 
             sim.state.object.data = at(sim.state.object.data, slice_i).set(
                 obj_grid.add_view_at_pos(sim.state.object.data[slice_i], group_scan, group_obj_update)
             )
 
-        probe_update = beta_probe * group_obj[:, slice_i, None].conj() / xp.max(abs2(group_obj[:, slice_i, None]), axis=(-1, -2), keepdims=True) * chi
-
         if prop is not None:
             psi_opt = ifft2(fft2(psi[slice_i] + probe_update) * prop.conj())
         elif update_probe:
             # average probe updates in group
-            probe_update = ifft2(xp.mean(fft2(probe_update) * subpx_filters.conj(), axis=0))
-            sim.state.probe.data += probe_update
+            probe_update = ifft2(xp.sum(fft2(probe_update) * subpx_filters.conj(), axis=0))
+            sim.state.probe.data += beta_probe * probe_update
 
         return (sim, psi_opt)
 

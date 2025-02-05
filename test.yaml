@@ -22,28 +22,34 @@ init_scan:
   shape: [64, 64] # ny, nx
   step_size: 0.6  # angstrom
 
+preprocessing:
+ - type: poisson
+   scale: 1.0e+4
+
 # for each reconstruction engine
 engines:
    # how to transition from previous state to current reconstruction state
    # how to reconstruct
    # how to output/save
  - type: 'conventional'
-   probe_modes: 4
+   probe_modes: 1
    niter: 100
-   grouping: 128
+   grouping: 16
 
    noise_model:
-     type: 'anascombe'
-     bias: 1.0e-3
+     type: 'anscombe'
+     eps: 1.0e-8
 
    solver:
-     type: 'lsqml'
-     beta_probe: 0.1
-     beta_object: 1.0
-     illum_reg_object: 1.0e-2
-     illum_reg_probe: 1.0e-2
-     gamma: 1.0e-8
+     type: 'epie'
+     beta_object: 1.0e-3
+     beta_probe: 1.0e-3
 
    regularizers: []
+   # - 'clamp_object_amplitude'
+    #- type: 'limit_probe_support'
+    #  max_angle: 25
 
-   update_probe: {after: 5}
+   update_probe: {after: 1}
+
+   update_every_group: False

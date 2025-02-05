@@ -29,7 +29,7 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
 
     sim = SimulationState(
         state=args['state'], noise_model=noise_model, regularizers=regularizers,
-        patterns=args['patterns'], pattern_mask=args['pattern_mask'],
+        patterns=args['data'].patterns, pattern_mask=args['data'].pattern_mask,
         xp=xp, dtype=dtype
     )
 

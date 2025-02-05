@@ -70,11 +70,11 @@ class WorkerObserver(Observer):
         if (time.monotonic() - self.msg_time) > 5:
             self.send_message(PingMessage())
 
-    def update_group(self, state: t.Union[ReconsState, PartialReconsState]):
+    def update_group(self, state: t.Union[ReconsState, PartialReconsState], force: bool = False):
         super().update_group(state)
 
         # update if we haven't updated in a while
-        if (time.monotonic() - self.msg_time) > 10:
+        if force or (time.monotonic() - self.msg_time) > 10:
             self.send_update(state)
 
     def update_iteration(self, state: t.Union[ReconsState, PartialReconsState], i: int, n: int):

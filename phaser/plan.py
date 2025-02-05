@@ -3,7 +3,7 @@ from __future__ import annotations
 import typing as t
 
 from .types import Dataclass, Slices, BackendName, Flag
-from .hooks import RawDataHook, ProbeHook, ObjectHook, ScanHook, EngineHook, FlagHook, FlagArgs
+from .hooks import RawDataHook, ProbeHook, ObjectHook, ScanHook, EngineHook, FlagHook, PreprocessingHook
 from .hooks.solver import NoiseModelHook, ConventionalSolverHook, RegularizerHook
 
 
@@ -27,19 +27,21 @@ class EnginePlan(Dataclass, kw_only=True):
     update_object: FlagLike = True
 
     save: FlagLike = Flag(every=10)
+    update_every_group: bool = False
 
 
-class AnascombeNoisePlan(Dataclass, kw_only=True):
-    type: t.Literal['anascombe'] = 'anascombe'
-    bias: float = 1e-10
+class AmplitudeNoisePlan(Dataclass, kw_only=True):
+    gaussian_variance: float = 0.1
+    eps: float = 1e-8
+    offset: float = 0.0
 
 
-class GaussianNoisePlan(Dataclass, kw_only=True):
-    type: t.Literal['gaussian'] = 'gaussian'
+class AnscombeNoisePlan(AmplitudeNoisePlan, kw_only=True):
+    offset: float = 0.375
 
 
-NoiseModelHook.known['anascombe'] = ('phaser.engines.common.noise_models:AnascombeNoiseModel', AnascombeNoisePlan)
-NoiseModelHook.known['gaussian'] = ('phaser.engines.common.noise_models:GaussianNoiseModel', GaussianNoisePlan)
+NoiseModelHook.known['amplitude'] = ('phaser.engines.common.noise_models:AmplitudeNoiseModel', AmplitudeNoisePlan)
+NoiseModelHook.known['anscombe'] = ('phaser.engines.common.noise_models:AnscombeNoiseModel', AnscombeNoisePlan)
 
 
 class LSQMLSolverPlan(Dataclass, kw_only=True):
@@ -90,6 +92,8 @@ class ReconsPlan(Dataclass, kw_only=True):
     init_probe: ProbeHook
     init_object: ObjectHook
     init_scan: ScanHook
+
+    preprocessing: t.Sequence[PreprocessingHook] = ()
 
     slices: t.Optional[Slices] = None
 

@@ -9,6 +9,17 @@ from phaser.utils.object import ObjectSampling
 
 
 @dataclass
+class Patterns():
+    patterns: NDArray[numpy.floating]
+    pattern_mask: NDArray[numpy.floating]
+
+    def to_numpy(self) -> t.Self:
+        return self.__class__(
+            to_numpy(self.patterns), to_numpy(self.pattern_mask)
+        )
+
+
+@dataclass
 class IterState():
     engine_num: int
     engine_iter: int

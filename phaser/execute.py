@@ -9,7 +9,7 @@ from phaser.hooks import RawData, FlagArgs
 from phaser.utils.num import cast_array_module, get_backend_module, is_jax, xp_is_jax
 from phaser.utils.object import ObjectSampling
 from .plan import GradientEnginePlan, ReconsPlan, EnginePlan, FlagLike
-from .state import ObjectState, ReconsState, PartialReconsState, IterState, ProgressState, StateObserver
+from .state import Patterns, ObjectState, ReconsState, PartialReconsState, IterState, ProgressState
 
 
 class Observer:
@@ -32,7 +32,7 @@ class Observer:
         self.engine_i = engine_i
         self.start_iter = init_state.iter.total_iter
 
-        init_state.iter = IterState(self.engine_i, 0, self.start_iter)
+        init_state.iter = IterState(self.engine_i, 1, self.start_iter + 1)
 
     def start_solver(self):
         logging.info("Engine initialized")
@@ -41,7 +41,7 @@ class Observer:
     def heartbeat(self):
         pass
 
-    def update_group(self, state: t.Union[ReconsState, PartialReconsState]):
+    def update_group(self, state: t.Union[ReconsState, PartialReconsState], force: bool = False):
         pass
 
     def update_iteration(self, state: t.Union[ReconsState, PartialReconsState], i: int, n: int):
@@ -56,7 +56,7 @@ class Observer:
         w = len(str(n))
         logging.info(f"Finished iter {i:{w}}/{n}{time_s}")
 
-        state.iter = IterState(self.engine_i, i, self.start_iter + i)
+        state.iter = IterState(self.engine_i, i + 1, self.start_iter + i + 1)
         self.iter_start_time = finish_time
 
     def finish_solver(self):
@@ -80,16 +80,16 @@ def execute_plan(plan: ReconsPlan, observer: t.Optional[Observer] = None):
     if observer is None:
         observer = Observer()
 
-    raw_data, state = initialize_reconstruction(plan, xp, observer)
+    patterns, state = initialize_reconstruction(plan, xp, observer)
+    dtype = patterns.patterns.dtype
 
     for (engine_i, engine) in enumerate(plan.engines):
         logging.info(f"Preparing for engine #{engine_i + 1}...")
-        raw_data, state = prepare_for_engine(raw_data, state, xp, t.cast(EnginePlan, engine.props))
+        patterns, state = prepare_for_engine(patterns, state, xp, t.cast(EnginePlan, engine.props))
         state = engine({
+            'data': patterns,
             'state': state,
-            'patterns': raw_data['patterns'],
-            'pattern_mask': raw_data['mask'],
-            'dtype': raw_data['patterns'].dtype,
+            'dtype': dtype,
             'xp': xp,
             'engine_i': engine_i,
             'observer': observer,
@@ -98,7 +98,7 @@ def execute_plan(plan: ReconsPlan, observer: t.Optional[Observer] = None):
     logging.info("Reconstruction finished!")
 
 
-def initialize_reconstruction(plan: ReconsPlan, xp: t.Any, observer: Observer) -> t.Tuple[RawData, ReconsState]:
+def initialize_reconstruction(plan: ReconsPlan, xp: t.Any, observer: Observer) -> t.Tuple[Patterns, ReconsState]:
     xp = cast_array_module(xp)
 
     logging.basicConfig(level=logging.INFO)
@@ -120,6 +120,8 @@ def initialize_reconstruction(plan: ReconsPlan, xp: t.Any, observer: Observer) -
     # ensure raw data is of the correct type
     if raw_data['patterns'].dtype != dtype:
         raw_data['patterns'] = raw_data['patterns'].astype(dtype)
+
+    data = Patterns(raw_data['patterns'], raw_data['mask'])
 
     sampling = raw_data['sampling']
 
@@ -156,10 +158,26 @@ def initialize_reconstruction(plan: ReconsPlan, xp: t.Any, observer: Observer) -
         wavelength=wavelength
     )
 
-    return (raw_data, state)
+    for p in plan.preprocessing:
+        (data, state) = p({
+            'data': data, 'state': state,
+            'dtype': dtype, 'seed': seed, 'xp': xp
+        })
+
+    # perform some checks on preprocessed data
+    avg_pattern_intensity = xp.nanmean(xp.nansum(data.patterns, axis=(-1, -2)))
+
+    if avg_pattern_intensity < 5.0:
+        logging.warning(
+            f"Mean pattern intensity very low ({avg_pattern_intensity} particles). "
+            "Ensure that it is being scaled correctly to units of electrons/photons. "
+            "For simulated data, use the 'scale' or 'poisson' preprocessing"
+        )
+
+    return (data, state)
 
 
-def prepare_for_engine(raw_data: RawData, state: ReconsState, xp: t.Any, engine: EnginePlan) -> t.Tuple[RawData, ReconsState]:
+def prepare_for_engine(patterns: Patterns, state: ReconsState, xp: t.Any, engine: EnginePlan) -> t.Tuple[Patterns, ReconsState]:
     if engine.sim_shape is not None:
         if engine.sim_shape != state.probe.data.shape[-2:]:
             raise NotImplementedError()
@@ -189,4 +207,4 @@ def prepare_for_engine(raw_data: RawData, state: ReconsState, xp: t.Any, engine:
             else:
                 raise NotImplementedError()
 
-    return raw_data, state
+    return patterns, state

@@ -13,7 +13,7 @@ from .hook import Hook
 if t.TYPE_CHECKING:
     from phaser.utils.num import Sampling
     from phaser.utils.object import ObjectSampling
-    from ..state import ObjectState, ProbeState, ReconsState
+    from ..state import ObjectState, ProbeState, ReconsState, Patterns
 
 
 class RawData(t.TypedDict):
@@ -94,10 +94,38 @@ class ScanHook(Hook[ScanHookArgs, NDArray[numpy.floating]]):
     }
 
 
-class EngineArgs(t.TypedDict):
+class PreprocessingArgs(t.TypedDict):
+    data: 'Patterns'
     state: 'ReconsState'
-    patterns: NDArray[numpy.floating]
-    pattern_mask: NDArray[numpy.floating]
+    seed: t.Optional[object]
+    dtype: DTypeLike
+    xp: t.Any
+
+
+class ScaleProps(Dataclass):
+    scale: float
+
+
+class PoissonProps(Dataclass):
+    scale: t.Optional[float] = None
+    gaussian: t.Optional[float] = 1.0e-3
+
+
+class DropNanProps(Dataclass):
+    threshold: float = 0.9
+
+
+class PreprocessingHook(Hook[PreprocessingArgs, t.Tuple['Patterns', 'ReconsState']]):
+    known = {
+        'poisson': ('phaser.hooks.preprocessing:add_poisson_noise', PoissonProps),
+        'scale': ('phaser.hooks.preprocessing.scale_patterns', ScaleProps),
+        'drop_nans': ('phaser.hooks.preprocessing:drop_nan_patterns', DropNanProps),
+    }
+
+
+class EngineArgs(t.TypedDict):
+    data: 'Patterns'
+    state: 'ReconsState'
     dtype: DTypeLike
     xp: t.Any
     engine_i: int

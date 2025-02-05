@@ -69,11 +69,11 @@ class ObjectSampling:
     @property
     def max(self) -> NDArray[numpy.float64]:
         """Maximum pixel position (y, x)."""
-        return self.corner + (self.shape - 1) * self.sampling
+        return (self.corner + (self.shape - 1) * self.sampling).astype(numpy.float64)
 
     @property
     def extent(self) -> NDArray[numpy.float64]:
-        return self.shape * self.sampling
+        return (self.shape * self.sampling).astype(numpy.float64)
 
     def __init__(self, shape: t.Tuple[int, int], sampling: ArrayLike, corner: t.Optional[ArrayLike] = None,
                  region_min: t.Optional[ArrayLike] = None, region_max: t.Optional[ArrayLike] = None):
@@ -113,7 +113,7 @@ class ObjectSampling:
         # e.g. a 2x2 cutout needs shifted by s/2
         shift = -numpy.maximum(0., (numpy.array(cutout_shape[-2:]) - 1.)) / 2.
 
-        return (pos - self.corner) / self.sampling + shift
+        return ((pos - self.corner) / self.sampling + shift).astype(numpy.float64)
 
     def slice_at_pos(self, pos: ArrayLike, cutout_shape: t.Tuple[int, ...]) -> t.Tuple[slice, slice]:
         """
@@ -143,7 +143,7 @@ class ObjectSampling:
         Returns the shift from the rounded position towards the actual position.
         """
         pos = self._pos_to_object_idx(to_array(pos), cutout_shape)
-        return pos - get_array_module(pos).round(pos)
+        return (pos - get_array_module(pos).round(pos)).astype(numpy.float64)
 
     @t.overload
     def cutout(self, arr: NDArray[DTypeT], pos: ArrayLike, shape: t.Tuple[int, ...]) -> ObjectCutout[DTypeT]:
@@ -237,7 +237,7 @@ class ObjectCutout(t.Generic[DTypeT]):
     _start_idxs: NDArray[numpy.int_] = field(init=False)
 
     def __post_init__(self):
-        self._start_idxs = numpy.round(self.sampling._pos_to_object_idx(self.pos, self.cutout_shape)).astype(numpy.int_)
+        self._start_idxs = numpy.round(self.sampling._pos_to_object_idx(self.pos, self.cutout_shape)).astype(numpy.int_) # type: ignore
         self._start_idxs = get_array_module(self.obj).array(self._start_idxs)
 
     @property
