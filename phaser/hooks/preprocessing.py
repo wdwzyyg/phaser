@@ -1,7 +1,7 @@
 import logging
 import typing as t
 
-from phaser.utils.num import cast_array_module, to_numpy
+from phaser.utils.num import get_array_module, to_numpy
 from phaser.utils.misc import create_rng
 from phaser.state import Patterns, ReconsState
 from . import PreprocessingArgs, PoissonProps, ScaleProps, DropNanProps
@@ -15,9 +15,8 @@ def scale_patterns(args: PreprocessingArgs, props: ScaleProps) -> t.Tuple[Patter
 
 
 def add_poisson_noise(args: PreprocessingArgs, props: PoissonProps) -> t.Tuple[Patterns, ReconsState]:
-    xp = cast_array_module(args['xp'])
+    xp = get_array_module(args['data'].patterns)
     dtype = args['dtype']
-
 
     if props.scale is not None:
         logger.info(f"Adding poisson noise to raw patterns, after scaling by {props.scale:.2e}")
@@ -37,7 +36,7 @@ def add_poisson_noise(args: PreprocessingArgs, props: PoissonProps) -> t.Tuple[P
 
 
 def drop_nan_patterns(args: PreprocessingArgs, props: DropNanProps) -> t.Tuple[Patterns, ReconsState]:
-    xp = cast_array_module(args['xp'])
+    xp = get_array_module(args['data'].patterns)
 
     # flatten scan and patterns
     scan = args['state'].scan.reshape(-1, 2)

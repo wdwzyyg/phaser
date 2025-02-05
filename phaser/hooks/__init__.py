@@ -118,7 +118,7 @@ class DropNanProps(Dataclass):
 class PreprocessingHook(Hook[PreprocessingArgs, t.Tuple['Patterns', 'ReconsState']]):
     known = {
         'poisson': ('phaser.hooks.preprocessing:add_poisson_noise', PoissonProps),
-        'scale': ('phaser.hooks.preprocessing.scale_patterns', ScaleProps),
+        'scale': ('phaser.hooks.preprocessing:scale_patterns', ScaleProps),
         'drop_nans': ('phaser.hooks.preprocessing:drop_nan_patterns', DropNanProps),
     }
 

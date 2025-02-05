@@ -54,8 +54,9 @@ class LSQMLSolver(ConventionalSolver):
         rescale_factor = numpy.mean(rescale_factors)
 
         logger.info("Pre-calculated intensities")
-        logger.info(f"Rescaling initial probe by {rescale_factor}")
-        sim.state.probe.data *= rescale_factor
+        logger.info(f"Rescaling initial probe intensity by {rescale_factor:.2e}")
+        sim.state.probe.data *= numpy.sqrt(rescale_factor)
+        probe_mag *= rescale_factor
 
         observer.start_solver()
 
@@ -86,6 +87,9 @@ class LSQMLSolver(ConventionalSolver):
                 assert sim.state.probe.data.dtype == to_complex_dtype(sim.dtype)
 
                 observer.update_group(sim.state, self.engine_plan.update_every_group)
+
+                #print(f"total probe intensity: {xp.sum(abs2(sim.state.probe.data))}")
+                #print(f"mean object intensity: {xp.mean(abs2(sim.state.object.data))}")
 
             obj_mag = new_obj_mag
             probe_mag = new_probe_mag
@@ -131,9 +135,7 @@ def lsqml_dry_run(
     model_intensity = xp.sum(abs2(fft2(psi)), axis=(1, -2, -1))
     exp_intensity = xp.sum(xp.array(sim.patterns[*group]), axis=(-2, -1))
 
-    rescale_factors = xp.sqrt(exp_intensity / model_intensity)
-
-    return (obj_mag, probe_mag, rescale_factors)
+    return (obj_mag, probe_mag, exp_intensity / model_intensity)
 
 # TODO: pass LSQMLSolverPlan in here for parameters
 
@@ -265,8 +267,8 @@ class EPIESolver(ConventionalSolver):
         rescale_factor = numpy.mean(rescale_factors)
 
         logger.info("Pre-calculated intensities")
-        logger.info(f"Rescaling initial probe by {rescale_factor}")
-        sim.state.probe.data *= rescale_factor
+        logger.info(f"Rescaling initial probe intensity by {rescale_factor:.2e}")
+        sim.state.probe.data *= numpy.sqrt(rescale_factor)
 
         observer.start_solver()
 
@@ -323,8 +325,7 @@ def epie_dry_run(
     model_intensity = xp.sum(abs2(fft2(psi)), axis=(1, -2, -1))
     exp_intensity = xp.sum(xp.array(sim.patterns[*group]), axis=(-2, -1))
 
-    rescale_factors = xp.sqrt(exp_intensity / model_intensity)
-    return rescale_factors
+    return exp_intensity / model_intensity
 
 
 @partial(jit, donate_argnames=('sim',), static_argnames=('update_object', 'update_probe'))

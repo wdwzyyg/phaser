@@ -165,7 +165,7 @@ def initialize_reconstruction(plan: ReconsPlan, xp: t.Any, observer: Observer) -
         })
 
     # perform some checks on preprocessed data
-    avg_pattern_intensity = xp.nanmean(xp.nansum(data.patterns, axis=(-1, -2)))
+    avg_pattern_intensity = numpy.nanmean(numpy.nansum(data.patterns, axis=(-1, -2)))
 
     if avg_pattern_intensity < 5.0:
         logging.warning(
