@@ -7,7 +7,7 @@ if t.TYPE_CHECKING:
     from phaser.hooks import FlagArgs
 
 
-BackendName: t.TypeAlias = t.Literal['cuda', 'cupy', 'jax', 'cpu']
+BackendName: t.TypeAlias = t.Literal['cuda', 'cupy', 'jax', 'cpu', 'numpy']
 
 
 class Cancelled(BaseException):

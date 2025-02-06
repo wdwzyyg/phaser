@@ -46,7 +46,7 @@ def get_backend_module(backend: t.Optional[BackendName] = None):
         return get_default_backend_module()
 
     backend = t.cast(BackendName, backend.lower())
-    if backend not in ('cuda', 'cupy', 'jax', 'cpu'):
+    if backend not in ('cuda', 'cupy', 'jax', 'cpu', 'numpy'):
         raise ValueError(f"Unknown backend '{backend}'")
 
     if not t.TYPE_CHECKING:

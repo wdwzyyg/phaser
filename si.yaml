@@ -1,6 +1,6 @@
 ---
 
-backend: numpy
+backend: cupy
 
 # raw data source
 raw_data:
