@@ -207,24 +207,24 @@ def lsqml_run(
 
         if update_object:
             delta_O = chi * xp.conj(psi[slice_i])
-            alpha_O = xp.sum(xp.sum(xp.real(chi * xp.conj(delta_O * psi[slice_i])), axis=(-1, -2), keepdims=True), axis=1) / (xp.sum(abs2(delta_O * psi[slice_i]) + gamma))
+            alpha_O = xp.sum(xp.sum(xp.real(chi * xp.conj(delta_O * psi[slice_i])), axis=(-1, -2), keepdims=True), axis=1) / (xp.sum(abs2(delta_O * psi[slice_i])) + gamma)
 
             # average object update
             delta_O_avg = xp.zeros_like(sim.state.object.data[0])
             delta_O_avg = obj_grid.add_view_at_pos(delta_O_avg, group_scan, xp.sum(delta_O, axis=1))
-            delta_O_avg /= (probe_mag[slice_i] + illum_reg_object * xp.max(probe_mag[slice_i]))
+            delta_O_avg /= (group_probe_mag[slice_i] + illum_reg_object * xp.max(probe_mag[slice_i]))
 
-            obj_update = beta_object/n_slices * xp.sum(alpha_O * delta_O_avg * group_probe_mag[slice_i], axis=0) / (group_probe_mag[slice_i] + eps)
+            obj_update = beta_object * xp.sum(alpha_O * delta_O_avg * group_probe_mag[slice_i], axis=0) / (group_probe_mag[slice_i] + eps)
             sim.state.object.data = at(sim.state.object.data, slice_i).add(obj_update)
 
         if prop is not None:
             chi = ifft2(fft2(delta_P) * prop.conj())
         elif update_probe:
             delta_P_avg = ifft2(xp.sum(fft2(delta_P) * subpx_filters.conj(), axis=0))
-            delta_P_avg /= (obj_mag + illum_reg_probe)
+            delta_P_avg /= (group_obj_mag + illum_reg_probe)
 
             # update step per probe mode
-            alpha_P = xp.sum(xp.real(chi * xp.conj(delta_P * group_obj[:, slice_i, None])), axis=(-1, -2), keepdims=True) / (xp.sum(abs2(delta_P * group_obj[:, slice_i, None]) + gamma))
+            alpha_P = xp.sum(xp.real(chi * xp.conj(delta_P * group_obj[:, slice_i, None])), axis=(-1, -2), keepdims=True) / (xp.sum(abs2(delta_P * group_obj[:, slice_i, None])) + gamma)
 
             probe_update = beta_probe * xp.sum(alpha_P * delta_P_avg * group_obj_mag, axis=0) / (group_obj_mag + eps)
             sim.state.probe.data += probe_update

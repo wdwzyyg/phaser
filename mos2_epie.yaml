@@ -12,7 +12,7 @@ raw_data:
 
 init_probe:
   type: 'focused'
-  conv_angle: 20  # mrad
+  conv_angle: 25  # mrad
   defocus: 300    # angstrom
 
 init_object: 'random'
@@ -23,8 +23,8 @@ init_scan:
   step_size: 0.6  # angstrom
 
 preprocessing:
- - type: poisson
-   scale: 1.0e+4
+ - type: scale
+   scale: 1.0
 
 # for each reconstruction engine
 engines:
@@ -34,16 +34,16 @@ engines:
  - type: 'conventional'
    probe_modes: 1
    niter: 100
-   grouping: 16
+   grouping: 64
 
    noise_model:
-     type: 'anscombe'
+     type: 'amplitude'
      eps: 1.0e-8
 
    solver:
      type: 'epie'
-     beta_object: 1.0e-3
-     beta_probe: 1.0e-3
+     beta_object: 1.0
+     beta_probe: 1.0
 
    regularizers: []
    # - 'clamp_object_amplitude'
@@ -52,4 +52,4 @@ engines:
 
    update_probe: {after: 1}
 
-   update_every_group: False
+   #update_every_group: True

@@ -1,26 +1,27 @@
 ---
-backend: cupy
+
+backend: numpy
 
 # raw data source
 raw_data:
   type: empad
-  path: "~/Downloads/mos2/1/mos2/mos2_0.00_dstep1.0_x64_y64_4DSTEM.raw"
-  diff_step: 1.0  # mrad/px
-  kv: 120.        # keV
+  path: "~/Downloads/si-final4/Si_110_Sn_300kV_conv25_defocus10_tds/Si_110_Sn_300kV_conv25_defocus10_tds_199.70_dstep0.6_x80_y80_4DSTEM.raw"
+  diff_step: 0.6  # mrad/px
+  kv: 300.        # keV
 
 # initialization
 
 init_probe:
   type: 'focused'
   conv_angle: 25  # mrad
-  defocus: 300    # angstrom
+  defocus: 100   # angstrom
 
 init_object: 'random'
 
 init_scan:
   type: 'raster'
-  shape: [64, 64] # ny, nx
-  step_size: 0.6  # angstrom
+  shape: [80, 80] # ny, nx
+  step_size: 0.3  # angstrom
 
 preprocessing:
  - type: poisson
@@ -32,9 +33,13 @@ engines:
    # how to reconstruct
    # how to output/save
  - type: 'conventional'
-   probe_modes: 8
-   niter: 100
-   grouping: 64
+   probe_modes: 4
+   slices:
+     n: 20
+     total_thickness: 200
+
+   niter: 150
+   grouping: 128
 
    noise_model:
      type: 'anscombe'
@@ -42,15 +47,11 @@ engines:
 
    solver:
      type: 'lsqml'
-     beta_probe: 1.0
-     beta_object: 1.0
+     beta_probe: 0.9
+     beta_object: 0.9
      gamma: 1.0e-4
 
      illum_reg_object: 1.0e-2
-     illum_reg_probe: 1.0e-2
 
    regularizers: []
-
-   update_probe: {after: 1}
-
-   #update_every_group: True
+   update_probe: {after: 5}
