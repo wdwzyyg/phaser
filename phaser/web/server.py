@@ -4,6 +4,7 @@ from collections import deque
 import logging
 import random
 import multiprocessing
+import signal
 import time
 import weakref
 import typing as t
@@ -15,7 +16,7 @@ from phaser.plan import ReconsPlan
 from .types import (
     JobID, WorkerID,
     # worker - server communication
-    WorkerMessage, JobResponse, CancelResponse, OkResponse, ServerResponse,
+    WorkerMessage, JobResponse, SignalResponse, OkResponse, ServerResponse, Signal,
     # server - client communication
     WorkerStatus, WorkerState, WorkerUpdate, WorkersUpdate, LogRecord,
     JobStatus, JobState, JobStatusChange, JobUpdate, LogUpdate, JobStopped, JobMessage, JobsUpdate,
@@ -62,14 +63,23 @@ class Worker(Subscribable[WorkerUpdate]):
     def state(self) -> WorkerState:
         return WorkerState(self.id, self.status, {
             'shutdown': url_for('shutdown_worker', worker_id=self.id),
+            'reload': url_for('reload_worker', worker_id=self.id),
         })
 
     async def cancel(self):
         if self.status not in ('stopping', 'stopped'):
             await self.set_status('stopping')
 
-    def should_cancel(self) -> bool:
-        return self.status == 'stopping'
+    async def reload(self):
+        if self.status not in ('stopping', 'stopped'):
+            await self.set_status('reloading')
+
+    def action(self) -> t.Optional[Signal]:
+        if self.status == 'stopping':
+            return 'shutdown'
+        elif self.status == 'reloading':
+            return 'reload'
+        return None
 
     async def set_status(self, status: WorkerStatus):
         self.status = status
@@ -85,7 +95,7 @@ class Worker(Subscribable[WorkerUpdate]):
             await self.set_status('stopped')
             return OkResponse()
 
-        if self.status in ('queued', 'starting'):
+        if msg.msg == 'connect':
             await self.set_status('idle')
 
         if (job_id := getattr(msg, 'job_id', None)):
@@ -93,10 +103,10 @@ class Worker(Subscribable[WorkerUpdate]):
             await job.handle_update(msg)
 
             if job.should_cancel():
-                return CancelResponse(self.should_cancel())
+                return SignalResponse(self.action() or 'cancel')
 
-        if self.should_cancel():
-            return CancelResponse(True)
+        if (action := self.action()):
+            return SignalResponse(action)
 
         if msg.msg in ('poll', 'job_result'):
             if len(server.job_queue):
@@ -119,20 +129,32 @@ class Worker(Subscribable[WorkerUpdate]):
 
 class LocalWorker(Worker):
     def __init__(self, worker_id: WorkerID, url: str):
+        super().__init__(worker_id)
+        self.url = url
+
+        self._start()
+        self._fut: asyncio.Task[None] = asyncio.create_task(asyncio.to_thread(self._watch_process))
+
+    def _start(self):
         from phaser.web.worker import run_worker
 
-        super().__init__(worker_id)
-
-        self.process = multiprocessing.Process(target=run_worker, args=[url], daemon=True)
+        self.process = multiprocessing.Process(target=run_worker, args=[self.url], daemon=True)
         self.status = 'starting'
         self.process.start()
 
-        self._fut: asyncio.Task[None] = asyncio.create_task(asyncio.to_thread(self._watch_process))
-
     def _watch_process(self):
-        self.process.join()
-        # TODO call set_status here
-        self.status = 'stopped'
+        while True:
+            self.process.join()
+
+            sig = t.cast(int, self.process.exitcode) - 128
+            if sig == signal.SIGHUP:
+                # restart process
+                self._start()
+                continue
+            else:
+                # TODO call set_status here
+                self.status = 'stopped'
+            break
 
     async def finalize(self):
         self.process.terminate()
@@ -364,8 +386,6 @@ class Server:
                 return id
 
     def _set_signals(self, loop: asyncio.AbstractEventLoop):
-        import signal
-
         last_time: t.Optional[float] = None
 
         def _signal_handler(*_: t.Any) -> None:

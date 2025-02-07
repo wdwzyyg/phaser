@@ -1,5 +1,7 @@
 import dataclasses
 import logging
+import os
+import signal
 import sys
 import traceback
 import time
@@ -14,10 +16,10 @@ from phaser.execute import execute_plan, Observer, ReconsPlan
 from phaser.state import ReconsState, PartialReconsState
 
 from .types import (
-    PollMessage, PingMessage, UpdateMessage, LogMessage, JobResultMessage,
+    ConnectMessage, PollMessage, PingMessage, UpdateMessage, LogMessage, JobResultMessage,
     WorkerShutdownMessage, WorkerMessage, ServerResponse, OkResponse
 )
-from .types import JobID, JobCancelled
+from .types import JobID, SignalException
 
 
 class LogHandler(logging.Handler):
@@ -52,8 +54,8 @@ class WorkerObserver(Observer):
             logging.error("Failed to update server", exc_info=sys.exc_info(), extra={'local': True})
         else:
             self.msg_time = time.monotonic()
-            if resp.msg == 'cancel':
-                raise JobCancelled(resp.shutdown, resp.urgent)
+            if resp.msg == 'signal':
+                raise SignalException(resp.signal, resp.urgent)
         return resp
 
     def send_update(self, state: t.Union[ReconsState, PartialReconsState]):
@@ -99,7 +101,7 @@ def run_worker(url: str):
                           max_tries=10, max_time=30,
                           giveup=lambda e: isinstance(e, requests.HTTPError))  # giveup on 404, etc.
     def startup() -> ServerResponse:
-        return send_message(PollMessage())
+        return send_message(ConnectMessage())
 
     # poll for a job from the server
     # for timeouts, we will eventualy fail and exit the loop
@@ -124,18 +126,19 @@ def run_worker(url: str):
     logger = logging.getLogger('worker')
 
     try:
-        shutdown: bool = False
+        action: t.Optional[t.Literal['shutdown', 'reload']] = None
         resp = startup()
         logger.info("Worker connected to server, response: %r", resp, extra={'local': True})
 
-        while not shutdown:
+        while not action:
             if resp.msg == 'ok':
                 # poll for a new job
                 resp = poll()
                 logger.info("Worker polled server, response: %r", resp, extra={'local': True})
 
-            if resp.msg == 'cancel':
-                break
+            if resp.msg == 'signal' and resp.signal != 'cancel':
+                action = resp.signal
+                continue
 
             assert resp.msg == 'job'
 
@@ -146,10 +149,11 @@ def run_worker(url: str):
                 plan = ReconsPlan.from_jsons(resp.plan)
                 execute_plan(plan, WorkerObserver(resp.job_id, send_message))
 
-            except JobCancelled as e:
+            except SignalException as e:
                 logger.info("Job cancelled", extra={'local': True})
                 msg = JobResultMessage(resp.job_id, 'cancelled')
-                shutdown |= e.shutdown
+                if e.signal != 'cancel':
+                    action = e.signal
             except KeyboardInterrupt:
                 logger.info("Job interrupted", extra={'local': True})
                 msg = JobResultMessage(resp.job_id, 'interrupted')
@@ -175,6 +179,11 @@ def run_worker(url: str):
         s = traceback.format_exc()
         msg = WorkerShutdownMessage('interrupted' if isinstance(e, KeyboardInterrupt) else 'errored', error=s)
     else:
+        if action == 'reload':
+            logger.info("Worker reloading", extra={'local': True})
+            # instead of sending disconnect message, signal here
+            sys.exit(128 + signal.SIGHUP)
+
         # disconnect message
         logger.info("Worker shutting down normally", extra={'local': True})
         msg = WorkerShutdownMessage('finished')

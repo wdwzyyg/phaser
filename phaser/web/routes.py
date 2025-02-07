@@ -26,10 +26,10 @@ async def index():
 async def start_worker(worker_type: str):
     _ = await request.get_data()
 
-    worker_id = server.make_workerid()
-
     if worker_type not in ('manual', 'local', 'slurm'):
         abort(404)
+
+    worker_id = server.make_workerid()
 
     if worker_type == 'manual':
         worker = ManualWorker(worker_id)
@@ -95,12 +95,21 @@ async def job_logs(job_id: JobID):
         'logs': logs,
     }
 
-
 @app.post("/worker/<string:worker_id>/shutdown")
 async def shutdown_worker(worker_id: WorkerID):
     try:
         worker = server.workers[worker_id]
         await worker.cancel()
+    except KeyError:
+        pass
+
+    return serialize(OkResponse())
+
+@app.post("/worker/<string:worker_id>/reload")
+async def reload_worker(worker_id: WorkerID):
+    try:
+        worker = server.workers[worker_id]
+        await worker.reload()
     except KeyError:
         pass
 

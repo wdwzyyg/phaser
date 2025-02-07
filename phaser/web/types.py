@@ -12,12 +12,13 @@ from .util import ReconsStateConverter
 JobID: t.TypeAlias = str
 WorkerID: t.TypeAlias = str
 
-WorkerStatus = t.Literal['queued', 'starting', 'idle', 'running', 'stopping', 'stopped', 'unknown']
+WorkerStatus: t.TypeAlias = t.Literal['queued', 'starting', 'reloading', 'idle', 'running', 'stopping', 'stopped', 'unknown']
 """
 Enum indicating the state of the connection, as described by either the server or client.
 
 - 'queued': Worker is queued/scheduled to start
 - 'starting': Worker is actively being started
+- 'reloading': Worker is being reloaded
 - 'idle': No job is running
 - 'running': Job is running
 - 'stopping': Worker is being stopped
@@ -26,12 +27,12 @@ Enum indicating the state of the connection, as described by either the server o
 - 'unknown': Job hasn't talked in a while, unknown state
 """
 
-JobStatus = t.Literal['queued', 'starting', 'running', 'stopping', 'stopped']
+JobStatus: t.TypeAlias = t.Literal['queued', 'starting', 'running', 'stopping', 'stopped']
 """
 Enum indicating the state of a reconstruction job
 """
 
-Result = t.Literal['finished', 'errored', 'cancelled', 'interrupted']
+Result: t.TypeAlias = t.Literal['finished', 'errored', 'cancelled', 'interrupted']
 """
 Enum indicating a job or worker result.
 
@@ -39,6 +40,11 @@ Enum indicating a job or worker result.
 - 'errored': Encounted an error running
 - 'cancelled': Cancelled/shutdown by the user (from server side)
 - 'interrupted': Cancelled/shutdown by the client/OS
+"""
+
+Signal: t.TypeAlias = t.Literal['shutdown', 'cancel', 'reload']
+"""
+Signal sent to a job or worker.
 """
 
 # server -> client messages
@@ -139,6 +145,10 @@ ManagerMessage: t.TypeAlias = t.Annotated[t.Union[
 
 # worker -> server messages
 
+class ConnectMessage(pane.PaneBase):
+    """Message sent when a worker starts up"""
+    msg: t.Literal['connect'] = 'connect'
+
 class PollMessage(pane.PaneBase):
     """Message polling the server for a job"""
     msg: t.Literal['poll'] = 'poll'
@@ -215,27 +225,27 @@ class JobResponse(pane.PaneBase):
     plan: str
     msg: t.Literal['job'] = 'job'
 
-class CancelResponse(pane.PaneBase):
-    """Response from server indicating client should cancel job or shutdown"""
-    shutdown: bool = False
-    urgent: bool = False
-    msg: t.Literal['cancel'] = 'cancel'
-
 class OkResponse(pane.PaneBase):
     """Response from server indicating no action should be taken"""
     msg: t.Literal['ok'] = 'ok'
 
+class SignalResponse(pane.PaneBase):
+    """Response from server signalling some action (cancellation, shutdown, or reload)"""
+    signal: t.Literal['shutdown', 'cancel', 'reload'] = 'cancel'
+    urgent: bool = False
+    msg: t.Literal['signal'] = 'signal'
+
 WorkerMessage: t.TypeAlias = t.Annotated[t.Union[
-    PollMessage, PingMessage, UpdateMessage,
+    PollMessage, ConnectMessage, PingMessage, UpdateMessage,
     LogMessage, JobResultMessage, WorkerShutdownMessage,
 ], Tagged('msg')]
 
 ServerResponse: t.TypeAlias = t.Annotated[t.Union[
-    JobResponse, CancelResponse, OkResponse
+    JobResponse, SignalResponse, OkResponse
 ], Tagged('msg')]
 
 
-class JobCancelled(Cancelled):
-    def __init__(self, shutdown: bool = False, urgent: bool = False):
-        self.shutdown: bool = shutdown
+class SignalException(Cancelled):
+    def __init__(self, signal: Signal, urgent: bool = False):
+        self.signal: Signal = signal
         self.urgent: bool = urgent

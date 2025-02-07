@@ -13,7 +13,7 @@ const store = createStore();
 
 export function Workers(props: {}) {
     const cols = [20, 60, 20].map((w, i) => <col style={{width: `${w}%`}} key={i}></col>);
-    const headers = ["ID", "Status", "Shutdown"].map((name, i) => <th scope="col" key={i}>{name}</th>);
+    const headers = ["ID", "Status", "Shutdown", "Reload"].map((name, i) => <th scope="col" key={i}>{name}</th>);
 
     const workers_val = useAtomValue(workers);
 
@@ -21,10 +21,10 @@ export function Workers(props: {}) {
         return <tr key={worker.worker_id}>
             <td>{worker.worker_id}</td>
             <td>{worker.status}</td>
-            <td><button className="simple-button" onClick={(e) => shutdown_worker(worker, e)}/></td>
+            <td><button className="simple-button" onClick={(e) => signal_worker(worker, 'shutdown')}/></td>
+            <td><button className="simple-button" onClick={(e) => signal_worker(worker, 'reload')}/></td>
         </tr>;
     });
-
 
     return <table>
         <colgroup>{cols}</colgroup>
@@ -71,8 +71,8 @@ function start_worker(worker_type: string): (e: React.MouseEvent) => void {
     };
 }
 
-function shutdown_worker(worker: WorkerState, e: React.MouseEvent) {
-    fetch(worker.links.shutdown, {
+function signal_worker(worker: WorkerState, signal: string) {
+    fetch(worker.links[signal], {
         method: "POST",
         body: "",
     })
