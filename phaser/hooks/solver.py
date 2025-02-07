@@ -106,8 +106,6 @@ class ConventionalSolver(abc.ABC):
         sim: 'SimulationState',
         engine_i: int,
         observer: 'Observer',
-        update_probe: t.Callable[[FlagArgs], bool],
-        update_object: t.Callable[[FlagArgs], bool],
     ) -> 'SimulationState':
         ...
 

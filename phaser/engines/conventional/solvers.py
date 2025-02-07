@@ -1,17 +1,17 @@
 from functools import partial
 from itertools import zip_longest
 import logging
+import math
 import typing as t
 
 import numpy
 from numpy.typing import NDArray
 
 from phaser.utils.num import cast_array_module, at, abs2, fft2, ifft2, jit, check_finite, to_complex_dtype, to_numpy
-from phaser.utils.misc import create_compact_groupings, create_sparse_groupings
-from phaser.hooks import FlagArgs
+from phaser.utils.misc import create_compact_groupings, create_sparse_groupings, mask_fraction_of_groups
 from phaser.hooks.solver import ConstraintRegularizer, ConventionalSolver
 from phaser.plan import ConventionalEnginePlan, LSQMLSolverPlan, EPIESolverPlan
-from phaser.execute import Observer
+from phaser.execute import Observer, process_flag
 from phaser.engines.common.simulation import SimulationState, make_propagators, cutout_group, slice_forwards, slice_backwards
 
 
@@ -21,13 +21,15 @@ class LSQMLSolver(ConventionalSolver):
         self.engine_plan: ConventionalEnginePlan = plan
 
     def solve(
-        self, sim: SimulationState, engine_i: int, observer: Observer,
-        update_probe: t.Callable[[FlagArgs], bool],
-        update_object: t.Callable[[FlagArgs], bool]
+        self, sim: SimulationState, engine_i: int, observer: Observer
     ) -> SimulationState:
         logger = logging.getLogger(__name__)
         xp = cast_array_module(sim.xp)
         real_dtype = sim.dtype
+
+        update_probe = process_flag(self.engine_plan.update_probe)
+        update_object = process_flag(self.engine_plan.update_object)
+        calc_error = process_flag(self.engine_plan.calc_error)
 
         observer.init_solver(sim.state, engine_i)
 
@@ -35,6 +37,8 @@ class LSQMLSolver(ConventionalSolver):
             groups = create_compact_groupings(sim.state.scan, self.engine_plan.grouping or 64)
         else:
             groups = create_sparse_groupings(sim.state.scan, self.engine_plan.grouping or 64)
+
+        calc_error_mask = mask_fraction_of_groups(len(groups), self.engine_plan.calc_error_fraction)
 
         cutout_shape = sim.state.probe.data.shape[-2:]
         props = make_propagators(sim)
@@ -65,9 +69,13 @@ class LSQMLSolver(ConventionalSolver):
             new_probe_mag = xp.zeros_like(probe_mag)
             iter_update_object = update_object({'state': sim.state, 'niter': self.engine_plan.niter})
             iter_update_probe = update_probe({'state': sim.state, 'niter': self.engine_plan.niter})
+            iter_calc_error = calc_error({'state': sim.state, 'niter': self.engine_plan.niter})
+            iter_errors = []
 
             for (group_i, group) in enumerate(groups):
-                (sim, obj_mag, probe_mag, new_obj_mag, new_probe_mag) = lsqml_run(
+                group_calc_error = iter_calc_error and calc_error_mask[group_i]
+
+                (sim, obj_mag, probe_mag, new_obj_mag, new_probe_mag, errors) = lsqml_run(
                     sim, group, props=props,
                     obj_mag=obj_mag, probe_mag=probe_mag,
                     new_obj_mag=new_obj_mag, new_probe_mag=new_probe_mag,
@@ -75,6 +83,7 @@ class LSQMLSolver(ConventionalSolver):
                     beta_probe=self.plan.beta_probe,
                     update_object=iter_update_object,
                     update_probe=iter_update_probe,
+                    calc_error=group_calc_error,
                     illum_reg_object=self.plan.illum_reg_object,
                     illum_reg_probe=self.plan.illum_reg_probe,
                     gamma=self.plan.gamma,
@@ -86,17 +95,26 @@ class LSQMLSolver(ConventionalSolver):
                 assert sim.state.object.data.dtype == to_complex_dtype(sim.dtype)
                 assert sim.state.probe.data.dtype == to_complex_dtype(sim.dtype)
 
-                observer.update_group(sim.state, self.engine_plan.update_every_group)
+                observer.update_group(sim.state, self.engine_plan.send_every_group)
 
-                #print(f"total probe intensity: {xp.sum(abs2(sim.state.probe.data))}")
-                #print(f"mean object intensity: {xp.mean(abs2(sim.state.object.data))}")
+                if group_calc_error:
+                    assert errors is not None
+                    iter_errors.append(errors)
 
             obj_mag = new_obj_mag
             probe_mag = new_probe_mag
 
             sim = apply_regularizers_iter(sim)
 
-            observer.update_iteration(sim.state, i, self.engine_plan.niter)
+            error = None
+            if iter_calc_error:
+                error = float(to_numpy(xp.nanmean(xp.concatenate(iter_errors))))  # type: ignore
+
+                # TODO don't do this
+                sim.state.progress.iters = numpy.concatenate([sim.state.progress.iters, [i]])
+                sim.state.progress.detector_errors = numpy.concatenate([sim.state.progress.detector_errors, [error]])
+
+            observer.update_iteration(sim.state, i, self.engine_plan.niter, error)
 
         observer.finish_solver()
 
@@ -142,7 +160,7 @@ def lsqml_dry_run(
 @partial(
     jit,
     donate_argnames=('sim', 'obj_mag', 'probe_mag', 'new_obj_mag', 'new_probe_mag'),
-    static_argnames=('update_object', 'update_probe'),
+    static_argnames=('update_object', 'update_probe', 'calc_error'),
 )
 def lsqml_run(
     sim: SimulationState,
@@ -156,10 +174,11 @@ def lsqml_run(
     beta_probe: float = 0.9,
     update_object: bool = True,
     update_probe: bool = True,
+    calc_error: bool = True,
     illum_reg_object: float,
     illum_reg_probe: float,
     gamma: float,
-) -> t.Tuple[SimulationState, NDArray[numpy.floating], NDArray[numpy.floating], NDArray[numpy.floating], NDArray[numpy.floating]]:
+) -> t.Tuple[SimulationState, NDArray[numpy.floating], NDArray[numpy.floating], NDArray[numpy.floating], NDArray[numpy.floating], t.Optional[NDArray[numpy.floating]]]:
     xp = cast_array_module(sim.xp)
     obj_grid = sim.state.object.sampling
     n_slices = sim.state.object.data.shape[0]
@@ -171,6 +190,7 @@ def lsqml_run(
     psi = at(psi, 0).set(probes)
 
     group_probe_mag = xp.zeros_like(probe_mag)
+    #group_obj_mag = xp.sum(abs2(group_obj[:, 0]), axis=0)
     group_obj_mag = xp.sum(abs2(xp.prod(group_obj, axis=1)), axis=0)
 
     def sim_slice(slice_i: int, prop: t.Optional[NDArray[numpy.complexfloating]], state):
@@ -197,6 +217,9 @@ def lsqml_run(
     model_intensity = xp.sum(abs2(model_wave), axis=1, keepdims=True)
     # experimental data
     group_patterns = xp.array(sim.patterns[*group])[:, None]
+
+    errors = xp.sqrt(xp.nansum((model_intensity - group_patterns)**2, axis=(1, -1, -2))) if calc_error else None
+
     (chi, sim.noise_model_state) = sim.noise_model.calc_wave_update(model_wave, model_intensity, group_patterns, sim.pattern_mask, sim.noise_model_state)
     chi = ifft2(chi)
 
@@ -212,7 +235,7 @@ def lsqml_run(
             # average object update
             delta_O_avg = xp.zeros_like(sim.state.object.data[0])
             delta_O_avg = obj_grid.add_view_at_pos(delta_O_avg, group_scan, xp.sum(delta_O, axis=1))
-            delta_O_avg /= (group_probe_mag[slice_i] + illum_reg_object * xp.max(probe_mag[slice_i]))
+            delta_O_avg /= (group_probe_mag[slice_i] + illum_reg_object)
 
             obj_update = beta_object * xp.sum(alpha_O * delta_O_avg * group_probe_mag[slice_i], axis=0) / (group_probe_mag[slice_i] + eps)
             sim.state.object.data = at(sim.state.object.data, slice_i).add(obj_update)
@@ -233,7 +256,7 @@ def lsqml_run(
 
     (sim, chi) = slice_backwards(props, (sim, chi), update_slice)
 
-    return (sim, obj_mag, probe_mag, new_obj_mag, new_probe_mag)
+    return (sim, obj_mag, probe_mag, new_obj_mag, new_probe_mag, errors)
 
 
 class EPIESolver(ConventionalSolver):
@@ -242,11 +265,14 @@ class EPIESolver(ConventionalSolver):
         self.plan: EPIESolverPlan = props
 
     def solve(
-        self, sim: SimulationState, engine_i: int, observer: Observer,
-        update_probe: t.Callable[[FlagArgs], bool],
-        update_object: t.Callable[[FlagArgs], bool]
+        self, sim: SimulationState, engine_i: int, observer: Observer
     ) -> SimulationState:
         logger = logging.getLogger(__name__)
+        xp = cast_array_module(sim.xp)
+
+        update_probe = process_flag(self.engine_plan.update_probe)
+        update_object = process_flag(self.engine_plan.update_object)
+        calc_error = process_flag(self.engine_plan.calc_error)
 
         observer.init_solver(sim.state, engine_i)
 
@@ -254,6 +280,8 @@ class EPIESolver(ConventionalSolver):
             groups = create_compact_groupings(sim.state.scan, self.engine_plan.grouping or 64)
         else:
             groups = create_sparse_groupings(sim.state.scan, self.engine_plan.grouping or 64)
+
+        calc_error_mask = mask_fraction_of_groups(len(groups), self.engine_plan.calc_error_fraction)
 
         props = make_propagators(sim)
 
@@ -275,9 +303,13 @@ class EPIESolver(ConventionalSolver):
         for i in range(1, self.engine_plan.niter+1):
             iter_update_object = update_object({'state': sim.state, 'niter': self.engine_plan.niter})
             iter_update_probe = update_probe({'state': sim.state, 'niter': self.engine_plan.niter})
+            iter_calc_error = calc_error({'state': sim.state, 'niter': self.engine_plan.niter})
+            iter_errors = []
 
             for (group_i, group) in enumerate(groups):
-                sim = epie_run(
+                group_calc_error = iter_calc_error and calc_error_mask[group_i]
+
+                (sim, errors) = epie_run(
                     sim, group, props=props,
                     beta_object=self.plan.beta_object,
                     beta_probe=self.plan.beta_probe,
@@ -290,13 +322,23 @@ class EPIESolver(ConventionalSolver):
                 assert sim.state.object.data.dtype == to_complex_dtype(sim.dtype)
                 assert sim.state.probe.data.dtype == to_complex_dtype(sim.dtype)
 
-                #print(f"total probe intensity: {xp.sum(abs2(sim.state.probe.data))}")
-                #print(f"mean object intensity: {xp.mean(abs2(sim.state.object.data))}")
+                observer.update_group(sim.state, self.engine_plan.send_every_group)
 
-                observer.update_group(sim.state, self.engine_plan.update_every_group)
+                if group_calc_error:
+                    assert errors is not None
+                    iter_errors.append(errors)
 
             sim = apply_regularizers_iter(sim)
-            observer.update_iteration(sim.state, i, self.engine_plan.niter)
+
+            error = None
+            if iter_calc_error:
+                error = float(to_numpy(xp.nanmean(xp.concatenate(iter_errors))))  # type: ignore
+
+                # TODO don't do this
+                sim.state.progress.iters = numpy.concatenate([sim.state.progress.iters, [i]])
+                sim.state.progress.detector_errors = numpy.concatenate([sim.state.progress.detector_errors, [error]])
+
+            observer.update_iteration(sim.state, i, self.engine_plan.niter, error)
 
         observer.finish_solver()
 
@@ -328,7 +370,7 @@ def epie_dry_run(
     return exp_intensity / model_intensity
 
 
-@partial(jit, donate_argnames=('sim',), static_argnames=('update_object', 'update_probe'))
+@partial(jit, donate_argnames=('sim',), static_argnames=('update_object', 'update_probe', 'calc_error'))
 def epie_run(
     sim: SimulationState,
     group: NDArray[numpy.integer], *,
@@ -337,7 +379,8 @@ def epie_run(
     beta_probe: float = 0.9,
     update_object: bool = True,
     update_probe: bool = True,
-) -> SimulationState:
+    calc_error: bool = True,
+) -> t.Tuple[SimulationState, t.Optional[NDArray[numpy.floating]]]:
     xp = cast_array_module(sim.xp)
     obj_grid = sim.state.object.sampling
     n_slices = sim.state.object.data.shape[0]
@@ -361,35 +404,43 @@ def epie_run(
     model_intensity = xp.sum(abs2(model_wave), axis=1, keepdims=True)
     # experimental data
     group_patterns = xp.array(sim.patterns[*group])[:, None]
+
+    errors = xp.sqrt(xp.nansum((model_intensity - group_patterns)**2, axis=(1, -1, -2))) if calc_error else None
+
     (chi, sim.noise_model_state) = sim.noise_model.calc_wave_update(model_wave, model_intensity, group_patterns, sim.pattern_mask, sim.noise_model_state)
-    psi_opt = ifft2(chi + model_wave)
+    chi = ifft2(chi)
 
     def update_slice(slice_i: int, prop: t.Optional[NDArray[numpy.complexfloating]], state):
-        (sim, psi_opt) = state
-        chi = psi_opt - psi[slice_i]
+        (sim, chi) = state
 
-        probe_update = group_obj[:, slice_i, None].conj() * chi / xp.max(abs2(group_obj[:, slice_i, None]), axis=(-1, -2), keepdims=True)
+        probe_update = group_obj[:, slice_i, None].conj() * chi / xp.max(
+            abs2(group_obj[:, slice_i, None]),
+            axis=(-1, -2), keepdims=True
+        )
 
         if update_object:
-            total_probe_int = xp.sum(abs2(psi[slice_i]), axis=1)
-            group_obj_update = beta_object * xp.sum(psi[slice_i].conj() * chi, axis=1) / xp.max(total_probe_int, axis=(-1, -2), keepdims=True)
+            # average incoherent modes
+            group_obj_update = beta_object/n_slices * xp.sum(psi[slice_i].conj() * chi, axis=1) / xp.max(
+                xp.sum(abs2(psi[slice_i]), axis=1),
+                axis=(-1, -2), keepdims=True
+            )
 
             sim.state.object.data = at(sim.state.object.data, slice_i).set(
                 obj_grid.add_view_at_pos(sim.state.object.data[slice_i], group_scan, group_obj_update)
             )
 
         if prop is not None:
-            psi_opt = ifft2(fft2(psi[slice_i] + probe_update) * prop.conj())
+            chi = ifft2(fft2(probe_update) * prop.conj())
         elif update_probe:
             # average probe updates in group
-            probe_update = ifft2(xp.sum(fft2(probe_update) * subpx_filters.conj(), axis=0))
+            probe_update = ifft2(xp.mean(fft2(probe_update) * subpx_filters.conj(), axis=0))
             sim.state.probe.data += beta_probe * probe_update
 
-        return (sim, psi_opt)
+        return (sim, chi)
 
-    (sim, psi_opt) = slice_backwards(props, (sim, psi_opt), update_slice)
+    (sim, chi) = slice_backwards(props, (sim, chi), update_slice)
 
-    return sim
+    return (sim, errors)
 
 
 def apply_regularizers_group(sim: SimulationState, group: NDArray[numpy.integer]) -> SimulationState:

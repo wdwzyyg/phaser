@@ -42,16 +42,13 @@ engines:
    grouping: 128
 
    noise_model:
-     type: 'anscombe'
+     type: 'amplitude'
      eps: 0.1
 
    solver:
-     type: 'lsqml'
-     beta_probe: 0.9
-     beta_object: 0.9
-     gamma: 1.0e-4
-
-     illum_reg_object: 1.0e-2
+     type: 'epie'
+     beta_probe: 0.5
+     beta_object: 0.5
 
    regularizers: []
    update_probe: {after: 5}

@@ -26,8 +26,11 @@ class EnginePlan(Dataclass, kw_only=True):
     update_probe: FlagLike = True
     update_object: FlagLike = True
 
+    calc_error: FlagLike = Flag(every=1)
+    calc_error_fraction: float = 0.1
+
     save: FlagLike = Flag(every=10)
-    update_every_group: bool = False
+    send_every_group: bool = False
 
 
 class AmplitudeNoisePlan(Dataclass, kw_only=True):

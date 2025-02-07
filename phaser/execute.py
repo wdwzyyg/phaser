@@ -44,7 +44,7 @@ class Observer:
     def update_group(self, state: t.Union[ReconsState, PartialReconsState], force: bool = False):
         pass
 
-    def update_iteration(self, state: t.Union[ReconsState, PartialReconsState], i: int, n: int):
+    def update_iteration(self, state: t.Union[ReconsState, PartialReconsState], i: int, n: int, error: t.Optional[float] = None):
         finish_time = time.monotonic()
 
         if self.iter_start_time is not None:
@@ -54,7 +54,9 @@ class Observer:
             time_s = ""
 
         w = len(str(n))
-        logging.info(f"Finished iter {i:{w}}/{n}{time_s}")
+
+        error_s = f" Error: {error:.3e}" if error is not None else ""
+        logging.info(f"Finished iter {i:{w}}/{n}{time_s}{error_s}")
 
         state.iter = IterState(self.engine_i, i + 1, self.start_iter + i + 1)
         self.iter_start_time = finish_time
@@ -138,7 +140,7 @@ def initialize_reconstruction(plan: ReconsPlan, xp: t.Any, observer: Observer) -
     else:
         scan = plan.init_scan({'dtype': dtype, 'seed': seed, 'xp': xp})
 
-    obj_sampling = ObjectSampling.from_scan(scan, sampling.sampling, sampling.extent / 2. + 3. * sampling.sampling)
+    obj_sampling = ObjectSampling.from_scan(scan, sampling.sampling, sampling.extent / 2. + 5. * sampling.sampling)
 
     logging.info("Initializing object...")
     obj = plan.init_object({

@@ -1,8 +1,9 @@
+import math
+import typing as t
+
 import numpy
 from numpy.typing import NDArray
 from numpy.random import SeedSequence, PCG64, BitGenerator, Generator
-
-import typing as t
 
 
 def _proc_seed(seed: object, entropy: object = None) -> SeedSequence:
@@ -125,6 +126,18 @@ def create_compact_groupings(positions: NDArray[numpy.floating], grouping: int =
         idxs[..., labels == i]
         for i in range(n_groups)
     ]
+
+
+def mask_fraction_of_groups(n_groups: int, fraction: float) -> NDArray[numpy.bool_]:
+    n_required = max(1, math.ceil(n_groups * fraction))
+    if n_required >= n_groups:
+        return numpy.ones(n_groups, dtype=numpy.bool_)
+
+    every = n_groups // n_required  # guaranteed > 1
+    mask = numpy.zeros(n_groups, dtype=numpy.bool_)
+    mask[::every] = 1
+
+    return mask
 
 
 class FloatKey(float):

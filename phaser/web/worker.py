@@ -79,8 +79,8 @@ class WorkerObserver(Observer):
         if force or (time.monotonic() - self.msg_time) > 10:
             self.send_update(state)
 
-    def update_iteration(self, state: t.Union[ReconsState, PartialReconsState], i: int, n: int):
-        super().update_iteration(state, i, n)
+    def update_iteration(self, state: t.Union[ReconsState, PartialReconsState], i: int, n: int, error: t.Optional[float] = None):
+        super().update_iteration(state, i, n, error=error)
         self.send_update(state)
 
 

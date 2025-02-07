@@ -24,9 +24,6 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
         reg(None) for reg in props.regularizers
     ))
 
-    update_probe = process_flag(props.update_probe)
-    update_object = process_flag(props.update_object)
-
     sim = SimulationState(
         state=args['state'], noise_model=noise_model, regularizers=regularizers,
         patterns=args['data'].patterns, pattern_mask=args['data'].pattern_mask,
@@ -36,7 +33,6 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
     solver = props.solver(props)
     sim = solver.solve(
         sim, observer=observer, engine_i=args['engine_i'],
-        update_probe=update_probe, update_object=update_object
     )
 
     return sim.state

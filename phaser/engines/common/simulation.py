@@ -43,7 +43,7 @@ class SimulationState:
         dtype: DTypeLike,
         regularizer_states: t.Optional[t.Tuple[ConstraintRegularizer, ...]] = None,
         noise_model_state: t.Optional[StateT] = None,
-        start_iter: t.Optional[int] = None
+        start_iter: t.Optional[int] = None,
     ):
         self.xp = xp
         self.dtype = dtype
@@ -59,7 +59,6 @@ class SimulationState:
         self.propagators = None
 
         self.noise_model_state = noise_model_state or noise_model.init_state(self)
-
         self.regularizer_states = regularizer_states if regularizer_states is not None else tuple(
             reg.init_state(self) for reg in regularizers
         )

@@ -117,9 +117,8 @@ except ImportError:
 else:
     jax.tree_util.register_dataclass(ProbeState, ('data',), ('sampling',))
     jax.tree_util.register_dataclass(ObjectState, ('data', 'zs'), ('sampling',))
-    jax.tree_util.register_dataclass(ProgressState, ('iters', 'detector_errors'), ())
     jax.tree_util.register_dataclass(IterState, ('engine_num', 'engine_iter', 'total_iter'), ())
 
     jax.tree_util.register_dataclass(
-        ReconsState, ('probe', 'object', 'scan', 'progress', 'wavelength', 'iter'), ()
+        ReconsState, ('probe', 'object', 'scan', 'wavelength', 'iter'), ('progress',)
     )
