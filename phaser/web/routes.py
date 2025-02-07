@@ -7,13 +7,21 @@ from quart import Quart, render_template, request, Response, abort, websocket
 
 import pane
 
-from .types import JobID, WorkerID, WorkerMessage
+from .types import JobID, ValidationError, WorkerID, WorkerMessage
 from .types import ManagerConnected, DashboardConnected, OkResponse
 from .server import server, Job, LocalWorker, ManualWorker, Shutdown, raise_on_shutdown
 
 
 def serialize(obj: t.Any, ty: t.Any = None) -> bytes:
     return json.dumps(pane.into_data(obj, ty)).encode('utf-8')
+
+
+def json_response(obj: t.Any, ty: t.Any = None, status: t.Optional[int] = None) -> Response:
+    return Response(
+        serialize(obj, ty),
+        status=status,
+        content_type='application/json',
+    )
 
 
 app: Quart = server.app
@@ -45,14 +53,28 @@ async def start_worker(worker_type: str):
         worker = await server.slurm_manager.make_worker(worker_id, url)
 
     await server.workers.add(worker)
-    return serialize(worker.state())
+    return json_response(worker.state())
 
 @app.post("/job/start")
 async def start_job():
-    _ = await request.get_data()
-    job = Job(server.make_jobid(), server.plan)
-    await server.jobs.add(job)
-    return serialize(job.state())
+    body = await request.get_data()
+    d = json.loads(body)
+    source = d['source']
+
+    if source == 'path':
+        try:
+            print(f"path: {d['path']}")
+            jobs = await Job.from_path(d['path'])
+        except ValidationError as e:
+            print(e.msg)
+            abort(json_response({'result': 'error', 'msg': e.msg}, status=200))
+    else:
+        raise abort(Response(f"Unknown source type {source}", 400))
+
+    return json_response({
+        'result': 'success',
+        'jobs': [job.state() for job in jobs],
+    }, status=201)
 
 @app.get("/job/<string:job_id>")
 async def job_dashboard(job_id: JobID):
@@ -71,7 +93,7 @@ async def cancel_job(job_id: JobID):
     except KeyError:
         pass
 
-    return serialize(OkResponse())
+    return json_response(OkResponse())
 
 @app.get("/job/<string:job_id>/logs")
 async def job_logs(job_id: JobID):
@@ -87,13 +109,13 @@ async def job_logs(job_id: JobID):
     last = before - 1
     logs = job.logs[first:before]
 
-    return {
+    return json_response({
         'first': first,
         'last': last,
         'length': len(logs),
         'total_length': len(job.logs),
         'logs': logs,
-    }
+    })
 
 @app.post("/worker/<string:worker_id>/shutdown")
 async def shutdown_worker(worker_id: WorkerID):
@@ -103,7 +125,7 @@ async def shutdown_worker(worker_id: WorkerID):
     except KeyError:
         pass
 
-    return serialize(OkResponse())
+    return json_response(OkResponse())
 
 @app.post("/worker/<string:worker_id>/reload")
 async def reload_worker(worker_id: WorkerID):
@@ -113,7 +135,7 @@ async def reload_worker(worker_id: WorkerID):
     except KeyError:
         pass
 
-    return serialize(OkResponse())
+    return json_response(OkResponse())
 
 @app.websocket("/listen")
 async def manager_websocket():
@@ -169,8 +191,8 @@ async def worker_update(worker_id: WorkerID):
     try:
         worker = server.workers[worker_id]
     except KeyError:
-        abort(400)
+        abort(404)
 
     msg: WorkerMessage = pane.convert(await request.json, WorkerMessage)  # type: ignore
     #print(f"got worker message: {msg}")
-    return serialize(await worker.handle_message(msg))
+    return json_response(await worker.handle_message(msg))

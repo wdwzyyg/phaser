@@ -2,19 +2,19 @@ from __future__ import annotations
 import asyncio
 from collections import deque
 import logging
+from pathlib import Path
 import random
 import multiprocessing
 import signal
+import sys
 import time
 import weakref
 import typing as t
 
-from quart import Quart, url_for
-
-from phaser.plan import ReconsPlan
+from quart import Quart, url_for, request
 
 from .types import (
-    JobID, WorkerID,
+    JobID, ValidationError, WorkerID,
     # worker - server communication
     WorkerMessage, JobResponse, SignalResponse, OkResponse, ServerResponse, Signal,
     # server - client communication
@@ -245,6 +245,44 @@ class Job(Subscribable[JobMessage]):
         # and log messages
         self.logs: t.List[LogRecord] = []
 
+    @classmethod
+    async def from_path(cls, path: t.Union[str, Path]) -> t.List[t.Self]:
+        process = await asyncio.create_subprocess_exec(
+            sys.executable, '-m', 'phaser', 'validate', '--json', str(path),
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+        )
+        stdout, _ = await process.communicate()
+        return await cls._process_validate_result(stdout)
+
+    @classmethod
+    async def from_yaml(cls, plan: t.Union[str, bytes]) -> t.List[t.Self]:
+        process = await asyncio.create_subprocess_exec(
+            sys.executable, '-m', 'phaser', 'validate', '--json',
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        assert process.stdin is not None
+        process.stdin.write(plan if isinstance(plan, (bytes, bytearray, memoryview)) else plan.encode('utf-8'))
+        stdout, _ = await process.communicate()
+        return await cls._process_validate_result(stdout)
+
+    @classmethod
+    async def _process_validate_result(cls, stdout: bytes) -> t.List[t.Self]:
+        import json
+        result = json.loads(stdout)
+        if result['result'] == 'error':
+            raise ValidationError(result['error'])
+
+        assert result['result'] == 'success'
+        jobs = [
+            cls(server.make_jobid(), json.dumps(plan))
+            for plan in result['plans']
+        ]
+        for job in jobs:
+            await server.jobs.add(job)
+        return jobs
+
     async def set_status(self, status: JobStatus):
         if self.status == status:
             return
@@ -254,7 +292,9 @@ class Job(Subscribable[JobMessage]):
         )
 
     async def cancel(self):
-        if self.status not in ('stopping', 'stopped'):
+        if self.status == 'queued':
+            await self.set_status('stopped')
+        elif self.status not in ('stopping', 'stopped'):
             await self.set_status('stopping')
 
     def should_cancel(self) -> bool:
@@ -407,23 +447,38 @@ class Server:
                     # Add signal handler may not be implemented on Windows
                     signal.signal(getattr(signal, signal_name), _signal_handler)
 
-    def run(self, plan: ReconsPlan):
-        import json
+    def run(
+            self,
+            hostname: str = 'localhost',
+            port: t.Optional[int] = None,
+            verbosity: int = 0
+    ):
         from hypercorn.config import Config
         from hypercorn.asyncio import serve
 
-        self.plan: str = json.dumps(plan.into_data())
-        logging.basicConfig(level=logging.INFO)
+        logging.basicConfig(level=logging.INFO if verbosity == 0 else logging.DEBUG)
+
+        if verbosity > 0:
+            @self.app.before_request
+            async def log_request():
+                request.url_rule
+                logging.debug(f"{request.method} {request.path} {request.user_agent}")
+
+            self.app.config['DEBUG'] = True
+
         multiprocessing.set_start_method('spawn', True)
 
         loop = asyncio.new_event_loop()
+        loop.set_debug(verbosity > 1)
         asyncio.set_event_loop(loop)
         self._set_signals(loop)
+
+        host = f"{hostname}:{port or 5050}"
 
         try:
             loop.run_until_complete(
                 serve(self.app, Config.from_mapping(
-                    bind="localhost:5050",
+                    bind=host,
                     #websocket_max_message_size="512MiB",
                     #wsgi_max_body_size="512MiB",
                 ), shutdown_trigger=self.shutdown_event.wait)

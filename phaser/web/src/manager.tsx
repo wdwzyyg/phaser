@@ -85,6 +85,31 @@ function signal_worker(worker: WorkerState, signal: string) {
     });
 };
 
+export function JobSubmit(props: {}) {
+    const pathRef: React.MutableRefObject<HTMLInputElement | null> = React.useRef(null);
+
+    function submit_job(event: React.FormEvent) {
+        const path = pathRef.current!.value;
+
+        fetch("/job/start", {
+            method: "POST",
+            body: JSON.stringify({'source': 'path', 'path': path}),
+        })
+        .then((response) => response.ok ? response.json() : Promise.reject(response))
+        .then((json) => {
+            console.log(`Got response: ${JSON.stringify(json)}`);
+        })
+        .catch((response: Response) => {
+            console.error(`Error: HTTP ${response.status} ${response.statusText}`)
+        });
+    }
+
+    return <div>
+        <input name="path" type="text" size={50} ref={pathRef}/>
+        <button type="submit" onClick={submit_job}>Submit</button>
+    </div>;
+}
+
 function start_job(e: React.MouseEvent) {
     fetch("/job/start", {
         method: "POST",
@@ -119,10 +144,12 @@ const root = createRoot(document.getElementById('app')!);
 root.render(
     <StrictMode>
         <Provider store={store}>
-            <Section name="Start reconstruction">
+            <Section name="Start workers">
                 <button onClick={start_worker("local")}>Start local worker</button>
                 <button onClick={start_worker("slurm")}>Start slurm worker</button>
-                <button onClick={start_job}>Start reconstruction</button>
+            </Section>
+            <Section name="Start reconstructions">
+                <JobSubmit/>
             </Section>
             <Section name="Workers">
                 <Workers/>

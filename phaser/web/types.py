@@ -47,6 +47,15 @@ Signal: t.TypeAlias = t.Literal['shutdown', 'cancel', 'reload']
 Signal sent to a job or worker.
 """
 
+class ValidationError(Exception):
+    def __init__(self, msg: str):
+        self.msg: str = msg
+
+class SignalException(Cancelled):
+    def __init__(self, signal: Signal, urgent: bool = False):
+        self.signal: Signal = signal
+        self.urgent: bool = urgent
+
 # server -> client messages
 
 class WorkerState(pane.PaneBase):
@@ -243,9 +252,3 @@ WorkerMessage: t.TypeAlias = t.Annotated[t.Union[
 ServerResponse: t.TypeAlias = t.Annotated[t.Union[
     JobResponse, SignalResponse, OkResponse
 ], Tagged('msg')]
-
-
-class SignalException(Cancelled):
-    def __init__(self, signal: Signal, urgent: bool = False):
-        self.signal: Signal = signal
-        self.urgent: bool = urgent

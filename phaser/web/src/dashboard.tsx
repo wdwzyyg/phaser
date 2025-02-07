@@ -73,8 +73,11 @@ root.render(
 );
 
 async function getLogs(before?: number): Promise<LogsData> {
-    const url = before ? `logs?before=${encodeURIComponent(before)}` : 'logs';
-    const response = await fetch(url);
+    const params = new URLSearchParams();
+    if (before) {
+        params.set("before", before.toString());
+    }
+    const response = await fetch(document.URL + '/logs?' + params);
     if (!response.ok) {
         throw new Error(`Failed to fetch logs: ${response.status} ${response.statusText}`);
     }
