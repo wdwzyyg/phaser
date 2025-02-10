@@ -14,6 +14,7 @@ if t.TYPE_CHECKING:
     from phaser.utils.num import Sampling
     from phaser.utils.object import ObjectSampling
     from ..state import ObjectState, ProbeState, ReconsState, Patterns
+    from ..execute import Observer
 
 
 class RawData(t.TypedDict):
@@ -129,6 +130,7 @@ class EngineArgs(t.TypedDict):
     dtype: DTypeLike
     xp: t.Any
     engine_i: int
+    observer: 'Observer'
 
 
 class EngineHook(Hook[EngineArgs, 'ReconsState']):
