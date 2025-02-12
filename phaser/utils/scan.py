@@ -7,7 +7,7 @@ import typing as t
 import numpy
 from numpy.typing import ArrayLike, DTypeLike, NDArray
 
-from .num import get_array_module, NumT
+from .num import get_array_module, cast_array_module, NumT
 
 
 @t.overload
@@ -36,12 +36,7 @@ def make_raster_scan(shape: t.Tuple[int, int], scan_step: ArrayLike,
     - `dtype`: Datatype of positions to return. Defaults to `numpy.float64`.
     - `xp`: Array module
     """
-    if xp is None:
-        xp2 = get_array_module(shape, scan_step)
-    elif not t.TYPE_CHECKING:
-        xp2 = xp
-    else:
-        xp2 = numpy
+    xp2 = get_array_module(shape, scan_step) if xp is None else cast_array_module(xp)
 
     if dtype is None:
         dtype = numpy.float64

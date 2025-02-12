@@ -553,10 +553,7 @@ class Sampling:
 
     def real_grid(self, *, dtype: t.Any = None, xp: t.Any = None) -> t.Tuple[NDArray[numpy.number], NDArray[numpy.number]]:
         """Return the realspace sampling grid `(yy, xx)`. Grid is centered around `(0, 0)` (but may not contain it!)"""
-        if xp is None:
-            xp = get_array_module(self.shape, self.extent, self.sampling)
-        elif t.TYPE_CHECKING:
-            xp = numpy
+        xp2 = get_array_module(self.shape, self.extent, self.sampling) if xp is None else cast_array_module(xp)
 
         if dtype is None:
             dtype = numpy.common_type(self.extent, self.sampling)
@@ -580,12 +577,7 @@ class Sampling:
 
         Unless `centered` is specified, the grid is fftshifted so the zero-frequency component is in the top left.
         """
-        if xp is None:
-            xp2 = get_array_module(self.shape, self.extent, self.sampling)
-        elif not t.TYPE_CHECKING:
-            xp2 = xp
-        else:
-            xp2 = numpy
+        xp2 = get_array_module(self.shape, self.extent, self.sampling) if xp is None else cast_array_module(xp)
 
         if dtype is None:
             dtype = numpy.common_type(self.extent, self.sampling)

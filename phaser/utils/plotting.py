@@ -6,6 +6,7 @@ from matplotlib import pyplot
 from matplotlib.colors import Colormap, Normalize
 
 from .num import get_array_module, abs2, to_numpy
+from .filter import remove_linear_ramp
 from .object import ObjectSampling
 
 
@@ -48,6 +49,8 @@ def plot_object_phase(
     cmap: t.Optional[ColormapLike] = None, norm: t.Optional[NormLike] = None,
     vmin: t.Optional[float] = None, vmax: t.Optional[float] = None,
     zoom_roi: bool = True,
+    unwrap: bool = True,
+    remove_ramp: bool = True,
     **imshow_kwargs: t.Any,
 ) -> 'AxesImage':
     if hasattr(data, 'sampling'):
@@ -59,12 +62,16 @@ def plot_object_phase(
         data = t.cast(NDArray[numpy.complexfloating], data)
 
     xp = get_array_module(data)
-    # TODO subtract phase ramp
+    mask = sampling.get_region_mask()
     phase = xp.sum(xp.angle(data), axis=0)
-    phase_crop = phase[sampling.get_region_crop()]
+
+    if unwrap:
+        phase = xp.unwrap(xp.unwrap(phase, axis=1), axis=0)
+    if remove_ramp:
+        phase = remove_linear_ramp(phase, mask)
 
     return _plot_object_data(
-        phase, phase_crop, sampling,
+        phase, mask, sampling,
         ax=ax, cmap=cmap, norm=norm, vmin=vmin, vmax=vmax,
         zoom_roi=zoom_roi, **imshow_kwargs
     )
@@ -111,17 +118,16 @@ def plot_object_mag(
 
     xp = get_array_module(data)
     mag = abs2(xp.prod(data, axis=0))
-    mag_crop = mag[sampling.get_region_crop()]
 
     return _plot_object_data(
-        mag, mag_crop, sampling,
+        mag, sampling.get_region_mask(), sampling,
         ax=ax, cmap=cmap, norm=norm, vmin=vmin, vmax=vmax,
         zoom_roi=zoom_roi, **imshow_kwargs
     )
 
 
 def _plot_object_data(
-    data: NDArray[numpy.floating], data_crop: NDArray[numpy.floating], sampling: ObjectSampling, *,
+    data: NDArray[numpy.floating], mask: NDArray[numpy.bool_], sampling: ObjectSampling, *,
     ax: t.Optional['Axes'] = None,
     cmap: t.Optional[ColormapLike] = None, norm: t.Optional[NormLike] = None,
     vmin: t.Optional[float] = None, vmax: t.Optional[float] = None,
@@ -139,8 +145,8 @@ def _plot_object_data(
     ax.set_ylabel(r"Y [$\mathrm{\AA}$]")
 
     if norm is None:
-        vmin = vmin if vmin is not None else float(xp.nanmin(data_crop))
-        vmax = vmax if vmax is not None else float(xp.nanmax(data_crop))
+        vmin = vmin if vmin is not None else float(xp.nanmin(data[mask]))
+        vmax = vmax if vmax is not None else float(xp.nanmax(data[mask]))
         norm = Normalize(vmin, vmax)
 
     cmap = pyplot.get_cmap(cmap)

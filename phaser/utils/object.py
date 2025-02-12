@@ -9,8 +9,8 @@ import typing as t
 import numpy
 from numpy.typing import ArrayLike, DTypeLike, NDArray
 
-from .num import get_array_module, to_real_dtype, is_cupy, is_jax, to_numpy, to_array, as_numpy
-from .num import NumT, ComplexT, DTypeT
+from .num import get_array_module, cast_array_module, to_real_dtype, as_numpy
+from .num import to_numpy, to_array, is_cupy, is_jax, NumT, ComplexT, DTypeT
 from .misc import create_rng
 
 
@@ -37,10 +37,7 @@ def random_phase_object(shape: t.Iterable[int], sigma: float = 1e-6, *, seed: t.
       - `dtype`: Output datatype of object. Must be complex. Defaults to `numpy.float64`
       - `xp`: Array module to create object on.
     """
-    if xp is None or t.TYPE_CHECKING:
-        xp2 = numpy
-    else:
-        xp2 = xp
+    xp2 = numpy if xp is None else cast_array_module(xp)
 
     rng = create_rng(seed, 'random_phase_object')
 
@@ -189,6 +186,12 @@ class ObjectSampling:
 
         return (slice(min_i, max_i), slice(min_j, max_j))
 
+    def get_region_mask(self, xp: t.Any = None) -> NDArray[numpy.bool_]:
+        xp2 = numpy if xp is None else cast_array_module(xp)
+        mask = xp2.zeros(self.shape, dtype=numpy.bool_)
+        mask[*self.get_region_crop()] = 1
+        return mask
+
     @t.overload
     def grid(self, *, dtype: t.Type[NumT], xp: t.Any = None) -> t.Tuple[NDArray[NumT], NDArray[NumT]]:
         ...
@@ -199,12 +202,7 @@ class ObjectSampling:
 
     def grid(self, *, dtype: t.Any = None, xp: t.Any = None) -> t.Tuple[NDArray[numpy.number], NDArray[numpy.number]]:
         """Return the sampling grid `(yy, xx)` for this object"""
-        if xp is None:
-            xp2 = get_array_module(self.sampling, self.corner)
-        elif not t.TYPE_CHECKING:
-            xp2 = xp
-        else:
-            xp2 = numpy
+        xp2 = get_array_module(self.sampling, self.corner) if xp is None else cast_array_module(xp)
 
         if dtype is None:
             dtype = numpy.common_type(self.sampling, self.corner)
