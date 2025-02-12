@@ -57,6 +57,47 @@ class NoiseModelHook(Hook[None, NoiseModel]):
     known = {}
 
 
+class PositionSolver(abc.ABC, t.Generic[StateT]):
+    @abc.abstractmethod
+    def init_state(self, sim: 'SimulationState') -> StateT:
+        ...
+
+    @abc.abstractmethod
+    def perform_update(
+        self,
+        positions: NDArray[numpy.floating],
+        gradients: NDArray[numpy.floating],
+        state: StateT
+    ) -> t.Tuple[NDArray[numpy.floating], StateT]:
+        """
+        Return the calculated position updates
+        """
+        ...
+
+
+class SteepestDescentPositionSolverProps(Dataclass):
+    # fraction of optimal step to take
+    step_size: float = 1e-2
+    # maximum step size (in angstroms)
+    max_step_size: t.Optional[float] = None
+
+
+class MomentumPositionSolverProps(Dataclass):
+    # fraction of optimal step to take
+    step_size: float = 1e-2
+    # maximum step size (in angstroms)
+    max_step_size: t.Optional[float] = None
+    # momentum decay rate
+    momentum: float = 0.9
+
+
+class PositionSolverHook(Hook[None, PositionSolver]):
+    known = {
+        'steepest_descent': ('phaser.engines.common.position_correction:SteepestDescentPositionSolver', SteepestDescentPositionSolverProps),
+        'momentum': ('phaser.engines.common.position_correction:MomentumPositionSolver', MomentumPositionSolverProps),
+    }
+
+
 # refactoring:
 # HasState should be an interface, as well as the different ways of regularization + noise model
 # then there can be a list of each of these types in the engine

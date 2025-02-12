@@ -32,8 +32,8 @@ engines:
    # how to reconstruct
    # how to output/save
  - type: 'conventional'
-   probe_modes: 8
-   niter: 100
+   probe_modes: 4
+   niter: 200
    grouping: 64
 
    noise_model:
@@ -49,8 +49,15 @@ engines:
      illum_reg_object: 1.0e-2
      illum_reg_probe: 1.0e-2
 
+   position_solver:
+     type: momentum
+     momentum: 0.90
+     step_size: 8e-2
+     max_step_size: 0.2
+
    regularizers: []
 
    update_probe: {after: 1}
+   update_positions: {after: 30}
 
    #update_every_group: True

@@ -151,6 +151,6 @@ def _plot_object_data(
         min = sampling.region_min if sampling.region_min is not None else sampling.min
         max = sampling.region_max if sampling.region_max is not None else sampling.max
         ax.set_xlim(min[1], max[1])
-        ax.set_ylim(min[0], max[0])
+        ax.set_ylim(max[0], min[0])
 
     return img

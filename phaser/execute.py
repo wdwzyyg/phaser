@@ -140,7 +140,7 @@ def initialize_reconstruction(plan: ReconsPlan, xp: t.Any, observer: Observer) -
     else:
         scan = plan.init_scan({'dtype': dtype, 'seed': seed, 'xp': xp})
 
-    obj_sampling = ObjectSampling.from_scan(scan, sampling.sampling, sampling.extent / 2. + 5. * sampling.sampling)
+    obj_sampling = ObjectSampling.from_scan(scan, sampling.sampling, sampling.extent / 2. + 20. * sampling.sampling)
 
     logging.info("Initializing object...")
     obj = plan.init_object({

@@ -4,7 +4,7 @@ import typing as t
 
 from .types import Dataclass, Slices, BackendName, Flag
 from .hooks import RawDataHook, ProbeHook, ObjectHook, ScanHook, EngineHook, FlagHook, PreprocessingHook
-from .hooks.solver import NoiseModelHook, ConventionalSolverHook, RegularizerHook
+from .hooks.solver import NoiseModelHook, ConventionalSolverHook, PositionSolverHook, RegularizerHook
 
 
 FlagLike: t.TypeAlias = t.Union[bool, Flag, FlagHook]
@@ -25,6 +25,7 @@ class EnginePlan(Dataclass, kw_only=True):
 
     update_probe: FlagLike = True
     update_object: FlagLike = True
+    update_positions: FlagLike = False
 
     calc_error: FlagLike = Flag(every=1)
     calc_error_fraction: float = 0.1
@@ -74,6 +75,7 @@ ConventionalSolverHook.known['epie'] = ('phaser.engines.conventional.solvers:EPI
 class ConventionalEnginePlan(EnginePlan, kw_only=True):
     noise_model: NoiseModelHook
     solver: ConventionalSolverHook
+    position_solver: t.Optional[PositionSolverHook] = None
 
 
 class GradientEnginePlan(EnginePlan):

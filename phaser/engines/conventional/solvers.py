@@ -29,9 +29,11 @@ class LSQMLSolver(ConventionalSolver):
 
         update_probe = process_flag(self.engine_plan.update_probe)
         update_object = process_flag(self.engine_plan.update_object)
+        update_positions = process_flag(self.engine_plan.update_positions)
         calc_error = process_flag(self.engine_plan.calc_error)
 
-        observer.init_solver(sim.state, engine_i)
+        position_solver = None if self.engine_plan.position_solver is None else self.engine_plan.position_solver(None)
+        position_solver_state = None if position_solver is None else position_solver.init_state(sim)
 
         if self.engine_plan.compact:
             groups = create_compact_groupings(sim.state.scan, self.engine_plan.grouping or 64)
@@ -42,6 +44,8 @@ class LSQMLSolver(ConventionalSolver):
 
         cutout_shape = sim.state.probe.data.shape[-2:]
         props = make_propagators(sim)
+
+        observer.init_solver(sim.state, engine_i)
 
         obj_mag = xp.zeros(cutout_shape, dtype=real_dtype)
         probe_mag = xp.zeros_like(sim.state.object.data, dtype=real_dtype)
@@ -69,13 +73,15 @@ class LSQMLSolver(ConventionalSolver):
             new_probe_mag = xp.zeros_like(probe_mag)
             iter_update_object = update_object({'state': sim.state, 'niter': self.engine_plan.niter})
             iter_update_probe = update_probe({'state': sim.state, 'niter': self.engine_plan.niter})
+            iter_update_positions = update_positions({'state': sim.state, 'niter': self.engine_plan.niter})
             iter_calc_error = calc_error({'state': sim.state, 'niter': self.engine_plan.niter})
             iter_errors = []
+            pos_update = xp.zeros_like(sim.state.scan)
 
             for (group_i, group) in enumerate(groups):
                 group_calc_error = iter_calc_error and calc_error_mask[group_i]
 
-                (sim, obj_mag, probe_mag, new_obj_mag, new_probe_mag, errors) = lsqml_run(
+                (sim, obj_mag, probe_mag, new_obj_mag, new_probe_mag, errors, group_pos_update) = lsqml_run(
                     sim, group, props=props,
                     obj_mag=obj_mag, probe_mag=probe_mag,
                     new_obj_mag=new_obj_mag, new_probe_mag=new_probe_mag,
@@ -83,6 +89,7 @@ class LSQMLSolver(ConventionalSolver):
                     beta_probe=self.plan.beta_probe,
                     update_object=iter_update_object,
                     update_probe=iter_update_probe,
+                    update_position=iter_update_positions,
                     calc_error=group_calc_error,
                     illum_reg_object=self.plan.illum_reg_object,
                     illum_reg_probe=self.plan.illum_reg_probe,
@@ -91,6 +98,10 @@ class LSQMLSolver(ConventionalSolver):
                 check_finite(sim.state.object.data, sim.state.probe.data, context=f"object or probe, group {group_i}")
 
                 sim = apply_regularizers_group(sim, group)
+
+                if iter_update_positions:
+                    assert group_pos_update is not None
+                    pos_update[*group] = group_pos_update
 
                 assert sim.state.object.data.dtype == to_complex_dtype(sim.dtype)
                 assert sim.state.probe.data.dtype == to_complex_dtype(sim.dtype)
@@ -103,6 +114,19 @@ class LSQMLSolver(ConventionalSolver):
 
             obj_mag = new_obj_mag
             probe_mag = new_probe_mag
+
+            if iter_update_positions:
+                if not position_solver:
+                    raise ValueError("Updating positions with no PositionSolver specified")
+
+                # subtract mean position update
+                pos_update -= xp.mean(pos_update, tuple(range(pos_update.ndim - 1)))
+                pos_update, position_solver_state = position_solver.perform_update(sim.state.scan, pos_update, position_solver_state)
+                # subtract mean again (this can change with momentum)
+                pos_update -= xp.mean(pos_update, tuple(range(pos_update.ndim - 1)))
+                update_mag = xp.linalg.norm(pos_update, axis=-1, keepdims=True)
+                logger.info(f"Position update: mean {xp.mean(update_mag)}")
+                sim.state.scan += pos_update
 
             sim = apply_regularizers_iter(sim)
 
@@ -160,7 +184,7 @@ def lsqml_dry_run(
 @partial(
     jit,
     donate_argnames=('sim', 'obj_mag', 'probe_mag', 'new_obj_mag', 'new_probe_mag'),
-    static_argnames=('update_object', 'update_probe', 'calc_error'),
+    static_argnames=('update_object', 'update_probe', 'update_position', 'calc_error'),
 )
 def lsqml_run(
     sim: SimulationState,
@@ -174,11 +198,12 @@ def lsqml_run(
     beta_probe: float = 0.9,
     update_object: bool = True,
     update_probe: bool = True,
+    update_position: bool = True,
     calc_error: bool = True,
     illum_reg_object: float,
     illum_reg_probe: float,
     gamma: float,
-) -> t.Tuple[SimulationState, NDArray[numpy.floating], NDArray[numpy.floating], NDArray[numpy.floating], NDArray[numpy.floating], t.Optional[NDArray[numpy.floating]]]:
+) -> t.Tuple[SimulationState, NDArray[numpy.floating], NDArray[numpy.floating], NDArray[numpy.floating], NDArray[numpy.floating], t.Optional[NDArray[numpy.floating]], t.Optional[NDArray[numpy.floating]]]:
     xp = cast_array_module(sim.xp)
     obj_grid = sim.state.object.sampling
     n_slices = sim.state.object.data.shape[0]
@@ -256,7 +281,22 @@ def lsqml_run(
 
     (sim, chi) = slice_backwards(props, (sim, chi), update_slice)
 
-    return (sim, obj_mag, probe_mag, new_obj_mag, new_probe_mag, errors)
+    if update_position:
+        def calc_pos_step(probes_fft: NDArray[numpy.complexfloating], kx: NDArray[numpy.floating]) -> NDArray[numpy.floating]:
+            delta_P_x = ifft2(probes_fft * -2.j*numpy.pi * kx)
+
+            prod = delta_P_x * group_obj[:, 0, None]
+            alpha = xp.sum(xp.real(chi * xp.conj(prod)), axis=(1, -1, -2)) / xp.sum(abs2(prod))
+            return alpha
+
+        # update directions
+        probes_fft = fft2(probes)
+        probes_fft /= xp.sum(abs2(probes), axis=(1, -1, -2), keepdims=True)
+        pos_update = xp.stack(tuple(calc_pos_step(probes_fft, k) for k in (sim.ky, sim.kx)), axis=-1)
+    else:
+        pos_update = None
+
+    return (sim, obj_mag, probe_mag, new_obj_mag, new_probe_mag, errors, pos_update)
 
 
 class EPIESolver(ConventionalSolver):

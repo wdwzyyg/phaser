@@ -30,6 +30,10 @@ class IterState():
             int(self.engine_num), int(self.engine_iter), int(self.total_iter)
         )
 
+    def copy(self) -> t.Self:
+        import copy
+        return copy.deepcopy(self)
+
 
 @dataclass
 class ProbeState():
@@ -40,6 +44,10 @@ class ProbeState():
         return self.__class__(
             self.sampling, to_numpy(self.data)
         )
+
+    def copy(self) -> t.Self:
+        import copy
+        return copy.deepcopy(self)
 
 
 @dataclass
@@ -53,6 +61,10 @@ class ObjectState():
             self.sampling, to_numpy(self.data), to_numpy(self.zs)
         )
 
+    def copy(self) -> t.Self:
+        import copy
+        return copy.deepcopy(self)
+
 
 @dataclass
 class ProgressState():
@@ -63,6 +75,10 @@ class ProgressState():
         return self.__class__(
             to_numpy(self.iters), to_numpy(self.detector_errors)
         )
+
+    def copy(self) -> t.Self:
+        import copy
+        return copy.deepcopy(self)
 
 
 @dataclass(kw_only=True)
@@ -84,6 +100,10 @@ class ReconsState:
             progress=self.progress.to_numpy(),
             wavelength=float(self.wavelength),
         )
+
+    def copy(self) -> t.Self:
+        import copy
+        return copy.deepcopy(self)
 
 
 @dataclass(kw_only=True)
