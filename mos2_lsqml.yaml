@@ -1,4 +1,5 @@
 ---
+name: "mos2_lsqml"
 backend: cupy
 
 # raw data source
@@ -52,12 +53,19 @@ engines:
    position_solver:
      type: momentum
      momentum: 0.90
-     step_size: 8e-2
+     step_size: 8.0e-2
      max_step_size: 0.2
 
    regularizers: []
 
    update_probe: {after: 1}
    update_positions: {after: 30}
+
+   save: {every: 10}
+   save_images: {every: 10}
+   save_options:
+     images: [
+      'probe', 'probe_recip', 'object_phase_sum', 'object_mag_sum'
+     ]
 
    #update_every_group: True

@@ -1,5 +1,5 @@
 ---
-
+name: "si_epie"
 backend: cupy
 
 # raw data source
@@ -49,6 +49,13 @@ engines:
      type: 'epie'
      beta_probe: 0.5
      beta_object: 0.5
+
+   save: {every: 10}
+   save_images: {every: 10}
+   save_options:
+     images: [
+      'probe', 'probe_recip', 'object_phase_sum', 'object_mag_sum'
+     ]
 
    regularizers: []
    update_probe: {after: 5}

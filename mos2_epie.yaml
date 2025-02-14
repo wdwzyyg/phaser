@@ -1,4 +1,5 @@
 ---
+name: "mos2_epie"
 backend: cupy
 
 # raw data source
@@ -51,5 +52,12 @@ engines:
     #  max_angle: 25
 
    update_probe: {after: 5}
+
+   save: {every: 10}
+   save_images: {every: 10}
+   save_options:
+     images: [
+      'probe', 'probe_recip', 'object_phase_sum', 'object_mag_sum'
+     ]
 
    #send_every_group: True

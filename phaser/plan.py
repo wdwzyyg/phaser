@@ -9,6 +9,25 @@ from .hooks.solver import NoiseModelHook, ConventionalSolverHook, PositionSolver
 
 FlagLike: t.TypeAlias = t.Union[bool, Flag, FlagHook]
 
+
+SaveType: t.TypeAlias = t.Literal[
+    'probe', 'probe_mag', 'probe_recip', 'probe_recip_mag',
+    'object_phase_stack', 'object_phase_sum',
+    'object_mag_stack', 'object_mag_sum',
+]
+
+
+class SaveOptions(Dataclass, kw_only=True):
+    images: t.Tuple[SaveType, ...] = ('probe', 'object_phase_stack')
+    crop_roi: bool = True
+    unwrap_phase: bool = True
+    img_dtype: t.Literal['float', '8bit', '16bit', '32bit'] = '16bit'
+
+    out_dir: str = "{name}"
+    img_fmt: str = "{type}_iter{iter.total_iter}.tiff"
+    hdf5_fmt: str = "iter{iter.total_iter}.h5"
+
+
 class EnginePlan(Dataclass, kw_only=True):
     sim_shape: t.Optional[t.Tuple[int, int]] = None
     resize_method: t.Literal['pad_crop', 'resample'] = 'pad_crop'
@@ -31,6 +50,9 @@ class EnginePlan(Dataclass, kw_only=True):
     calc_error_fraction: float = 0.1
 
     save: FlagLike = Flag(every=10)
+    save_images: FlagLike = Flag(every=10)
+    save_options: SaveOptions = SaveOptions()
+
     send_every_group: bool = False
 
 
@@ -87,6 +109,8 @@ EngineHook.known['gradient'] = ('phaser.engines.gradient.run:run_engine', Gradie
 
 
 class ReconsPlan(Dataclass, kw_only=True):
+    name: str
+
     backend: t.Optional[BackendName] = None
     dtype: t.Literal['float32', 'float64'] = 'float32'
 

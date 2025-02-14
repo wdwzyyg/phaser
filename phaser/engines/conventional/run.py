@@ -5,7 +5,7 @@ from phaser.hooks.solver import ConstraintRegularizer
 from phaser.utils.num import cast_array_module
 from phaser.hooks import EngineArgs
 from phaser.plan import ConventionalEnginePlan
-from phaser.execute import Observer, process_flag
+from phaser.execute import Observer
 from phaser.engines.common.simulation import SimulationState
 from phaser.state import ReconsState
 
@@ -32,7 +32,7 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
 
     solver = props.solver(props)
     sim = solver.solve(
-        sim, observer=observer, engine_i=args['engine_i'],
+        sim, recons_name=args['recons_name'], observer=observer, engine_i=args['engine_i'],
     )
 
     return sim.state

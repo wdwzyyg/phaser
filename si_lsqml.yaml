@@ -1,5 +1,5 @@
 ---
-
+name: "si_lsqml"
 backend: cupy
 
 # raw data source
@@ -55,3 +55,11 @@ engines:
 
    regularizers: []
    update_probe: {after: 5}
+
+   save: {every: 10}
+   save_images: {every: 10}
+   save_options:
+     images: [
+      'probe', 'probe_recip', 'object_phase_sum', 'object_mag_sum',
+      'object_phase_stack', 'object_mag_stack'
+     ]

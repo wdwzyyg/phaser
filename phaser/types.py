@@ -5,6 +5,7 @@ import pane
 
 if t.TYPE_CHECKING:
     from phaser.hooks import FlagArgs
+    from phaser.plan import FlagLike
 
 
 BackendName: t.TypeAlias = t.Literal['cuda', 'cupy', 'jax', 'cpu', 'numpy']
@@ -45,6 +46,12 @@ class Flag(Dataclass):
     every: int = 1
     before: t.Optional[int] = None
 
+    def any_true(self, niter: int) -> bool:
+        return (
+            self.after < niter
+            and (self.before is None or self.before > 0)
+        )
+
     def __call__(self, args: 'FlagArgs') -> bool:
         i = args['state'].iter.engine_iter
         return (
@@ -57,6 +64,31 @@ class Flag(Dataclass):
         return self
 
 
+class _ConstFlag:
+    def __init__(self, val: bool):
+        self.val = val
+
+    def __call__(self, args: 'FlagArgs') -> bool:
+        return self.val
+
+
+def process_flag(flag: 'FlagLike') -> t.Callable[['FlagArgs'], bool]:
+    if isinstance(flag, bool):
+        return _ConstFlag(flag)
+    else:
+        return flag.resolve()
+
+
+def flag_any_true(flag: t.Callable[['FlagArgs'], bool], niter: int) -> bool:
+    if isinstance(flag, Flag):
+        return flag.any_true(niter)
+    elif isinstance(flag, _ConstFlag):
+        return flag.val
+    # assume flag will return true
+    return True
+
+
 __all__ = [
     'BackendName', 'Dataclass', 'Slices', 'Flag',
+    'process_flag', 'flag_any_true',
 ]

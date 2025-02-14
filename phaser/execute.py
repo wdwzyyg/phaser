@@ -5,7 +5,6 @@ import typing as t
 import numpy
 from numpy.typing import NDArray
 
-from phaser.hooks import RawData, FlagArgs
 from phaser.utils.num import cast_array_module, get_backend_module, is_jax, xp_is_jax
 from phaser.utils.object import ObjectSampling
 from .plan import GradientEnginePlan, ReconsPlan, EnginePlan, FlagLike
@@ -69,13 +68,6 @@ class Observer:
             print(f"Total time: {self._format_hhmmss(delta)}")
 
 
-def process_flag(flag: FlagLike) -> t.Callable[[FlagArgs], bool]:
-    if isinstance(flag, bool):
-        return lambda args: flag
-    else:
-        return flag.resolve()
-
-
 def execute_plan(plan: ReconsPlan, observer: t.Optional[Observer] = None):
     xp = get_backend_module(plan.backend)
 
@@ -93,6 +85,7 @@ def execute_plan(plan: ReconsPlan, observer: t.Optional[Observer] = None):
             'state': state,
             'dtype': dtype,
             'xp': xp,
+            'recons_name': plan.name,
             'engine_i': engine_i,
             'observer': observer,
         })

@@ -1,7 +1,6 @@
 from functools import partial
-from itertools import zip_longest
 import logging
-import math
+from pathlib import Path
 import typing as t
 
 import numpy
@@ -11,8 +10,10 @@ from phaser.utils.num import cast_array_module, at, abs2, fft2, ifft2, jit, chec
 from phaser.utils.misc import create_compact_groupings, create_sparse_groupings, mask_fraction_of_groups
 from phaser.hooks.solver import ConstraintRegularizer, ConventionalSolver
 from phaser.plan import ConventionalEnginePlan, LSQMLSolverPlan, EPIESolverPlan
-from phaser.execute import Observer, process_flag
+from phaser.types import process_flag, flag_any_true
+from phaser.execute import Observer
 from phaser.engines.common.simulation import SimulationState, make_propagators, cutout_group, slice_forwards, slice_backwards
+from phaser.engines.common.output import output_images, output_state
 
 
 class LSQMLSolver(ConventionalSolver):
@@ -21,7 +22,7 @@ class LSQMLSolver(ConventionalSolver):
         self.engine_plan: ConventionalEnginePlan = plan
 
     def solve(
-        self, sim: SimulationState, engine_i: int, observer: Observer
+        self, sim: SimulationState, recons_name: str, engine_i: int, observer: Observer
     ) -> SimulationState:
         logger = logging.getLogger(__name__)
         xp = cast_array_module(sim.xp)
@@ -31,6 +32,26 @@ class LSQMLSolver(ConventionalSolver):
         update_object = process_flag(self.engine_plan.update_object)
         update_positions = process_flag(self.engine_plan.update_positions)
         calc_error = process_flag(self.engine_plan.calc_error)
+        save = process_flag(self.engine_plan.save)
+        save_images = process_flag(self.engine_plan.save_images)
+
+        try:
+            out_dir = self.engine_plan.save_options.out_dir.format(
+                # TODO: more EnginePlan keys here
+                engine_i=engine_i, name=recons_name,
+            )
+            out_dir = Path(out_dir).expanduser().absolute()
+        except KeyError as e:
+            raise ValueError(f"Invalid format string in 'out_dir' (unknown key {e})") from None
+        except Exception as e:
+            raise ValueError(f"Invalid format string in 'out_dir'") from e
+
+        if flag_any_true(save, self.engine_plan.niter) or flag_any_true(save_images, self.engine_plan.niter):
+            try:
+                out_dir.mkdir(exist_ok=True)
+            except Exception as e:
+                e.add_note(f"Unable to create output dir '{out_dir}'")
+                raise
 
         position_solver = None if self.engine_plan.position_solver is None else self.engine_plan.position_solver(None)
         position_solver_state = None if position_solver is None else position_solver.init_state(sim)
@@ -139,6 +160,12 @@ class LSQMLSolver(ConventionalSolver):
                 sim.state.progress.detector_errors = numpy.concatenate([sim.state.progress.detector_errors, [error]])
 
             observer.update_iteration(sim.state, i, self.engine_plan.niter, error)
+
+            if save({'state': sim.state, 'niter': self.engine_plan.niter}):
+                output_state(sim.state, out_dir, self.engine_plan.save_options)
+
+            if save_images({'state': sim.state, 'niter': self.engine_plan.niter}):
+                output_images(sim.state, out_dir, self.engine_plan.save_options)
 
         observer.finish_solver()
 
@@ -305,7 +332,7 @@ class EPIESolver(ConventionalSolver):
         self.plan: EPIESolverPlan = props
 
     def solve(
-        self, sim: SimulationState, engine_i: int, observer: Observer
+        self, sim: SimulationState, recons_name: str, engine_i: int, observer: Observer
     ) -> SimulationState:
         logger = logging.getLogger(__name__)
         xp = cast_array_module(sim.xp)

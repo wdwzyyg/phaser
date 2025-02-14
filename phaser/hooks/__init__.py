@@ -129,6 +129,7 @@ class EngineArgs(t.TypedDict):
     state: 'ReconsState'
     dtype: DTypeLike
     xp: t.Any
+    recons_name: str
     engine_i: int
     observer: 'Observer'
 

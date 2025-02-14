@@ -145,6 +145,7 @@ class ConventionalSolver(abc.ABC):
     def solve(
         self,
         sim: 'SimulationState',
+        recons_name: str,
         engine_i: int,
         observer: 'Observer',
     ) -> 'SimulationState':

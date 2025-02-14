@@ -2,8 +2,10 @@ import math
 import typing as t
 
 import numpy
-from numpy.typing import NDArray
+from numpy.typing import NDArray, ArrayLike
 from numpy.random import SeedSequence, PCG64, BitGenerator, Generator
+
+from .num import get_array_module, to_numpy
 
 
 def _proc_seed(seed: object, entropy: object = None) -> SeedSequence:
