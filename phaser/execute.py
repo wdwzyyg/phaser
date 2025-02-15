@@ -111,7 +111,7 @@ def initialize_reconstruction(plan: ReconsPlan, xp: t.Any, observer: Observer) -
         raise ValueError("`wavelength` must be specified by raw_data or manually")
 
     # normalize pattern intensity
-    raw_data['patterns'] /= numpy.mean(numpy.sum(raw_data['patterns'], axis=(-1, -2)))
+    #raw_data['patterns'] /= numpy.mean(numpy.sum(raw_data['patterns'], axis=(-1, -2)))
     # ensure raw data is of the correct type
     if raw_data['patterns'].dtype != dtype:
         raw_data['patterns'] = raw_data['patterns'].astype(dtype)
@@ -160,7 +160,7 @@ def initialize_reconstruction(plan: ReconsPlan, xp: t.Any, observer: Observer) -
         })
 
     # perform some checks on preprocessed data
-    avg_pattern_intensity = numpy.nanmean(numpy.nansum(data.patterns, axis=(-1, -2)))
+    avg_pattern_intensity = float(numpy.nanmean(numpy.nansum(data.patterns, axis=(-1, -2))))
 
     if avg_pattern_intensity < 5.0:
         logging.warning(

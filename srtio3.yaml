@@ -35,7 +35,7 @@ engines:
    update_probe: {after: 5}
 
    noise_model:
-     type: 'anascombe'
+     type: 'anscombe'
      bias: 1.0e-3
 
    regularizers: [

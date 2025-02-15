@@ -114,6 +114,8 @@ def get_scipy_module(*arrs: ArrayLike):
     except ImportError:
         pass
     try:
+        import cupyx.scipy.signal
+        import cupyx.scipy.ndimage
         from cupyx.scipy import get_array_module as f  # type: ignore
         if not t.TYPE_CHECKING:
             return f(*arrs)

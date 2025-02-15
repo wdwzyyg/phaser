@@ -1,0 +1,77 @@
+---
+name: "srtio3_exp"
+backend: jax
+
+# raw data source
+raw_data:
+  type: empad
+  path: "~/Downloads/20241123/20241123-sto-bicrystal/acq3-pristine/scan_x128_y128.raw"
+  diff_step: 0.55  # mrad/px
+  kv: 300.        # keV
+
+# initialization
+
+init_probe:
+  type: 'focused'
+  conv_angle: 25  # mrad
+  defocus: 150   # angstrom
+
+init_object: 'random'
+
+init_scan:
+  type: 'raster'
+  shape: [128, 128] # ny, nx
+  step_size: 0.52955  # angstrom
+
+preprocessing:
+ - drop_nans
+ - diffraction_align
+ - type: scale
+   scale: 0.0011534
+
+engines:
+ - type: 'conventional'
+   probe_modes: 4
+   slices:
+     n: 10
+     total_thickness: 200
+
+   niter: 150
+   grouping: 128
+
+   noise_model:
+     type: 'anscombe'
+     eps: 0.5
+
+   solver:
+     type: 'lsqml'
+     beta_probe: 0.9
+     beta_object: 0.9
+     gamma: 1.0e-2
+
+     illum_reg_object: 50.0
+
+   regularizers:
+     - type: layers
+       sigma: 50.0
+       weight: 0.9
+     - type: limit_probe_support
+       max_angle: 26.0
+
+   update_probe: {after: 5}
+   update_positions: {after: 50}
+   position_solver:
+     type: momentum
+     momentum: 0.90
+     step_size: 8.0e-2
+     max_step_size: 0.2
+
+   #send_every_group: True
+
+   save: {every: 10}
+   save_images: {every: 5}
+   save_options:
+     images: [
+      'probe', 'probe_recip', 'object_phase_sum', 'object_mag_sum',
+      'object_phase_stack', 'object_mag_stack'
+     ]

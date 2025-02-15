@@ -133,10 +133,16 @@ class LimitProbeSupportProps(Dataclass):
     max_angle: float
 
 
+class RegularizeLayersProps(Dataclass):
+    weight: float = 0.9  # weight of regularization to apply
+    sigma: float = 50.0  # standard deviation of gaussian filter
+
+
 class RegularizerHook(Hook[None, t.Union[ConstraintRegularizer, GradientRegularizer]]):
     known = {
         'clamp_object_amplitude': ('phaser.engines.common.regularizers:ClampObjectAmplitude', ClampObjectAmplitudeProps),
         'limit_probe_support': ('phaser.engines.common.regularizers:LimitProbeSupport', LimitProbeSupportProps),
+        'layers': ('phaser.engines.common.regularizers:RegularizeLayers', RegularizeLayersProps),
     }
 
 

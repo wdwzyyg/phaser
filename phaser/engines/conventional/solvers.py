@@ -28,6 +28,9 @@ class LSQMLSolver(ConventionalSolver):
         xp = cast_array_module(sim.xp)
         real_dtype = sim.dtype
 
+        assert sim.patterns.dtype == real_dtype
+        assert sim.pattern_mask.dtype == real_dtype
+
         update_probe = process_flag(self.engine_plan.update_probe)
         update_object = process_flag(self.engine_plan.update_object)
         update_positions = process_flag(self.engine_plan.update_positions)
@@ -97,7 +100,7 @@ class LSQMLSolver(ConventionalSolver):
             iter_update_positions = update_positions({'state': sim.state, 'niter': self.engine_plan.niter})
             iter_calc_error = calc_error({'state': sim.state, 'niter': self.engine_plan.niter})
             iter_errors = []
-            pos_update = xp.zeros_like(sim.state.scan)
+            pos_update = xp.zeros_like(sim.state.scan, dtype=real_dtype)
 
             for (group_i, group) in enumerate(groups):
                 group_calc_error = iter_calc_error and calc_error_mask[group_i]
@@ -148,6 +151,7 @@ class LSQMLSolver(ConventionalSolver):
                 update_mag = xp.linalg.norm(pos_update, axis=-1, keepdims=True)
                 logger.info(f"Position update: mean {xp.mean(update_mag)}")
                 sim.state.scan += pos_update
+                assert sim.state.scan.dtype == real_dtype
 
             sim = apply_regularizers_iter(sim)
 

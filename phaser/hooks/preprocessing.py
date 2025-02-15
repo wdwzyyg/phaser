@@ -1,8 +1,9 @@
 import logging
 import typing as t
 
-from phaser.utils.num import get_array_module, to_numpy
-from phaser.utils.misc import create_rng
+from phaser.utils.num import get_array_module, to_numpy, fft2, ifft2, at
+from phaser.utils.misc import create_rng, create_sparse_groupings
+from phaser.utils.optics import fourier_shift_filter
 from phaser.state import Patterns, ReconsState
 from . import PreprocessingArgs, PoissonProps, ScaleProps, DropNanProps
 
@@ -56,3 +57,28 @@ def drop_nan_patterns(args: PreprocessingArgs, props: DropNanProps) -> t.Tuple[P
     args['data'].patterns = patterns
 
     return (args['data'], args['state'])
+
+
+def diffraction_align(args: PreprocessingArgs, props: t.Any = None) -> t.Tuple[Patterns, ReconsState]:
+    patterns, state = args['data'], args['state']
+    xp = get_array_module(patterns.patterns)
+
+    mean_pattern = xp.nanmean(patterns.patterns * patterns.pattern_mask, axis=tuple(range(args['data'].patterns.ndim - 2)))
+    ky, kx = state.probe.sampling.recip_grid(dtype=patterns.patterns.dtype, xp=xp)
+    yy, xx = state.probe.sampling.real_grid(dtype=patterns.patterns.dtype, xp=xp)
+
+    ky_shift = xp.nansum(ky * mean_pattern) / xp.nansum(mean_pattern)
+    kx_shift = xp.nansum(kx * mean_pattern) / xp.nansum(mean_pattern)
+
+    logging.info(f"Shifting diffraction patterns, ({kx_shift * state.probe.sampling.extent[1]}, {ky_shift * state.probe.sampling.extent[0]}) px...")
+    shift = fourier_shift_filter(yy, xx, (ky_shift, kx_shift))
+
+    for group in create_sparse_groupings(patterns.patterns.shape[:-2], 128):
+        patterns.patterns = at(patterns.patterns, group).set(
+            fft2(ifft2(patterns.patterns[*group]) * shift).real
+        )
+
+    # fftshift mask as well
+    patterns.pattern_mask = fft2(ifft2(patterns.pattern_mask) * shift).real
+
+    return (patterns, state)

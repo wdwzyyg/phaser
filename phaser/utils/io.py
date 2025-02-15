@@ -176,7 +176,7 @@ def hdf5_write_object_state(state: ObjectState, group: h5py.Group):
     group.create_dataset('corner', data=state.sampling.corner.astype(numpy.float64))
 
     _hdf5_write_nullable_dataset(group, 'region_min', state.sampling.region_min, numpy.float64)
-    _hdf5_write_nullable_dataset(group, 'region_max', state.sampling.region_min, numpy.float64)
+    _hdf5_write_nullable_dataset(group, 'region_max', state.sampling.region_max, numpy.float64)
 
 
 def hdf5_write_iter_state(state: IterState, group: h5py.Group):

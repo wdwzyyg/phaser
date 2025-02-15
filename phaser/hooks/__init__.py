@@ -116,11 +116,16 @@ class DropNanProps(Dataclass):
     threshold: float = 0.9
 
 
+class DiffractionAlignProps(Dataclass):
+    ...
+
+
 class PreprocessingHook(Hook[PreprocessingArgs, t.Tuple['Patterns', 'ReconsState']]):
     known = {
         'poisson': ('phaser.hooks.preprocessing:add_poisson_noise', PoissonProps),
         'scale': ('phaser.hooks.preprocessing:scale_patterns', ScaleProps),
         'drop_nans': ('phaser.hooks.preprocessing:drop_nan_patterns', DropNanProps),
+        'diffraction_align': ('phaser.hooks.preprocessing:diffraction_align', DiffractionAlignProps),
     }
 
 
