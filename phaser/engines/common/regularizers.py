@@ -72,7 +72,6 @@ class RegularizeLayers(ConstraintRegularizer[None]):
         # calculate size of filter (go to ~sigma in each direction)
         r = int(numpy.ceil(2. * self.sigma / layer_spacing))
         n = 2*r + 1
-        print(f"filter n: {n}")
 
         # make Gaussian filter
         zs = ((xp.arange(0, n) - (n-1)//2) * layer_spacing).astype(dtype)

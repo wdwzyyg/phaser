@@ -15,11 +15,13 @@ if t.TYPE_CHECKING:
     from phaser.plan import ConventionalEnginePlan
 
 
-class NoiseModel(abc.ABC, t.Generic[StateT]):
+class HasState(abc.ABC, t.Generic[StateT]):
     @abc.abstractmethod
     def init_state(self, sim: 'SimulationState') -> StateT:
         ...
 
+
+class NoiseModel(HasState[StateT], abc.ABC):
     @abc.abstractmethod
     def calc_loss(
         self,
@@ -57,11 +59,7 @@ class NoiseModelHook(Hook[None, NoiseModel]):
     known = {}
 
 
-class PositionSolver(abc.ABC, t.Generic[StateT]):
-    @abc.abstractmethod
-    def init_state(self, sim: 'SimulationState') -> StateT:
-        ...
-
+class PositionSolver(HasState[StateT], abc.ABC):
     @abc.abstractmethod
     def perform_update(
         self,
@@ -103,11 +101,7 @@ class PositionSolverHook(Hook[None, PositionSolver]):
 # then there can be a list of each of these types in the engine
 
 
-class ConstraintRegularizer(abc.ABC, t.Generic[StateT]):
-    @abc.abstractmethod
-    def init_state(self, sim: 'SimulationState') -> StateT:
-        ...
-
+class ConstraintRegularizer(HasState[StateT], abc.ABC):
     def apply_group(self, group: NDArray[numpy.integer], sim: 'SimulationState', state: StateT) -> t.Tuple['SimulationState', StateT]:
         return (sim, state)
 
@@ -115,11 +109,7 @@ class ConstraintRegularizer(abc.ABC, t.Generic[StateT]):
         return (sim, state)
 
 
-class GradientRegularizer(abc.ABC, t.Generic[StateT]):
-    @abc.abstractmethod
-    def init_state(self, sim: 'SimulationState') -> StateT:
-        ...
-
+class GradientRegularizer(HasState[StateT], abc.ABC):
     @abc.abstractmethod
     def calc_loss_group(self, group: NDArray[numpy.integer], sim: 'SimulationState', state: StateT) -> t.Tuple[float, StateT]:
         ...
