@@ -236,7 +236,7 @@ export function XAxis(props: AxisProps) {
 
     let ax_ypos = yaxis.scale.rangeFromUnit(cross_pos);
     let [ax_start, ax_stop] = scale.range;
-    return <g className='bot-axis' transform={`translate(0, ${ax_ypos})`}>
+    return <g className={className} transform={`translate(0, ${ax_ypos})`}>
         <line x1={ax_start} x2={ax_stop} y1="0" y2="0" stroke="black"/>
         { ticks }
         { label }
@@ -348,6 +348,14 @@ export function Plot(props: PlotProps) {
     let children: React.ReactNode[] = [];
 
     React.Children.forEach(props.children, child => {
+        // TODO this is a huge hack
+        if (child && typeof child === 'object' && 'type' in child) {
+            if (typeof child.type === 'function' && child.type.name == "Scalebar") {
+                children.push(child);
+                return;
+            }
+        }
+        console.log(child);
         clippedChildren.push(child);
     });
 
@@ -363,12 +371,12 @@ export function Plot(props: PlotProps) {
             <clipPath id={clipId}><rect x={0} y={0} width={dims.width} height={dims.height}/></clipPath>
             <g className="ax-cont">
                 <rect className="ax-box" width={dims.width} height={dims.height}/>
-                { children }
                 <g className="ax-clip" clipPath={`url(#${clipId})`}>
                     <g className="zoom">
                         { clippedChildren }
                     </g>
                 </g>
+                { children }
             </g>
         </svg>
     </Zoomer> </PlotContext.Provider>;

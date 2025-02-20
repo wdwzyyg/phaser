@@ -38,22 +38,27 @@ engines:
      n: 20
      total_thickness: 200
 
-   niter: 150
+   niter: 500
    grouping: 128
 
    noise_model:
-     type: 'amplitude'
+     type: 'anscombe'
      eps: 0.1
 
    solver:
      type: 'lsqml'
      beta_probe: 0.9
      beta_object: 0.9
-     gamma: 1.0e-12
+     gamma: 1.0e-2
 
-     illum_reg_object: 1.0e-2
+     illum_reg_object: 50.0
 
-   regularizers: []
+   regularizers:
+     - type: layers
+       sigma: 50.0
+       weight: 0.9
+     - type: limit_probe_support
+       max_angle: 26.0
    update_probe: {after: 5}
 
    save: {every: 10}

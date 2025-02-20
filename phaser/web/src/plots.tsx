@@ -11,6 +11,7 @@ import { PlotScale } from './plotting/scale';
 import { Figure, PlotGrid, Plot, AxisSpec, ColorScale, PlotImage } from './plotting/plot';
 import { Colorbar } from './plotting/colorbar';
 import { HBox } from './components';
+import Scalebar from './plotting/scalebar';
 
 
 interface ObjectPlotProps {
@@ -51,7 +52,7 @@ export function ObjectPlot(props: ObjectPlotProps) {
     ];
 
     const aspect = nx / ny;
-    const size = 400.0;
+    const size = 500.0;
     // keep area constant
     const [x_size, y_size] = [Math.ceil(size * Math.sqrt(aspect)), Math.ceil(size / Math.sqrt(aspect))];
 
@@ -59,12 +60,12 @@ export function ObjectPlot(props: ObjectPlotProps) {
         ["x", {
             scale: new PlotScale([object.sampling.corner[1], object.sampling.corner[1] + nx * object.sampling.sampling[1]], [0.0, x_size]),
             label: "X",
-            show: 'one',
+            show: false,
         }],
         ["y", {
             scale: new PlotScale([object.sampling.corner[0], object.sampling.corner[0] + ny * object.sampling.sampling[0]], [0.0, y_size]),
             label: "Y",
-            show: 'one',
+            show: false,
         }],
     ]);
 
@@ -78,7 +79,7 @@ export function ObjectPlot(props: ObjectPlotProps) {
 
     return <Figure axes={axes} scales={scales}>
         <HBox>
-            <Plot xaxis="x" yaxis="y"><PlotImage data={phase} scale="phase"/></Plot>
+            <Plot xaxis="x" yaxis="y"><PlotImage data={phase} scale="phase"/><Scalebar unitScale={1e-10}/></Plot>
             <Colorbar scale="phase"/>
         </HBox>
     </Figure>;
@@ -103,14 +104,14 @@ export function ProbePlot(props: ProbePlotProps) {
 
     const axes: Map<string, AxisSpec> = new Map([
         ["x", {
-            scale: new PlotScale([0, nx], [0.0, 150.0]),
+            scale: new PlotScale([0, nx], [0.0, 180.0]),
             label: "X",
-            show: 'one',
+            show: false,
         }],
         ["y", {
-            scale: new PlotScale([0, ny], [0.0, 150.0]),
+            scale: new PlotScale([0, ny], [0.0, 180.0]),
             label: "Y",
-            show: 'one',
+            show: false,
         }],
     ]);
 
@@ -122,16 +123,17 @@ export function ProbePlot(props: ProbePlotProps) {
         }]
     ]);
 
-    const plots = np.split(intensities).map((intensity, i) =>
-        <Plot key={i}><PlotImage data={intensity} scale="intensity"/></Plot>
-    );
+    const plots = np.split(intensities).map((intensity, i) => {
+        const scalebar = i == 0 ? <Scalebar unitScale={1e-10}/> : null;
+        return <Plot key={i}><PlotImage data={intensity} scale="intensity"/>{scalebar}</Plot>;
+    });
 
     return <Figure axes={axes} scales={scales}>
         <HBox>
             <PlotGrid ncols={nprobes} nrows={1} xaxes="x" yaxes="y">
                 {plots}
             </PlotGrid>
-            <Colorbar scale="intensity"/>
+            <Colorbar scale="intensity" length={100}/>
         </HBox>
     </Figure>;
 }

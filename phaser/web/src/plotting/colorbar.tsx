@@ -33,7 +33,7 @@ export function Colorbar(props: ColorBarProps) {
     }
 
     const width = props.width ?? 20;
-    const height = props.length ?? 150;
+    const height = props.length ?? 250;
 
     let xaxis: Axis = {
         scale: new PlotScale([0, width], [0, width]),
@@ -41,7 +41,7 @@ export function Colorbar(props: ColorBarProps) {
         show: false,
     };
     let yaxis: Axis = {
-        scale: new PlotScale(currentRange, [0, height]),
+        scale: new PlotScale(currentRange, [height, 0]),
         label: scale.label,
         translateExtent: [-Infinity, Infinity],
         show: true,
