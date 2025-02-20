@@ -63,12 +63,8 @@ export default function Scalebar(props: ScalebarProps) {
     const yaxis = (typeof plot.yaxis === "string") ? fig.axes.get(plot.yaxis)! : plot.yaxis;
 
     const fullScale = xaxis.scale;
-    const scale = new PlotScale(
-        fullScale.untransform(xtransform.unapply(fullScale.range)),
-        fullScale.range
-    );
-
-    const frameWidth = scale.domainSize();
+    const scale = fullScale.applyTransform(xtransform);
+    const frameWidth = scale.linDomainSize();
 
     let [currentSize, currentText] = current;
     let frac = currentSize / frameWidth;
@@ -98,7 +94,7 @@ export default function Scalebar(props: ScalebarProps) {
         }
     }
 
-    const width = scale.scale(currentSize);
+    const width = scale.linScale(currentSize);
     const x = scale.rangeFromUnit(1.0) - width - margin;
     const y = yaxis.scale.rangeFromUnit(1.0) - margin - height;
     const textX = scale.rangeFromUnit(1.0) - margin;

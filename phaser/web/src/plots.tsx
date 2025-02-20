@@ -6,9 +6,9 @@ import * as d3_scales from 'd3-scale-chromatic';
 
 
 import { np } from './wasm-array';
-import { ProbeData, ObjectData } from './types';
-import { PlotScale } from './plotting/scale';
-import { Figure, PlotGrid, Plot, AxisSpec, ColorScale, PlotImage } from './plotting/plot';
+import { ProbeData, ObjectData, ProgressData } from './types';
+import { PlotScale, LogPlotScale } from './plotting/scale';
+import { Figure, PlotGrid, Plot, AxisSpec, ColorScale, PlotImage, PlotLine, makeId } from './plotting/plot';
 import { Colorbar } from './plotting/colorbar';
 import { HBox } from './components';
 import Scalebar from './plotting/scalebar';
@@ -123,8 +123,10 @@ export function ProbePlot(props: ProbePlotProps) {
         }]
     ]);
 
+    const n_plots = intensities.shape[0];
+
     const plots = np.split(intensities).map((intensity, i) => {
-        const scalebar = i == 0 ? <Scalebar unitScale={1e-10}/> : null;
+        const scalebar = i + 1 == n_plots ? <Scalebar unitScale={1e-10}/> : null;
         return <Plot key={i}><PlotImage data={intensity} scale="intensity"/>{scalebar}</Plot>;
     });
 
@@ -135,5 +137,52 @@ export function ProbePlot(props: ProbePlotProps) {
             </PlotGrid>
             <Colorbar scale="intensity" length={100}/>
         </HBox>
+    </Figure>;
+}
+
+interface ProgressPlotProps {
+    state: PrimitiveAtom<ProgressData | null>
+}
+
+export function ProgressPlot(props: ProgressPlotProps) {
+    const progress = useAtomValue(props.state);
+    const markerId = React.useMemo(() => makeId("marker"), []);
+    const markerRef = `url(#${markerId})`;
+
+    if (!progress || !np) return <div></div>;
+
+    const xs = progress.iters.toNestedArray() as Array<number>;
+    const ys = progress.detector_errors.toNestedArray() as Array<number>;
+
+    const x_max = Math.max(10, ...xs.filter(isFinite));
+    const ys_filt = ys.filter(isFinite);
+
+    let y_min, y_max;
+    if (ys_filt.length) {
+        [y_min, y_max] = [Math.min(...ys_filt), Math.max(...ys_filt)];
+    } else {
+        [y_min, y_max] = [1.0, 1.0e5]
+    }
+
+    const axes: Map<string, AxisSpec> = new Map([
+        ["iter", {
+            scale: new PlotScale([0, x_max], [0.0, 500.0]),
+            label: "Iteration",
+            show: true,
+        }],
+        ["error", {
+            scale: (new LogPlotScale([y_max, y_min], [0.0, 300.0])).pad_frac(0.1),
+            label: "Error",
+            show: true,
+        }],
+    ]);
+
+    return <Figure axes={axes}>
+        <Plot xaxis="iter" yaxis="error">
+            <marker id={markerId} viewBox="0 0 10 10" refX="5" refY="5" className="plot-marker">
+                <circle cx={5} cy={5} r={4}/>
+            </marker>
+            <PlotLine xs={xs} ys={ys} markerStart={markerRef} markerMid={markerRef} markerEnd={markerRef}/>
+        </Plot>
     </Figure>;
 }

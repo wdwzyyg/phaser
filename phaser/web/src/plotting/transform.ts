@@ -10,13 +10,6 @@ export class Transform1D {
         this.p = offset;
     }
 
-    static fromScale(scale: PlotScale): Transform1D {
-        let k: number = scale.rangeSize() / scale.domainSize();
-        return new Transform1D(
-            k, scale.range[0] - k * scale.domain[0]
-        );
-    }
-
     translate(x: number): Transform1D {
         return new Transform1D(
             this.k,

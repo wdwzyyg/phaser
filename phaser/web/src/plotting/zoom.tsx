@@ -170,8 +170,8 @@ class ZoomManager {
     }
 
     constrainToAspect(transform: Transform2D, method?: 'x' | 'y' | 'grow' | 'shrink'): Transform2D {
-        let kx = Math.abs((this.xaxis.scale.rangeSize() / this.xaxis.scale.domainSize()) * this.transform.k[0]);
-        let ky = Math.abs((this.yaxis.scale.rangeSize() / this.yaxis.scale.domainSize()) * this.transform.k[1]);
+        let kx = Math.abs((this.xaxis.scale.rangeSize() / this.xaxis.scale.linDomainSize()) * this.transform.k[0]);
+        let ky = Math.abs((this.yaxis.scale.rangeSize() / this.yaxis.scale.linDomainSize()) * this.transform.k[1]);
         if (isClose(kx, ky)) return transform;
 
         const [c_x, c_y] = this.transform.unapply([this.xaxis.scale.rangeFromUnit(0.5), this.yaxis.scale.rangeFromUnit(0.5)]);

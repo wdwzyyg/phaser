@@ -3,7 +3,6 @@ import { atom, useAtom, useAtomValue, Atom, PrimitiveAtom } from 'jotai';
 
 import * as d3_format from 'd3-format';
 import * as d3_array from 'd3-array';
-import * as d3_scale from 'd3-scale';
 import { NArray } from 'wasm-array';
 import { np } from '../wasm-array';
 
@@ -183,7 +182,7 @@ export interface PlotContextData<K> {
 
 export const PlotContext = React.createContext<PlotContextData<string> | undefined>(undefined);
 
-function makeId(prefix: string): string {
+export function makeId(prefix: string): string {
     return prefix + `-${d3_format.format("06g")(Math.floor(Math.random() * 1000000))}`;
 }
 
@@ -207,10 +206,7 @@ export function XAxis(props: AxisProps) {
     const className = (plot.xaxis_pos == "top") ? 'top-axis' : 'bot-axis';
 
     let fullScale = xaxis.scale;
-    let scale = new PlotScale(
-        fullScale.untransform(xtransform.unapply(fullScale.range)),
-        fullScale.range
-    );
+    let scale = fullScale.applyTransform(xtransform);
 
     let label: React.ReactElement | undefined = undefined;
     if (props.label) {
@@ -225,7 +221,7 @@ export function XAxis(props: AxisProps) {
     const fmt = d3_format.format(xaxis.tickFormat ?? "~g");
     const tickLength = xaxis.tickLength ?? 8;
 
-    let ticks = d3_array.ticks(...scale.domain, xaxis.ticks ?? 4).map((val) => {
+    let ticks = scale.ticks(xaxis.ticks ?? 4).map((val) => {
         const text = fmt(val);
         const pos = scale.transform(val);
         return <g className="tick" key={val}>
@@ -259,10 +255,7 @@ export function YAxis(props: AxisProps) {
     const className = (plot.yaxis_pos == "left") ? 'left-axis' : 'right-axis';
 
     let fullScale = yaxis.scale;
-    let scale = new PlotScale(
-        fullScale.untransform(ytransform.unapply(fullScale.range)),
-        fullScale.range
-    );
+    let scale = fullScale.applyTransform(ytransform);
 
     let label: React.ReactElement | undefined = undefined;
     if (props.label) {
@@ -274,7 +267,7 @@ export function YAxis(props: AxisProps) {
     const fmt = d3_format.format(yaxis.tickFormat ?? "~g");
     const tickLength = yaxis.tickLength ?? 8;
 
-    let ticks = d3_array.ticks(...scale.domain, yaxis.ticks ?? 4).map((val) => {
+    let ticks = scale.ticks(yaxis.ticks ?? 4).map((val) => {
         const text = fmt(val);
         const pos = scale.transform(val);
         return <g className="tick" key={val}>
@@ -355,7 +348,6 @@ export function Plot(props: PlotProps) {
                 return;
             }
         }
-        console.log(child);
         clippedChildren.push(child);
     });
 
@@ -406,7 +398,7 @@ function calc_plot_dims(
     if (margins) {
         [marginTop, marginRight, marginBottom, marginLeft] = margins;
     } else {
-        [marginTop, marginRight, marginBottom, marginLeft] = [10, 10, 10, 10];
+        [marginTop, marginRight, marginBottom, marginLeft] = [15, 15, 15, 15];
         if (show_xaxis) {
             if (xaxis_pos == 'bottom')
                 marginBottom += 60;
@@ -627,4 +619,52 @@ export function PlotImage(props: PlotImageProps) {
         <canvas width={width} height={height} ref={canvasRef} style={{imageRendering: "pixelated"}}></canvas>
     </foreignObject>
     </g>;
+}
+
+interface PlotLineProps extends React.SVGProps<SVGPathElement> {
+    xs: Array<number>
+    ys: Array<number>
+}
+
+export function PlotLine(props: PlotLineProps) {
+    const fig = React.useContext(FigureContext);
+    const plot = React.useContext(PlotContext);
+    if (fig === undefined || plot === undefined) {
+        throw new Error("Component 'PlotLineProps' must be used inside a 'Plot'");
+    }
+
+    console.log(`xs length: ${props.xs.length}`);
+
+    let xaxis = (typeof plot.xaxis === "string") ? fig.axes.get(plot.xaxis)! : plot.xaxis;
+    let yaxis = (typeof plot.yaxis === "string") ? fig.axes.get(plot.yaxis)! : plot.yaxis;
+
+    if (props.xs.length != props.ys.length) {
+        throw new Error("In component 'PlotLineProps': `xs` and `ys` must be the same length");
+    }
+
+    let path_elems: Array<string> = [];
+    let drew_last = false;
+    for (let i = 0; i < props.xs.length; i++) {
+        const x = xaxis.scale.transform(props.xs[i], false);
+        const y = yaxis.scale.transform(props.ys[i], false);
+        if (!isFinite(x) || !isFinite(y)) {
+            drew_last = false;
+            continue
+        }
+        path_elems.push(
+            drew_last ? `L ${x} ${y}` : `M ${x} ${y}`
+        );
+        drew_last = true;
+    }
+
+    const filteredProps: React.SVGProps<SVGPathElement> = {
+        fill: "none"
+    };
+
+    for (const prop in props) {
+        if (["xs", "ys"].includes(prop)) continue;
+        filteredProps[prop] = props[prop]
+    }
+
+    return <path d={path_elems.join(" ")} className="plot-line" {...filteredProps}/>;
 }

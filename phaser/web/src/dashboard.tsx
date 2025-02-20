@@ -7,7 +7,7 @@ import { atom, PrimitiveAtom, useAtom, useAtomValue, createStore, Provider } fro
 import { np_fut, np } from './wasm-array';
 import { JobStatus, JobUpdate, DashboardMessage, LogRecord, LogsData, ProbeData, ObjectData, ProgressData, PartialReconsData } from './types';
 import { Section } from './components';
-import { ProbePlot, ObjectPlot } from './plots';
+import { ProbePlot, ObjectPlot, ProgressPlot } from './plots';
 import { IArrayInterchange } from 'wasm-array';
 
 let socket: WebSocket | null = null;
@@ -64,7 +64,7 @@ root.render(
     <StrictMode>
         <Provider store={store}>
             <StatusBar/>
-            <Section name="Progress"></Section>
+            <Section name="Progress"><ProgressPlot state={progressState}/></Section>
             <Section name="Probe"><ProbePlot state={probeState}/></Section>
             <Section name="Object"><ObjectPlot state={objectState}/></Section>
             <Section name="Logs"><Logs/></Section>
@@ -146,9 +146,6 @@ async function decodeState(state: Record<any, any>): Promise<any> {
 
 async function updateState(raw_state: Record<string, any>) {
     await np_fut;
-
-    console.log(`raw_state: ${JSON.stringify(raw_state)}`);
-
     const state = (await decodeState(raw_state)) as PartialReconsData;
     console.log(`state: ${JSON.stringify(state)}`);
 

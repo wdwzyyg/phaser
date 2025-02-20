@@ -84,6 +84,16 @@ svg.plot {
     fill: black;
 }
 
+.plot-line {
+    fill: none;
+    stroke: black;
+    stroke-width: 2px;
+}
+.plot-marker {
+    fill: black;
+    stroke: none;
+}
+
 .bot-axis, .top-axis, .left-axis, .right-axis {
     font-size: 18px;
     user-select: none;
