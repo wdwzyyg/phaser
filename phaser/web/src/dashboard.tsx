@@ -85,7 +85,8 @@ async function getLogs(before?: number): Promise<LogsData> {
 }
 
 addEventListener("DOMContentLoaded", (event) => {
-    socket = new WebSocket(`ws://${window.location.host}${window.location.pathname}/listen`);
+    const protocol = window.location.protocol == 'https:' ? "wss:" : "ws:";
+    socket = new WebSocket(`${protocol}//${window.location.host}${window.location.pathname}/listen`);
     socket.binaryType = "arraybuffer";
 
     socket.addEventListener("open", (event) => {

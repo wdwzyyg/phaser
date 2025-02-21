@@ -162,7 +162,8 @@ root.render(
 );
 
 addEventListener("DOMContentLoaded", (event) => {
-    socket = new WebSocket(`ws://${window.location.host}/listen`);
+    const protocol = window.location.protocol == 'https:' ? "wss:" : "ws:";
+    socket = new WebSocket(`${protocol}//${window.location.host}/listen`);
     socket.binaryType = "arraybuffer";
 
     socket.addEventListener("open", (event) => {
