@@ -57,7 +57,7 @@ export function Jobs(props: {}) {
 
 function start_worker(worker_type: string): (e: React.MouseEvent) => void {
     return (e: React.MouseEvent) => {
-        fetch(`/worker/${worker_type}/start`, {
+        fetch(`worker/${worker_type}/start`, {
             method: "POST",
             body: "",
         })
@@ -91,7 +91,7 @@ export function JobSubmit(props: {}) {
     function submit_job(event: React.FormEvent) {
         const path = pathRef.current!.value;
 
-        fetch("/job/start", {
+        fetch("job/start", {
             method: "POST",
             body: JSON.stringify({'source': 'path', 'path': path}),
         })
@@ -111,7 +111,7 @@ export function JobSubmit(props: {}) {
 }
 
 function start_job(e: React.MouseEvent) {
-    fetch("/job/start", {
+    fetch("job/start", {
         method: "POST",
         body: "",
 
@@ -163,7 +163,8 @@ root.render(
 
 addEventListener("DOMContentLoaded", (event) => {
     const protocol = window.location.protocol == 'https:' ? "wss:" : "ws:";
-    socket = new WebSocket(`${protocol}//${window.location.host}/listen`);
+    socket = new WebSocket(`${protocol}//${window.location.host}${window.location.pathname}/listen`);
+    console.log(`socket address: '${protocol}//${window.location.host}${window.location.pathname}/listen'`);
     socket.binaryType = "arraybuffer";
 
     socket.addEventListener("open", (event) => {

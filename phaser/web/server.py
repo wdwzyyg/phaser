@@ -5,7 +5,9 @@ import logging
 from pathlib import Path
 import random
 import multiprocessing
+import threading
 import signal
+import os
 import sys
 import time
 import weakref
@@ -164,7 +166,7 @@ class LocalWorker(Worker):
 class ManualWorker(Worker):
     def __init__(self, worker_id: WorkerID):
         url = server.get_worker_url(worker_id)
-        print(f"Worker command: python -m phaser worker {url}")
+        logging.warning(f"Worker command: python -m phaser worker {url}")
         super().__init__(worker_id)
 
 
@@ -381,16 +383,6 @@ _ID_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 
 class Server:
     def __init__(self):
-        self.workers: Workers = Workers()
-        self.jobs: Jobs = Jobs()
-        self.job_queue: deque[Job] = deque()
-
-        self.shutdown_event: asyncio.Event = asyncio.Event()
-
-        from .slurm import SlurmManager
-
-        self.slurm_manager: SlurmManager = SlurmManager()
-
         self.app: Quart = Quart(
             __name__,
             static_url_path="/static",
@@ -401,16 +393,17 @@ class Server:
 
         @self.app.after_serving
         async def shutdown():
-            print("Shutting down...")
+            logging.info("Shutting down...")
             try:
                 async with asyncio.timeout(5):
-                    await asyncio.gather(self.jobs.finalize(), self.workers.finalize(), self.slurm_manager.finalize())
+                    await asyncio.gather(self.jobs.finalize(), self.workers.finalize(), self.slurm_manager.finalize(), *self.futs)
             except TimeoutError:
-                print("Cleanup didn't finish in time")
                 logging.warning("Cleanup didn't finish in time")
 
     def get_worker_url(self, worker_id: WorkerID) -> str:
-        url = url_for('worker_update', worker_id=worker_id, _external=True)
+        assert self.host is not None
+        url_adapter = self.app.url_map.bind(self.host, self.root_path, url_scheme='http')
+        url = url_adapter.build('worker_update', dict(worker_id=worker_id), method='POST', force_external=True)
         return url
 
     def make_workerid(self) -> WorkerID:
@@ -429,6 +422,9 @@ class Server:
         last_time: t.Optional[float] = None
 
         def _signal_handler(*_: t.Any) -> None:
+            if not loop.is_running():
+                return
+
             nonlocal last_time
             t = time.monotonic()
 
@@ -451,10 +447,22 @@ class Server:
             self,
             hostname: str = 'localhost',
             port: t.Optional[int] = None,
+            root_path: t.Optional[str] = None,
             verbosity: int = 0
     ):
-        from hypercorn.config import Config
-        from hypercorn.asyncio import serve
+        self.workers: Workers = Workers()
+        self.jobs: Jobs = Jobs()
+        self.job_queue: deque[Job] = deque()
+        self.futs: t.List[t.Awaitable[t.Any]] = []
+
+        self.shutdown_event: asyncio.Event = asyncio.Event()
+
+        from .slurm import SlurmManager
+
+        self.slurm_manager: SlurmManager = SlurmManager()
+
+        self.host = f"{hostname}:{port or 5050}"
+        self.root_path = root_path or os.environ.get("SCRIPT_NAME")
 
         logging.basicConfig(level=logging.INFO if verbosity == 0 else logging.DEBUG)
 
@@ -471,14 +479,18 @@ class Server:
         loop = asyncio.new_event_loop()
         loop.set_debug(verbosity > 1)
         asyncio.set_event_loop(loop)
-        self._set_signals(loop)
 
-        host = f"{hostname}:{port or 5050}"
+        if threading.current_thread() is threading.main_thread():
+            self._set_signals(loop)
+
+        from hypercorn.config import Config
+        from hypercorn.asyncio import serve
 
         try:
             loop.run_until_complete(
                 serve(self.app, Config.from_mapping(
-                    bind=host,
+                    bind=self.host,
+                    root_path=self.root_path,
                     #websocket_max_message_size="512MiB",
                     #wsgi_max_body_size="512MiB",
                 ), shutdown_trigger=self.shutdown_event.wait)

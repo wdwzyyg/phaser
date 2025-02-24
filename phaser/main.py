@@ -42,7 +42,7 @@ def serve(host: str = 'localhost', port: t.Optional[int] = None, verbose: int = 
 
 
 @cli.command('validate')
-@click.argument('path', type=click.Path(allow_dash=True))
+@click.argument('path', type=click.Path(allow_dash=True), default='-')
 @click.option('--json/--no-json', default=False)
 def validate(path: t.Union[str, Path], json: bool = False):
     from contextlib import nullcontext
@@ -50,7 +50,7 @@ def validate(path: t.Union[str, Path], json: bool = False):
 
     try:
         if path == '-':
-            file = nullcontext(sys.stdout)
+            file = nullcontext(sys.stdin)
         else:
             file = open(Path(path).expanduser(), 'r')
 

@@ -30,6 +30,18 @@ app: Quart = server.app
 async def index():
     return await render_template("manager.html")
 
+@app.post("/shutdown")
+async def shutdown():
+    async def shutdown():
+        await asyncio.sleep(0.0)
+        server.shutdown_event.set()
+
+    server.futs.append(
+        asyncio.create_task(shutdown())
+    )
+
+    return Response("", status=202)
+
 @app.post("/worker/<string:worker_type>/start")
 async def start_worker(worker_type: str):
     _ = await request.get_data()
@@ -63,10 +75,13 @@ async def start_job():
 
     if source == 'path':
         try:
-            print(f"path: {d['path']}")
             jobs = await Job.from_path(d['path'])
         except ValidationError as e:
-            print(e.msg)
+            abort(json_response({'result': 'error', 'msg': e.msg}, status=200))
+    elif source == 'yaml':
+        try:
+            jobs = await Job.from_yaml(d['data'])
+        except ValidationError as e:
             abort(json_response({'result': 'error', 'msg': e.msg}, status=200))
     else:
         raise abort(Response(f"Unknown source type {source}", 400))
@@ -86,7 +101,6 @@ async def job_dashboard(job_id: JobID):
 
 @app.post("/job/<string:job_id>/cancel")
 async def cancel_job(job_id: JobID):
-    print(f"Shutdown job ID {job_id}")
     try:
         job = server.jobs[job_id]
         await job.cancel()
@@ -156,7 +170,6 @@ async def manager_websocket():
     async def recv():
         while True:
             data = await websocket.receive_json()
-            print(f"Received from websocket: {data}")
 
     try:
         await asyncio.gather(send(), recv(), raise_on_shutdown())
@@ -178,7 +191,6 @@ async def dashboard_websocket(job_id: JobID):
 
     async def send():
         async for msg in job.subscribe():
-            #print(f"job msg: {msg}")
             await websocket.send(serialize(msg))
 
     try:
@@ -194,5 +206,4 @@ async def worker_update(worker_id: WorkerID):
         abort(404)
 
     msg: WorkerMessage = pane.convert(await request.json, WorkerMessage)  # type: ignore
-    #print(f"got worker message: {msg}")
     return json_response(await worker.handle_message(msg))
