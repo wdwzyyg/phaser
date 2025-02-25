@@ -4,6 +4,7 @@ import threading
 import logging
 import time
 import io
+import os
 import typing as t
 import yaml
 try:
@@ -44,7 +45,8 @@ class Manager:
         self.port: int = 5050
 
         # path from browser
-        self.root_path = f"/proxy/absolute/{self.port}"
+        service_prefix = os.environ.get("JUPYTERHUB_SERVICE_PREFIX", "/")
+        self.root_path = f"{service_prefix}proxy/absolute/{self.port}"
         # path from server
         self.base_url = f"http://localhost:{self.port}{self.root_path}"
 
@@ -57,7 +59,7 @@ class Manager:
 
         logging.basicConfig(level=logging.INFO, handlers=[self._log_handler])
 
-        server.run(port=self.port, root_path=f"/proxy/absolute/{self.port}")
+        server.run(port=self.port, root_path=self.root_path)
 
     def start(self):
         if self.is_running():
