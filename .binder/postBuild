@@ -1,0 +1,12 @@
+#!/bin/bash
+
+set -euo pipefail
+
+python -m jupyter server extension enable --python jupyter-server-proxy
+
+python -m pip install -e '.[web]'
+
+# download example data
+
+#curl --output simulated_mos2.zip -L 'https://www.dropbox.com/scl/fo/nndi8zj28gzuzaai0dj4x/ADM7fFdmEzeSXUlcOUM1gxo?rlkey=4vr3m6wnimkygna6fl9lk3rkj&st=mis8uqpr&dl=1'
+#unzip simulated_mos2.zip -d simulated_mos2

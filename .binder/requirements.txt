@@ -1,0 +1,16 @@
+numpy>=1.22,<2.3
+scipy>=1.7.0,<1.16
+matplotlib==3.10
+h5py~=3.8
+pyyaml>=5.3.1
+click~=8.1.0
+rich~=12.0.0
+tifffile>=2023.8.25
+k-means-constrained>=0.7.3
+py-pane==0.9.1
+Quart~=0.19.5
+backoff==2.2.1
+requests>=2.31.0
+aiostream>=0.6.4
+ipympl>=0.9.6
+jupyter-server-proxy>=4.4.0
