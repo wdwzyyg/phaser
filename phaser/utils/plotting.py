@@ -4,7 +4,7 @@ import numpy
 from numpy.typing import NDArray
 from matplotlib import pyplot
 from matplotlib.colors import Colormap, Normalize
-from matplotlib.transforms import Affine2DBase
+from matplotlib.transforms import Affine2DBase, Affine2D
 
 from .num import get_array_module, abs2, to_numpy
 from .filter import remove_linear_ramp
@@ -271,3 +271,237 @@ def _plot_probe_overlap(ax: 'Axes', metrics: t.Dict[str, float]):
         [pos[0] - box_r, pos[1] - box_r], 2*box_r, 2*box_r,
         edgecolor='black', linewidth=2.0, fill=False,
     )) for pos in (pos1, -pos1)]
+
+
+def plot_pacbed(raw: NDArray[numpy.floating],
+    *, ax: t.Optional['Axes'] = None, log: bool = True,
+    diff_step: t.Union[t.Tuple[float, float], float, None] = None
+) -> 'Axes':
+    from matplotlib.colors import LogNorm
+
+    if ax is None:
+        fig, ax = pyplot.subplots()
+        ax = t.cast('Axes', ax)
+    else:
+        fig = ax.get_figure()
+
+    pacbed = numpy.nansum(raw, axis=tuple(range(raw.ndim - 2)))
+
+    if diff_step is not None:
+        if isinstance(diff_step, (int, float)):
+            diff_step = (diff_step, diff_step)
+        ax.set_ylabel("k_y [mrad]")
+        ax.set_xlabel("k_x [mrad]")
+        extent = (
+            (-pacbed.shape[1]/2. - 0.5) * diff_step[1],
+            (pacbed.shape[1]/2. - 0.5) * diff_step[1],
+            (pacbed.shape[1]/2. - 0.5) * diff_step[0],
+            (-pacbed.shape[1]/2. - 0.5) * diff_step[0],
+        )
+    else:
+        ax.set_ylabel("k_y [px]")
+        ax.set_xlabel("k_x [px]")
+        extent = None
+
+    ax.imshow(
+        pacbed,
+        norm=t.cast('Normalize', LogNorm() if log else None),
+        extent=t.cast(t.Sequence[float], extent)
+    )
+
+    return ax
+
+
+def plot_raw(raw: NDArray[numpy.floating],
+    *, fig: t.Optional['Figure'] = None,
+    mask: t.Optional[NDArray[numpy.bool_]] = None,
+    interactive: bool = True, log: bool = False,
+    scan_step: t.Union[t.Tuple[float, float], float, None] = None,
+    diff_step: t.Union[t.Tuple[float, float], float, None] = None,
+) -> 'Figure':
+    from matplotlib.colors import Normalize, LogNorm
+
+    if raw.ndim != 4:
+        raise ValueError("Expected a 4D STEM dataset")
+
+    idx = (0, 0)
+
+    if fig is None:
+        fig = pyplot.figure(constrained_layout=True)
+
+    if mask is None:
+        mask = numpy.ones(raw.shape[-2:], dtype=numpy.bool_)
+
+    real_img = numpy.tensordot(raw, mask, axes=((-1, -2), (-1, -2)))
+    recip_img = raw[*idx]
+    vmin = numpy.nanquantile(raw, 0.001)  # used for lognorm
+    vmax = numpy.nanquantile(raw, 0.999)
+
+    (recip_ax, real_ax) = fig.subplots(ncols=2)
+
+    real_ax.set_aspect(1.)
+    recip_ax.set_aspect(1.)
+
+    if scan_step is not None:
+        if isinstance(scan_step, (int, float)):
+            scan_step = (float(scan_step), float(scan_step))
+        real_ax.set_ylabel("y [$\\mathrm{\\AA}$]")
+        real_ax.set_xlabel("x [$\\mathrm{\\AA}$]")
+        real_extent = (
+            -0.5 * scan_step[1],
+            (real_img.shape[1] - 0.5) * scan_step[1],
+            (real_img.shape[0] - 0.5) * scan_step[0],
+            -0.5 * scan_step[0]
+        )
+    else:
+        real_ax.set_ylabel("y [px]")
+        real_ax.set_xlabel("x [px]")
+        real_extent = None
+
+    if diff_step is not None:
+        if isinstance(diff_step, (int, float)):
+            diff_step = (float(diff_step), float(diff_step))
+        recip_ax.set_ylabel("k_y [mrad]")
+        recip_ax.set_xlabel("k_x [mrad]")
+        recip_extent = (
+            (-recip_img.shape[1]/2. - 0.5) * diff_step[1],
+            (recip_img.shape[1]/2. - 0.5) * diff_step[1],
+            (recip_img.shape[1]/2. - 0.5) * diff_step[0],
+            (-recip_img.shape[1]/2. - 0.5) * diff_step[0],
+        )
+    else:
+        recip_ax.set_ylabel("k_y [px]")
+        recip_ax.set_xlabel("k_x [px]")
+        recip_extent = None
+
+    real_ax.imshow(
+        real_img,
+        vmin=float(numpy.nanquantile(real_img, 0.01)),
+        vmax=float(numpy.nanquantile(real_img, 0.99)),
+        extent=t.cast(t.Sequence[float], real_extent),
+    )
+
+    recip_imshow = recip_ax.imshow(
+        recip_img,
+        norm=t.cast('Normalize', LogNorm(vmin, vmax) if log else Normalize(0.0, vmax)),
+        extent=t.cast(t.Sequence[float], recip_extent),
+    )
+
+    if interactive:
+        _raw_interact(
+            fig, real_ax, recip_ax, raw, idx, recip_imshow,
+            numpy.array(scan_step if scan_step is not None else [1., 1.]),
+        )
+
+    return fig
+
+def _raw_interact(
+    fig: 'Figure', real_ax: 'Axes', recip_ax: 'Axes', raw: NDArray[numpy.floating],
+    idx: t.Tuple[int, int], recip_imshow: 'AxesImage',
+    scan_step: NDArray[numpy.floating],
+):
+    from threading import Thread, Event
+
+    import matplotlib.path as path
+    from matplotlib.patches import PathPatch
+    from matplotlib.backend_bases import KeyEvent, MouseEvent, MouseButton
+
+    class Timer(Thread):
+        def __init__(self, interval: float, fn: t.Callable[[], bool]):
+            super().__init__()
+            self.stop_event: Event = Event()
+            self.interval: float = interval
+            self.fn: t.Callable[[], bool] = fn
+
+        def run(self):
+            while not self.stop_event.wait(self.interval):
+                if not self.fn():
+                    break
+
+        def stop(self):
+            self.stop_event.set()
+
+        def __del__(self):
+            self.stop()
+            self.join()
+
+    (y, x) = idx
+
+    crosshair = path.Path(numpy.array([
+        [-1.5, -1.5], [1.5, -1.5], [1.5, 1.5], [-1.5, 1.5],
+        [-0.5, -0.5], [-0.5, 0.5], [0.5, 0.5], [0.5, -0.5]
+    ]), list(map(int, [path.Path.MOVETO, 2, 2, 2, path.Path.MOVETO, 2, 2, 2])))
+    marker = PathPatch(crosshair, fc='red', fill=True, linestyle='None', transform=Affine2D().translate(x * scan_step[1], y * scan_step[0]) + real_ax.transData)
+    real_ax.add_patch(marker)
+
+    def update():
+        #print(f"\rpos: ({x}, {y})   ", end='')
+        recip_imshow.set_data(raw[y, x])
+        marker.set_transform(Affine2D().translate(x * scan_step[1], y * scan_step[0]) + real_ax.transData)
+        fig.canvas.draw_idle()
+
+    repeat_timer: t.Optional[Timer] = None
+    pressed: t.Set[str] = set()
+
+    def handle_presses():
+        nonlocal x, y
+
+        if 'left' in pressed:
+            if x > 0:
+                x -= 1
+        elif 'right' in pressed:
+            if x < raw.shape[1] - 1:
+                x += 1
+        elif 'up' in pressed:
+            if y > 0:
+                y -= 1
+        elif 'down' in pressed:
+            if y < raw.shape[0] - 1:
+                y += 1
+
+        update()
+
+    def key_pressed(event: KeyEvent):
+        nonlocal repeat_timer
+
+        if event.key not in ('left', 'right', 'up', 'down'):
+            return
+
+        pressed.add(event.key)
+        handle_presses()
+
+        if repeat_timer is not None:
+            repeat_timer.stop()
+            repeat_timer.join()
+        repeat_timer = Timer(0.2, key_repeat)
+        repeat_timer.start()
+
+    def key_repeat() -> bool:
+        if len(pressed):
+            handle_presses()
+            return True  # continue
+        return False
+
+    def key_released(event: KeyEvent):
+        if event.key in pressed:
+            pressed.remove(event.key)
+
+    def mouse_event(event: MouseEvent):
+        nonlocal x, y
+        if (event.button is MouseButton.LEFT
+            or event.buttons is not None and MouseButton.LEFT in event.buttons) \
+            and event.x is not None and event.y is not None:
+
+            (click_x, click_y) = real_ax.transData.inverted().transform(tuple(map(int, (event.x, event.y))))
+            click_x /= scan_step[1]
+            click_y /= scan_step[0]
+            (click_x, click_y) = map(int, map(round, (click_x, click_y)))
+            if not 0 <= click_x < raw.shape[1] or not 0 <= click_y < raw.shape[0]:
+                return
+            x, y = click_x, click_y
+            update()
+
+    fig.canvas.mpl_connect('key_press_event', key_pressed)
+    fig.canvas.mpl_connect('key_release_event', key_released)
+    fig.canvas.mpl_connect('button_press_event', mouse_event)
+    fig.canvas.mpl_connect('motion_notify_event', mouse_event)

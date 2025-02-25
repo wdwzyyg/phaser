@@ -261,22 +261,23 @@ def estimate_probe_radius(wavelength: float, aperture: float, defocus: float, *,
 
 
 def calc_metrics(*,
-    wavelength: t.Optional[float] = None, kv: t.Optional[float] = None,
+    wavelength: t.Optional[float] = None, voltage: t.Optional[float] = None,
     conv_angle: float, defocus: float, scan_step: float, diff_step: float,
     threshold: t.Union[t.Literal['geom'], float] = 0.9, xp: t.Any = None,
 ) -> t.Dict[str, float]:
     """
     Calculate sampling metrics for the given parameters. Units are as follows:
 
+    voltage: volts
     wavelength, scan_step, defocus: length units (must be consistent)
     conv_angle, diff_step: mrad
     """
 
     if wavelength is None:
-        if kv is None:
-            raise ValueError("One of 'wavelength' or 'kv' must be specified")
+        if voltage is None:
+            raise ValueError("One of 'wavelength' or 'voltage' must be specified")
         from phaser.utils.physics import Electron
-        wavelength = Electron(kv * 1e3).wavelength
+        wavelength = Electron(voltage).wavelength
 
     probe_radius = estimate_probe_radius(
         wavelength=wavelength, aperture=conv_angle,
