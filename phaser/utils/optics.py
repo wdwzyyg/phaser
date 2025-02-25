@@ -7,8 +7,8 @@ import typing as t
 import numpy
 from numpy.typing import NDArray, ArrayLike
 
-from .num import get_array_module, ifft2, abs2, NumT, ufunc_outer, is_jax
-from .num import to_complex_dtype, to_real_dtype, split_array
+from .num import get_array_module, ifft2, abs2, NumT, ufunc_outer, is_jax, cast_array_module
+from .num import Sampling, to_complex_dtype, to_real_dtype, split_array, to_numpy
 
 
 @t.overload
@@ -207,3 +207,96 @@ def fresnel_propagator(ky: NDArray[numpy.floating], kx: NDArray[numpy.floating],
     return xp.exp(-1.j * numpy.pi * delta_z * (wavelength * k2 - 2.*(kx*tiltx + ky*tilty))) \
         .astype(to_complex_dtype(k2.dtype))
 
+
+
+def estimate_probe_radius(wavelength: float, aperture: float, defocus: float, *,
+                          threshold: t.Union[t.Literal['geom'], float] = 0.9, xp: t.Any = None) -> float:
+    """
+    Estimate the radius of a probe created by a circular aperture of
+    maximum semi-angle `aperture` (in mrad) defocused by `defocus` (in length units).
+
+    `threshold` is used to determine the intensity cutoff for size calcuation.
+    'geom' may be specified to use the geometric approximation (valid for large defocuses).
+    """
+    xp2 = numpy if xp is None else cast_array_module(xp)
+
+    aperture *= 1e-3  # mrad -> rad
+
+    if threshold == 'geom':
+        return defocus * aperture
+
+    rel_defocus = numpy.abs(defocus) / wavelength
+
+    # 4*nyquist
+    sampling = 1/(8 * aperture)
+    min_box_size = 5. * rel_defocus * aperture
+    # number of points required is size / sampling
+    # we round up to nearest power of 2
+    n = max(512, int(numpy.exp2(numpy.ceil(numpy.log2(min_box_size / sampling)))))
+    if n > 2**14:
+        raise ValueError("Can't calculate probe radii (requires too much phase space)") from None
+
+    # TODO: this should be possible in 1D, using a Henkel transform or similar
+    # also, we can cache a lot of this
+
+    samp = Sampling((n, n), sampling=(sampling, sampling))
+    ky, kx = samp.recip_grid(xp=xp2)
+    yy, xx = samp.real_grid(xp=xp2)
+
+    probe_int = abs2(make_focused_probe(ky, kx, 1.0, aperture*1e3, defocus=rel_defocus))
+
+    rs = xp2.sqrt(yy**2 + xx**2)
+    r_samp = samp.sampling[0] / 3.
+    r_i = xp2.floor(rs / r_samp).astype(int)
+
+    probe_ints = xp2.bincount(r_i.ravel(), weights=probe_int.ravel())
+    cum_ints = to_numpy(xp2.cumsum(probe_ints))
+
+    try:
+        probe_n = int(numpy.argwhere(cum_ints > float(threshold))[0, 0])
+        # redimensionalize
+        return float(probe_n * r_samp * wavelength)
+    except IndexError:
+        raise ValueError("Couldn't calculate probe radii (didn't reach threshold, is probe too big for calculation box?)") from None
+
+
+def calc_metrics(*,
+    wavelength: t.Optional[float] = None, kv: t.Optional[float] = None,
+    conv_angle: float, defocus: float, scan_step: float, diff_step: float,
+    threshold: t.Union[t.Literal['geom'], float] = 0.9, xp: t.Any = None,
+) -> t.Dict[str, float]:
+    """
+    Calculate sampling metrics for the given parameters. Units are as follows:
+
+    wavelength, scan_step, defocus: length units (must be consistent)
+    conv_angle, diff_step: mrad
+    """
+
+    if wavelength is None:
+        if kv is None:
+            raise ValueError("One of 'wavelength' or 'kv' must be specified")
+        from phaser.utils.physics import Electron
+        wavelength = Electron(kv * 1e3).wavelength
+
+    probe_radius = estimate_probe_radius(
+        wavelength=wavelength, aperture=conv_angle,
+        defocus=defocus, threshold=threshold, xp=xp
+    )
+
+    # diff_step in 1/A
+    d_step = diff_step*1e-3 / wavelength
+
+    return {
+        'probe_radius': probe_radius,
+        'fund_samp': 1/(scan_step * d_step),
+        'probe_samp': 1/(2.*probe_radius * d_step),
+        'linear_oversamp': 2.*probe_radius / scan_step,
+        'areal_oversamp': numpy.pi*probe_radius**2 / scan_step**2,
+        'ronchi_mag': conv_angle / (diff_step * probe_radius),
+
+        'wavelength': wavelength,
+        'conv_angle': conv_angle,
+        'defocus': defocus,
+        'scan_step': scan_step,
+        'diff_step': diff_step,
+    }

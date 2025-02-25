@@ -561,9 +561,9 @@ class Sampling:
             dtype = numpy.common_type(self.extent, self.sampling)
 
         hp = self.sampling/2.
-        ys = xp.linspace(-self.extent[0]/2. + hp[0], self.extent[0]/2. + hp[0], self.shape[0], endpoint=False, dtype=dtype)
-        xs = xp.linspace(-self.extent[0]/2. + hp[1], self.extent[1]/2. + hp[1], self.shape[1], endpoint=False, dtype=dtype)
-        return tuple(xp.meshgrid(ys, xs, indexing='ij'))  # type: ignore
+        ys = xp2.linspace(-self.extent[0]/2. + hp[0], self.extent[0]/2. + hp[0], self.shape[0], endpoint=False, dtype=dtype)
+        xs = xp2.linspace(-self.extent[0]/2. + hp[1], self.extent[1]/2. + hp[1], self.shape[1], endpoint=False, dtype=dtype)
+        return tuple(xp2.meshgrid(ys, xs, indexing='ij'))  # type: ignore
 
     @t.overload
     def recip_grid(self, *, centered: bool = False, dtype: t.Type[NumT], xp: t.Any = None) -> t.Tuple[NDArray[NumT], NDArray[NumT]]:
