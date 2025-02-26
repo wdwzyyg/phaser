@@ -78,6 +78,9 @@ class Manager:
             self.out, self.manager_view()
         ], titles=['Server logs', 'Job manager'], selected_index=1))
 
+    def __del__(self):
+        self.shutdown()
+
     def is_running(self) -> bool:
         return (
             self._server_thread is not None and self._server_thread.is_alive()
@@ -127,7 +130,7 @@ class Manager:
     def job_view(self, job_id: str) -> ipywidgets.HTML:
         return iframe(
             f'{self.root_path}/job/{job_id}',
-            width=1200, height=800
+            width=1200, height=2000
         )
 
 

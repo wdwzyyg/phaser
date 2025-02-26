@@ -489,8 +489,8 @@ def _raw_interact(
     def mouse_event(event: MouseEvent):
         nonlocal x, y
         if (event.button is MouseButton.LEFT
-            or event.buttons is not None and MouseButton.LEFT in event.buttons) \
-            and event.x is not None and event.y is not None:
+            or event.buttons is not None and MouseButton.LEFT in event.buttons  # type: ignore
+        ) and event.x is not None and event.y is not None:
 
             (click_x, click_y) = real_ax.transData.inverted().transform(tuple(map(int, (event.x, event.y))))
             click_x /= scan_step[1]
