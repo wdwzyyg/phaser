@@ -1,5 +1,4 @@
 from pathlib import Path
-import io
 import sys
 import typing as t
 
@@ -67,7 +66,7 @@ def validate(path: t.Union[str, Path], json: bool = False):
         sys.exit(1)
 
     if len(plans) == 1:
-        print(f"Validation of plan successful!", file=sys.stderr)
+        print("Validation of plan successful!", file=sys.stderr)
     else:
         print(f"Validation of {len(plans)} plans successful!", file=sys.stderr)
 
@@ -82,10 +81,11 @@ def validate(path: t.Union[str, Path], json: bool = False):
 
 @cli.command('worker')
 @click.argument('url', type=str, required=True)
-def worker(url: str):
+@click.option('--quiet/--loud', default=False)
+def worker(url: str, quiet: bool = False):
     from phaser.web.worker import run_worker
 
-    run_worker(url)
+    run_worker(url, quiet=quiet)
 
 
 if __name__ == '__main__':

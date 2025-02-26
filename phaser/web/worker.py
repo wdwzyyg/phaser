@@ -84,7 +84,7 @@ class WorkerObserver(Observer):
         self.send_update(state)
 
 
-def run_worker(url: str):
+def run_worker(url: str, quiet: bool = False):
     def send_message(msg: WorkerMessage) -> ServerResponse:
         body = msg.into_data()
         resp: requests.Response = requests.post(url, json=body)
@@ -122,7 +122,9 @@ def run_worker(url: str):
         return send_message(msg)
 
     log_handler = LogHandler(send_message)
-    logging.basicConfig(level=logging.INFO, handlers=[logging.StreamHandler(), log_handler])
+    logging.basicConfig(level=logging.INFO,
+        handlers=[log_handler] if quiet else [logging.StreamHandler(), log_handler]
+    )
     logger = logging.getLogger('worker')
 
     try:
