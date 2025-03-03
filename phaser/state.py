@@ -1,17 +1,17 @@
-from dataclasses import dataclass
 import typing as t
 
 import numpy
 from numpy.typing import NDArray
 
 from phaser.utils.num import Sampling, to_numpy
+from phaser.utils.misc import jax_dataclass
 from phaser.utils.object import ObjectSampling
 
 if t.TYPE_CHECKING:
     from phaser.utils.io import HdfLike
 
 
-@dataclass
+@jax_dataclass
 class Patterns():
     patterns: NDArray[numpy.floating]
     """Raw diffraction patterns, with 0-frequency sample in corner"""
@@ -24,7 +24,7 @@ class Patterns():
         )
 
 
-@dataclass
+@jax_dataclass
 class IterState():
     engine_num: int
     """Engine number. 1-indexed (0 means before any reconstruction)."""
@@ -47,7 +47,7 @@ class IterState():
         return IterState(0, 0, 0)
 
 
-@dataclass
+@jax_dataclass(static_fields=('sampling',))
 class ProbeState():
     sampling: Sampling
     """Probe coordinate system. See `Sampling` for more details."""
@@ -64,7 +64,7 @@ class ProbeState():
         return copy.deepcopy(self)
 
 
-@dataclass
+@jax_dataclass(static_fields=('sampling',))
 class ObjectState():
     sampling: ObjectSampling
     """Object coordinate system. See `ObjectSampling` for more details."""
@@ -83,8 +83,8 @@ class ObjectState():
         return copy.deepcopy(self)
 
 
-@dataclass
-class ProgressState():
+@jax_dataclass
+class ProgressState:
     iters: NDArray[numpy.integer]
     """Iterations error measurements were taken at."""
     detector_errors: NDArray[numpy.floating]
@@ -106,8 +106,12 @@ class ProgressState():
             numpy.array([], dtype=numpy.float64),
         )
 
+    # TODO: this is a hack to prevent JIT recompilation.
+    def __hash__(self) -> int:
+        return id(self)
 
-@dataclass(kw_only=True)
+
+@jax_dataclass(kw_only=True, static_fields=('progress',))
 class ReconsState:
     iter: IterState
     wavelength: float
@@ -142,7 +146,7 @@ class ReconsState:
         return hdf5_read_state(file).to_complete()
 
 
-@dataclass(kw_only=True)
+@jax_dataclass(kw_only=True, static_fields=('progress',))
 class PartialReconsState:
     iter: IterState
     wavelength: float
@@ -189,19 +193,4 @@ class PartialReconsState:
         return hdf5_read_state(file)
 
 
-
 StateObserver: t.TypeAlias = t.Callable[[t.Union[ReconsState, PartialReconsState]], t.Any]
-
-
-try:
-    import jax.tree_util
-except ImportError:
-    pass
-else:
-    jax.tree_util.register_dataclass(ProbeState, ('data',), ('sampling',))
-    jax.tree_util.register_dataclass(ObjectState, ('data', 'zs'), ('sampling',))
-    jax.tree_util.register_dataclass(IterState, ('engine_num', 'engine_iter', 'total_iter'), ())
-
-    jax.tree_util.register_dataclass(
-        ReconsState, ('probe', 'object', 'scan', 'wavelength', 'iter'), ('progress',)
-    )

@@ -47,7 +47,7 @@ class LSQMLSolver(ConventionalSolver):
         except KeyError as e:
             raise ValueError(f"Invalid format string in 'out_dir' (unknown key {e})") from None
         except Exception as e:
-            raise ValueError(f"Invalid format string in 'out_dir'") from e
+            raise ValueError("Invalid format string in 'out_dir'") from e
 
         if flag_any_true(save, self.engine_plan.niter) or flag_any_true(save_images, self.engine_plan.niter):
             try:

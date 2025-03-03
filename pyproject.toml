@@ -30,6 +30,7 @@ dependencies = [
     "tifffile>=2023.8.25",
     "k-means-constrained>=0.7.3",  # required for compact groupings
     "py-pane==0.9.1",
+    "typing_extensions~=4.7",
 ]
 
 [project.optional-dependencies]
@@ -41,7 +42,9 @@ cuda = [
     "pynvml>=11.0.0",
 ]
 jax = [
-    "jax~=0.4.36",
+    # 0.4.25 is last version supporting cuda 11.8, we need to support it.
+    # tested on 0.4.25 & 0.5.1
+    "jax>=0.4.25,<0.5.2",  
 ]
 web = [
     "Quart>=0.19.5",

@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 import logging
 import typing as t
 
@@ -6,7 +5,7 @@ import numpy
 from numpy.typing import NDArray, DTypeLike
 
 from phaser.utils.num import cast_array_module, to_complex_dtype, fft2, ifft2, is_jax, to_numpy
-from phaser.utils.misc import FloatKey
+from phaser.utils.misc import FloatKey, jax_dataclass
 from phaser.utils.optics import fresnel_propagator, fourier_shift_filter
 from phaser.state import ReconsState
 from phaser.hooks.solver import NoiseModel, ConstraintRegularizer, StateT
@@ -14,7 +13,7 @@ from phaser.hooks.solver import NoiseModel, ConstraintRegularizer, StateT
 logger = logging.getLogger(__name__)
 
 
-@dataclass(init=False)
+@jax_dataclass(init=False, static_fields=('xp', 'dtype', 'noise_model', 'regularizers'))
 class SimulationState:
     state: ReconsState
     noise_model_state: t.Any
@@ -29,8 +28,6 @@ class SimulationState:
     xp: t.Any
     dtype: DTypeLike
     start_iter: int
-
-    propagators: t.Optional[NDArray[numpy.complexfloating]] = None
 
     def __init__(
         self, *,
@@ -56,7 +53,6 @@ class SimulationState:
         (self.ky, self.kx) = state.probe.sampling.recip_grid(dtype=dtype, xp=xp)
 
         self.start_iter = start_iter if start_iter is not None else self.state.iter.total_iter
-        self.propagators = None
 
         self.noise_model_state = noise_model_state or noise_model.init_state(self)
         self.regularizer_states = regularizer_states if regularizer_states is not None else tuple(
@@ -154,16 +150,3 @@ def slice_backwards(
         state = f(slice_i, props[slice_i - 1], state)
 
     return f(0, None, state)
-
-
-try:
-    import jax.tree_util
-except ImportError:
-    pass
-else:
-    jax.tree_util.register_dataclass(
-        SimulationState,
-        ('state', 'noise_model_state', 'patterns', 'pattern_mask', 'start_iter'),
-        ('xp', 'dtype', 'noise_model', 'regularizers'),
-        ('ky', 'kx', 'propagators')
-    )

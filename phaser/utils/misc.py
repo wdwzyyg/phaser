@@ -1,9 +1,14 @@
+import dataclasses
 import math
 import typing as t
 
 import numpy
 from numpy.typing import NDArray
 from numpy.random import SeedSequence, PCG64, BitGenerator, Generator
+from typing_extensions import dataclass_transform
+
+
+TypeT = t.TypeVar('TypeT', bound=type)
 
 
 def _proc_seed(seed: object, entropy: object = None) -> SeedSequence:
@@ -149,3 +154,71 @@ class FloatKey(float):
             round(self, 5) == round(other, 5)
 
 
+@t.overload
+@dataclass_transform(kw_only_default=False)
+def jax_dataclass(cls: TypeT, /, *,
+    init: bool = True, kw_only: bool = False, static_fields: t.Sequence[str] = ()
+) -> TypeT:
+    ...
+
+@t.overload
+@dataclass_transform(kw_only_default=False)
+def jax_dataclass(*,
+    init: bool = True, kw_only: bool = False, static_fields: t.Sequence[str] = ()
+) -> t.Callable[[TypeT], TypeT]:
+    ...
+
+def jax_dataclass(cls: t.Optional[TypeT] = None, /, *,
+    init: bool = True, kw_only: bool = True, static_fields: t.Sequence[str] = ()
+) -> t.Union[TypeT, t.Callable[[TypeT], TypeT]]:
+    if cls is None:
+        def inner(cls: TypeT) -> TypeT:
+            return jax_dataclass(cls, init=init, kw_only=kw_only, static_fields=static_fields)
+
+        return inner
+
+    cls = t.cast(TypeT, dataclasses.dataclass(init=init, kw_only=kw_only)(cls))
+    _register_dataclass(cls, static_fields=static_fields)
+    return cls
+
+
+def _register_dataclass(cls: type, static_fields: t.Sequence[str] = ()):
+    try:
+        from jax.tree_util import register_pytree_with_keys
+    except ImportError:
+        return
+
+    fields = dataclasses.fields(cls)
+    field_names = {field.name for field in fields}
+
+    if (extra := set(static_fields).difference(field_names)):
+        raise ValueError(f"Unknown field(s) passed to 'static_fields': {', '.join(map(repr, extra))}")
+
+    data_fields = tuple(field_names.difference(static_fields))
+
+    def flatten_with_keys(x: t.Any, /) -> tuple[t.Iterable[tuple[str, t.Any]], t.Hashable]:
+        meta = tuple(getattr(x, name) for name in static_fields)
+        trees = tuple((name, getattr(x, name)) for name in data_fields)
+        return trees, meta
+
+    def unflatten(meta: t.Hashable, trees: t.Iterable[t.Any], /) -> t.Any:
+        if not isinstance(meta, tuple):
+            raise TypeError
+        static_args = dict(zip(static_fields, meta, strict=True))
+        data_args = dict(zip(data_fields, trees, strict=True))
+        return cls(**static_args, **data_args)
+
+    def flatten(x: t.Any, /) -> tuple[t.Iterable[t.Any], t.Hashable]:
+        hashed = tuple(getattr(x, name) for name in static_fields)
+        trees = tuple(getattr(x, name) for name in data_fields)
+        return trees, hashed
+
+    register_pytree_with_keys(cls, flatten_with_keys, unflatten, flatten)
+
+
+__all__ = [
+    'create_rng', 'create_rng_group',
+    'create_sparse_groupings', 'create_compact_groupings',
+    'mask_fraction_of_groups', 'FloatKey',
+    'jax_dataclass',
+]
