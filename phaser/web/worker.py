@@ -1,6 +1,5 @@
 import dataclasses
 import logging
-import os
 import signal
 import sys
 import traceback
@@ -17,7 +16,7 @@ from phaser.state import ReconsState, PartialReconsState
 
 from .types import (
     ConnectMessage, PollMessage, PingMessage, UpdateMessage, LogMessage, JobResultMessage,
-    WorkerShutdownMessage, WorkerMessage, ServerResponse, OkResponse
+    WorkerShutdownMessage, WorkerMessage, ServerResponse
 )
 from .types import JobID, SignalException
 
@@ -91,7 +90,11 @@ def run_worker(url: str, quiet: bool = False):
         try:
             resp.raise_for_status()
         except requests.RequestException as e:
-            e.add_note(f"Request size: {len(t.cast(bytes, resp.request.body))} bytes")
+            if not (req := t.cast(requests.PreparedRequest, resp.request)) or not req.body:
+                size = 0
+            else:
+                size = len(req.body)
+            e.add_note(f"Request size: {size} bytes")
             raise 
         return pane.convert(resp.json(), ServerResponse)  # type: ignore
 

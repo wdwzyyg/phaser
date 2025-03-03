@@ -1,11 +1,13 @@
-import logging.config
-import weakref
+import atexit
 import threading
+import multiprocessing
+from multiprocessing.connection import Connection
 import logging
-import time
 import io
 import os
+import errno
 import typing as t
+import weakref
 import yaml
 try:
     from yaml import CSafeDumper as Dumper
@@ -20,18 +22,151 @@ if t.TYPE_CHECKING:
     from phaser.plan import ReconsPlan
 
 
-class ServerLogHandler(logging.Handler):
-    def __init__(self, manager: 'Manager'):
-        self.manager = weakref.ref(manager)
+def _random_port() -> int:
+    import socket
+
+    try:
+        sock = socket.socket()
+        sock.bind(('', 0))
+        port = sock.getsockname()[1]
+        sock.close()
+    except OSError as e:
+        raise RuntimeError("Couldn't find an open port") from e 
+    return port
+
+
+class _ServerLogHandler(logging.Handler):
+    def __init__(self, conn: Connection):
+        self.conn = conn
         super().__init__(logging.INFO)
 
     def emit(self, record: logging.LogRecord):
-        #print(self.format(record))
         try:
-            if (mgr := self.manager()) and mgr.out:
-                mgr.out.append_stdout(self.format(record) + '\n')
+            self.conn.send(('log', self.format(record)))
         except Exception:
             self.handleError(record)
+
+
+class _ServerConnection:
+    def __init__(self, port: t.Optional[int],
+                 output: t.Optional[ipywidgets.Output] = None):
+        self.output: t.Optional[ipywidgets.Output] = output
+
+        (self.conn, child_conn) = multiprocessing.Pipe()
+
+        self._proc = multiprocessing.Process(
+            target=self._run_server, args=[child_conn, port],
+            daemon=False,
+        )
+        self._proc.start()
+
+        # attempt to stop process, even though it's not a daemon process
+        weak = weakref.proxy(self)
+        self._atexit_handler = atexit.register(lambda: _ServerConnection._cleanup(weak))
+
+        while True:
+            msg: t.Tuple[str, t.Any] = self.conn.recv()
+            if msg[0] == 'serving':
+                self.port: int = msg[1]
+                break
+            elif msg[0] == 'log':
+                if self.output:
+                    self.output.append_stdout(msg[1] + '\n')
+            elif msg[0] == 'exc':
+                self._proc.join()
+                raise msg[1]
+            else:
+                raise ValueError(f"Unknown message type '{msg[0]}'")
+
+        self._monitoring_thread = threading.Thread(
+            target=self._monitor_conn, daemon=True
+        )
+        self._monitoring_thread.start()
+
+    @staticmethod
+    def _cleanup(weak: t.Callable[[], t.Optional['_ServerConnection']]):
+        if (self := weak()):
+            self.stop()
+
+    def stop(self):
+        if self._proc.is_alive():
+            self._proc.terminate()
+            self._proc.join(5.0)
+            if self._proc.is_alive():
+                if self.output:
+                    self.output.append_stderr("Failed to SIGTERM server, killing instead.\n")
+                self._proc.kill()
+
+            if self.output:
+                self.output.append_stdout("Server stopped\n")
+
+        if self._monitoring_thread.is_alive():
+            self._monitoring_thread.join()
+
+    def __del__(self):
+        self.stop()
+        atexit.unregister(self._atexit_handler)
+
+    def is_alive(self):
+        return self._proc.is_alive()
+
+    def _monitor_conn(self):
+        while True:
+            msg: t.Tuple[str, t.Any] = self.conn.recv()
+            if msg[0] == 'log':
+                if self.output:
+                    self.output.append_stdout(msg[1] + '\n')
+            elif msg[0] == 'exc':
+                if self.output:
+                    self.output.append_stderr(msg[1] + '\n')
+                break
+            elif msg[0] == 'stop':
+                break
+
+    @staticmethod
+    def _run_server(conn: Connection, port: t.Optional[int] = None):
+        import sys
+        from phaser.web.server import server
+
+        sys.stdout = open(os.devnull)
+        sys.stderr = open(os.devnull)
+
+        logging.basicConfig(level=logging.INFO, handlers=[_ServerLogHandler(conn)])
+
+        try:
+            if port is not None:
+                root_path = _ServerConnection.get_root_path(port)
+                server.run(port=port, root_path=root_path,
+                           serving_cb=lambda: conn.send(('serving', port)))
+                return
+
+            while True:
+                port = _random_port()
+                try:
+                    root_path = _ServerConnection.get_root_path(port)
+                    server.run(port=port, root_path=root_path,
+                               serving_cb=lambda: conn.send(('serving', port)))
+                    break
+                except OSError as e:
+                    if e.errno != errno.EADDRINUSE:
+                        raise
+
+        except KeyboardInterrupt:
+            conn.send(('stop', None))
+        except BaseException as e:
+            conn.send(('exc', e))
+        else:
+            conn.send(('stop', None))
+
+    @staticmethod
+    def get_root_path(port: int) -> str:
+        service_prefix = os.environ.get("JUPYTERHUB_SERVICE_PREFIX", "/")
+        return f"{service_prefix}proxy/absolute/{port}"
+
+    @staticmethod
+    def get_local_url(port: int) -> str:
+        root_path = _ServerConnection.get_root_path(port)
+        return f"http://localhost:{port}{root_path}"
 
 
 def iframe(src: str, width: t.Any, height: t.Any) -> ipywidgets.HTML:
@@ -41,25 +176,15 @@ def iframe(src: str, width: t.Any, height: t.Any) -> ipywidgets.HTML:
 
 
 class Manager:
-    def __init__(self, port: int = 5050):
-        self.port: int = 5050
+    def __init__(self, port: t.Optional[int] = None):
+        self.port: t.Optional[int] = port
 
-        # path from browser
-        service_prefix = os.environ.get("JUPYTERHUB_SERVICE_PREFIX", "/")
-        self.root_path = f"{service_prefix}proxy/absolute/{self.port}"
-        # path from server
-        self.base_url = f"http://localhost:{self.port}{self.root_path}"
-
-        self._server_thread: t.Optional[threading.Thread] = None
+        self._server: t.Optional[_ServerConnection] = None
+        self.log_queue: multiprocessing.SimpleQueue = multiprocessing.SimpleQueue()
         self.out: t.Optional[ipywidgets.Output] = None
-        self._log_handler = ServerLogHandler(self)
 
-    def _run_server(self):
-        from phaser.web.server import server
-
-        logging.basicConfig(level=logging.INFO, handlers=[self._log_handler])
-
-        server.run(port=self.port, root_path=self.root_path)
+    def is_running(self) -> bool:
+        return self._server is not None and self._server.is_alive()
 
     def start(self):
         if self.is_running():
@@ -67,38 +192,38 @@ class Manager:
 
         self.out = ipywidgets.Output()
 
-        # TODO this should really be in a separate process
-        self._server_thread = threading.Thread(
-            target=self._run_server, name='server', daemon=True
-        )
-        self._server_thread.start()
-        time.sleep(2)
+        self._server = _ServerConnection(self.port, self.out)
 
         display(ipywidgets.Accordion(children=[
             self.out, self.manager_view()
         ], titles=['Server logs', 'Job manager'], selected_index=1))
 
+    def stop(self):
+        if self._server:
+            self._server.stop()
+            self.out = None
+
     def __del__(self):
-        self.shutdown()
+        self.stop()
 
-    def is_running(self) -> bool:
-        return (
-            self._server_thread is not None and self._server_thread.is_alive()
-        )
+    """
+    @property
+    def root_path(self) -> str:
+        assert self._server is not None
+        return f"{self.service_prefix}proxy/absolute/{self._server.port}"
 
-    def shutdown(self):
-        if not self.is_running():
-            return
-
-        resp = requests.post(
-            f"{self.base_url}/shutdown",
-        )
-        resp.raise_for_status()
-        self._server_thread.join()  # type: ignore (we already checked)
-        self._server_thread = None
+    @property
+    def base_url(self) -> str:
+        assert self.port is not None
+        return f"http://localhost:{self.port}{self.root_path}"
+    """
 
     def start_job(self, plan: 'ReconsPlan'):
         from phaser.plan import ReconsPlan
+
+        if not self.is_running():
+            raise ValueError("Server is not running")
+        assert self._server is not None
 
         if not isinstance(plan, ReconsPlan):
             plan = ReconsPlan.from_yaml(plan)
@@ -106,8 +231,10 @@ class Manager:
         buf = io.StringIO()
         yaml.dump(plan.into_data(), buf, Dumper)
 
+        base_url = self._server.get_local_url(self._server.port)
+
         resp = requests.post(
-            f"{self.base_url}/job/start",
+            f"{base_url}/job/start",
             json={
                 'source': 'yaml',
                 'data': buf.getvalue(),
@@ -123,58 +250,20 @@ class Manager:
         display(self.job_view(jobs[0]['job_id']))
 
     def manager_view(self) -> ipywidgets.HTML:
+        if not self.is_running():
+            raise ValueError("Server is not running")
+        assert self._server is not None
+        root_path = self._server.get_root_path(self._server.port)
         return iframe(
-            f'{self.root_path}/', width=800, height=500
+            f'{root_path}/', width=800, height=500
         )
 
     def job_view(self, job_id: str) -> ipywidgets.HTML:
+        if not self.is_running():
+            raise ValueError("Server is not running")
+        assert self._server is not None
+        root_path = self._server.get_root_path(self._server.port)
         return iframe(
-            f'{self.root_path}/job/{job_id}',
+            f'{root_path}/job/{job_id}',
             width=1200, height=2000
         )
-
-
-
-"""
-class Manager:
-    def __init__(self, port: int = 5050):
-        self.port: int = 5050
-
-        self.process: t.Optional[subprocess.Popen] = None
-        self.out: t.Optional[ipywidgets.Output] = None
-
-    def start(self):
-        if self.process is not None:
-            raise RuntimeError("Process already started")
-
-        self.process = subprocess.Popen(
-            [sys.executable, "-m", "phaser", "serve", "--port", str(self.port)],
-            env=dict(**os.environ, SCRIPT_NAME=f"/proxy/absolute/{self.port}"),
-        )
-        self.out = ipywidgets.Output()
-
-        time.sleep(2)
-
-        display(self.manager())
-        display(self.out)
-
-    def stop(self):
-        if self.process is None:
-            return None
-        self.process.send_signal(signal.SIGINT)
-        time.sleep(0.5)
-        self.process.send_signal(signal.SIGINT)
-
-        try:
-            self.process.wait(10.0)
-        except TimeoutError:
-            self.process.kill()
-            self.process.wait()
-
-    def __del__(self):
-        if self.process is not None:
-            self.process.kill()
-
-    def manager(self) -> IFrame:
-        return IFrame(src=f"/proxy/absolute/{self.port}/", width=800, height=800)
-"""

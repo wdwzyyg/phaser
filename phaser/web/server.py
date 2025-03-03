@@ -421,7 +421,12 @@ class Server:
     def _set_signals(self, loop: asyncio.AbstractEventLoop):
         last_time: t.Optional[float] = None
 
-        def _signal_handler(*_: t.Any) -> None:
+        def _signal_handler(signal: str) -> None:
+            if signal != 'SIGINT':
+                logging.warning(f"Received {signal}. Stopping...")
+                self.shutdown_event.set()
+                return
+
             if not loop.is_running():
                 return
 
@@ -435,20 +440,21 @@ class Server:
             logging.warning("Workers interrupted. Press CTRL + C twice to quit server")
             last_time = t
 
-        for signal_name in {"SIGINT", "SIGTERM", "SIGBREAK"}:
+        for signal_name in ("SIGINT", "SIGTERM", "SIGBREAK", "SIGQUIT"):
             if hasattr(signal, signal_name):
                 try:
-                    loop.add_signal_handler(getattr(signal, signal_name), _signal_handler)
+                    loop.add_signal_handler(getattr(signal, signal_name), _signal_handler, signal_name)
                 except NotImplementedError:
                     # Add signal handler may not be implemented on Windows
-                    signal.signal(getattr(signal, signal_name), _signal_handler)
+                    signal.signal(getattr(signal, signal_name), lambda _sig, _frame: _signal_handler(signal_name))
 
     def run(
             self,
             hostname: str = 'localhost',
             port: t.Optional[int] = None,
             root_path: t.Optional[str] = None,
-            verbosity: int = 0
+            verbosity: int = 0,
+            serving_cb: t.Optional[t.Callable[[], t.Any]] = None,
     ):
         self.workers: Workers = Workers()
         self.jobs: Jobs = Jobs()
@@ -464,12 +470,14 @@ class Server:
         self.host = f"{hostname}:{port or 5050}"
         self.root_path = root_path or os.environ.get("SCRIPT_NAME")
 
+        if serving_cb:
+            self.app.before_serving(serving_cb)
+
         logging.basicConfig(level=logging.INFO if verbosity == 0 else logging.DEBUG)
 
         if verbosity > 0:
             @self.app.before_request
             async def log_request():
-                request.url_rule
                 logging.debug(f"{request.method} {request.path} {request.user_agent}")
 
             self.app.config['DEBUG'] = True

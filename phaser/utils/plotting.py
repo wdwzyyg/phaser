@@ -141,8 +141,8 @@ def _plot_object_data(
     if ax is None:
         fig, ax = pyplot.subplots()
         ax = t.cast('Axes', ax)
-    else:
-        fig = ax.get_figure()
+    # else:
+    #     fig = ax.get_figure()
 
     ax.set_xlabel(r"X [$\mathrm{\AA}$]")
     ax.set_ylabel(r"Y [$\mathrm{\AA}$]")
@@ -282,8 +282,8 @@ def plot_pacbed(raw: NDArray[numpy.floating],
     if ax is None:
         fig, ax = pyplot.subplots()
         ax = t.cast('Axes', ax)
-    else:
-        fig = ax.get_figure()
+    # else:
+    #     fig = ax.get_figure()
 
     pacbed = numpy.nansum(raw, axis=tuple(range(raw.ndim - 2)))
 
