@@ -7,7 +7,7 @@ import typing as t
 import numpy
 from numpy.typing import ArrayLike, NDArray
 
-from .num import get_array_module, to_numpy
+from .num import get_array_module, to_numpy, at
 
 
 NumT = t.TypeVar('NumT', bound=numpy.number)
@@ -42,7 +42,7 @@ def remove_linear_ramp(data: ArrayLike, mask: t.Optional[NDArray[numpy.bool_]] =
     for idx in numpy.ndindex(data.shape[:-2]):
         layer = data[*idx].astype(numpy.float64)
         p, residues, rank, singular = xp.linalg.lstsq(pts[mask], layer.flatten()[mask], rcond=None)
-        output[*idx] = (layer - (p @ pts.T).reshape(layer.shape)).astype(output.dtype)
+        output = at(output, idx).set((layer - (p @ pts.T).reshape(layer.shape)).astype(output.dtype))
 
     return output
 

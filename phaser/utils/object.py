@@ -11,7 +11,7 @@ from numpy.typing import ArrayLike, DTypeLike, NDArray
 
 from .num import get_array_module, cast_array_module, to_real_dtype, as_numpy
 from .num import to_numpy, to_array, is_cupy, is_jax, NumT, ComplexT, DTypeT
-from .misc import create_rng
+from .misc import create_rng, jax_dataclass
 
 
 @t.overload
@@ -46,7 +46,7 @@ def random_phase_object(shape: t.Iterable[int], sigma: float = 1e-6, *, seed: t.
     return xp2.cos(obj_angle) + xp2.sin(obj_angle) * 1.j
 
 
-@dataclass(frozen=True, init=False)
+@jax_dataclass(frozen=True, init=False)
 class ObjectSampling:
     shape: NDArray[numpy.int_]
     """Sampling shape `(n_y, n_x)`"""
@@ -315,11 +315,3 @@ class ObjectCutout(t.Generic[DTypeT]):
 
     def __array__(self) -> NDArray[DTypeT]:
         return self.get()
-
-
-try:
-    import jax.tree_util
-except ImportError:
-    pass
-else:
-    jax.tree_util.register_dataclass(ObjectSampling, ('shape', 'sampling', 'corner', 'region_min', 'region_max'), ())

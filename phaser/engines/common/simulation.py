@@ -13,7 +13,7 @@ from phaser.hooks.solver import NoiseModel, ConstraintRegularizer, StateT
 logger = logging.getLogger(__name__)
 
 
-@jax_dataclass(init=False, static_fields=('xp', 'dtype', 'noise_model', 'regularizers'))
+@jax_dataclass(init=False, static_fields=('xp', 'dtype', 'noise_model', 'regularizers'), drop_fields=('ky', 'kx'))
 class SimulationState:
     state: ReconsState
     noise_model_state: t.Any

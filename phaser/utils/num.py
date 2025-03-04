@@ -2,7 +2,6 @@
 General numeric utilities.
 """
 
-from dataclasses import dataclass
 from functools import wraps
 import functools
 import logging
@@ -12,6 +11,7 @@ import numpy
 from numpy.typing import ArrayLike, DTypeLike, NDArray
 
 from phaser.types import BackendName
+from .misc import jax_dataclass
 
 
 NumT = t.TypeVar('NumT', bound=numpy.number)
@@ -222,7 +222,7 @@ class _JitKernel(t.Generic[P, T]):
         donate_argnums: t.Union[int, t.Sequence[int], None] = None,
         donate_argnames: t.Union[str, t.Iterable[str], None] = None,
         inline: bool = False,
-        compiler_options: t.Optional[t.Dict[str, t.Any]] = None,
+        #compiler_options: t.Optional[t.Dict[str, t.Any]] = None,
         cupy_fuse: bool = False
     ):
         self.inner = f
@@ -250,7 +250,7 @@ class _JitKernel(t.Generic[P, T]):
             self.jax_jit = jax.jit(
                 jax_f, static_argnums=static_argnums, static_argnames=static_argnames,
                 donate_argnums=donate_argnums, donate_argnames=donate_argnames,
-                inline=inline, compiler_options=compiler_options
+                inline=inline, #compiler_options=compiler_options
             )
 
 
@@ -268,13 +268,14 @@ def jit(
         donate_argnums: t.Union[int, t.Sequence[int], None] = None,
         donate_argnames: t.Union[str, t.Iterable[str], None] = None,
         inline: bool = False,
-        compiler_options: t.Optional[t.Dict[str, t.Any]] = None,
+        #compiler_options: t.Optional[t.Dict[str, t.Any]] = None,
         cupy_fuse: bool = False,
 ) -> t.Callable[P, T]:
     return _JitKernel(
         f, static_argnums=static_argnums, static_argnames=static_argnames,
         donate_argnums=donate_argnums, donate_argnames=donate_argnames,
-        inline=inline, compiler_options=compiler_options, cupy_fuse=cupy_fuse
+        inline=inline, #compiler_options=compiler_options,
+        cupy_fuse=cupy_fuse
     )
 
 
@@ -491,7 +492,7 @@ def check_finite(*arrs: NDArray[numpy.inexact], context: t.Optional[str] = None)
         raise ValueError("NaN or inf encountered")
 
 
-@dataclass(frozen=True, init=False)
+@jax_dataclass(frozen=True, init=False, drop_fields=('extent',))
 class Sampling:
     shape: NDArray[numpy.int_]
     """Sampling shape (n_y, n_x)"""
@@ -677,11 +678,3 @@ def at(arr: NDArray[DTypeT], idx: IndexLike) -> _AtImpl[DTypeT]:
         return arr.at[idx]
 
     return _AtImpl(arr, idx)
-
-
-try:
-    import jax.tree_util
-except ImportError:
-    pass
-else:
-    jax.tree_util.register_dataclass(Sampling, ('shape', 'sampling'), (), ('extent',))

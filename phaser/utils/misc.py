@@ -8,7 +8,7 @@ from numpy.random import SeedSequence, PCG64, BitGenerator, Generator
 from typing_extensions import dataclass_transform
 
 
-TypeT = t.TypeVar('TypeT', bound=type)
+T = t.TypeVar('T')
 
 
 def _proc_seed(seed: object, entropy: object = None) -> SeedSequence:
@@ -155,34 +155,35 @@ class FloatKey(float):
 
 
 @t.overload
-@dataclass_transform(kw_only_default=False)
-def jax_dataclass(cls: TypeT, /, *,
-    init: bool = True, kw_only: bool = False, static_fields: t.Sequence[str] = ()
-) -> TypeT:
+@dataclass_transform(kw_only_default=False, frozen_default=False)
+def jax_dataclass(cls: t.Type[T], /, *,
+    init: bool = True, kw_only: bool = False, frozen: bool = False,
+    static_fields: t.Sequence[str] = (), drop_fields: t.Sequence[str] = (),
+) -> t.Type[T]:
     ...
 
 @t.overload
-@dataclass_transform(kw_only_default=False)
+@dataclass_transform(kw_only_default=False, frozen_default=False)
 def jax_dataclass(*,
-    init: bool = True, kw_only: bool = False, static_fields: t.Sequence[str] = ()
-) -> t.Callable[[TypeT], TypeT]:
+    init: bool = True, kw_only: bool = False, frozen: bool = False,
+    static_fields: t.Sequence[str] = (), drop_fields: t.Sequence[str] = (),
+) -> t.Callable[[t.Type[T]], t.Type[T]]:
     ...
 
-def jax_dataclass(cls: t.Optional[TypeT] = None, /, *,
-    init: bool = True, kw_only: bool = True, static_fields: t.Sequence[str] = ()
-) -> t.Union[TypeT, t.Callable[[TypeT], TypeT]]:
+def jax_dataclass(cls: t.Optional[t.Type[T]] = None, /, *,
+    init: bool = True, kw_only: bool = False, frozen: bool = False,
+    static_fields: t.Sequence[str] = (), drop_fields: t.Sequence[str] = (),
+) -> t.Union[t.Type[T], t.Callable[[t.Type[T]], t.Type[T]]]:
     if cls is None:
-        def inner(cls: TypeT) -> TypeT:
-            return jax_dataclass(cls, init=init, kw_only=kw_only, static_fields=static_fields)
+        return lambda cls: jax_dataclass(cls, init=init, kw_only=kw_only, frozen=frozen,
+                                         static_fields=static_fields, drop_fields=drop_fields)
 
-        return inner
-
-    cls = t.cast(TypeT, dataclasses.dataclass(init=init, kw_only=kw_only)(cls))
-    _register_dataclass(cls, static_fields=static_fields)
+    cls = dataclasses.dataclass(init=init, kw_only=kw_only, frozen=frozen)(cls)
+    _register_dataclass(cls, static_fields=static_fields, drop_fields=drop_fields)
     return cls
 
 
-def _register_dataclass(cls: type, static_fields: t.Sequence[str] = ()):
+def _register_dataclass(cls: type, static_fields: t.Sequence[str], drop_fields: t.Sequence[str]):
     try:
         from jax.tree_util import register_pytree_with_keys
     except ImportError:
@@ -193,8 +194,10 @@ def _register_dataclass(cls: type, static_fields: t.Sequence[str] = ()):
 
     if (extra := set(static_fields).difference(field_names)):
         raise ValueError(f"Unknown field(s) passed to 'static_fields': {', '.join(map(repr, extra))}")
+    if (extra := set(drop_fields).difference(field_names)):
+        raise ValueError(f"Unknown field(s) passed to 'drop_fields': {', '.join(map(repr, extra))}")
 
-    data_fields = tuple(field_names.difference(static_fields))
+    data_fields = tuple(field_names.difference(static_fields).difference(drop_fields))
 
     def flatten_with_keys(x: t.Any, /) -> tuple[t.Iterable[tuple[str, t.Any]], t.Hashable]:
         meta = tuple(getattr(x, name) for name in static_fields)
