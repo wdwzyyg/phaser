@@ -2,8 +2,9 @@ import typing as t
 
 import numpy
 from numpy.typing import NDArray
+import matplotlib
 from matplotlib import pyplot
-from matplotlib.colors import Colormap, Normalize
+from matplotlib.colors import Colormap, Normalize, LinearSegmentedColormap
 from matplotlib.transforms import Affine2DBase, Affine2D
 
 from .num import get_array_module, abs2, to_numpy
@@ -196,11 +197,22 @@ def add_scalebar_top(ax: 'Axes', size: float, height: float = 0.05):
 
 
 def plot_metrics(metrics: t.Dict[str, float]) -> 'Figure':
-    fig, (ax1, ax2) = pyplot.subplots(ncols=2)
-    fig.set_size_inches((8, 4))
+    fig, (ax1, ax2, ax3) = pyplot.subplots(
+        ncols=3,
+        gridspec_kw={
+            'width_ratios': [2., 1., 2.],
+            'wspace': 0.05,
+        },
+        constrained_layout=True
+    )
+    fig.set_size_inches(12, 4)
+    ax1.set_box_aspect(1.)
+    ax2.set_aspect(1.)
+    ax3.set_box_aspect(1.)
 
     _plot_linear_metrics(ax1, metrics)
     _plot_probe_overlap(ax2, metrics)
+    _plot_predicted_success(ax3, metrics)
 
     return fig
 
@@ -265,12 +277,56 @@ def _plot_probe_overlap(ax: 'Axes', metrics: t.Dict[str, float]):
         linewidth=2.0,
     )) for pos in (pos1, -pos1)]
 
-    ax.plot([pos1[0], -pos1[0]], [pos1[0], -pos1[1]], '.-k', linewidth=2.0)
+    ax.plot([pos1[0], -pos1[0]], [pos1[1], -pos1[1]], '.-k', linewidth=2.0)
 
     _ = [ax.add_patch(Rectangle(
         [pos[0] - box_r, pos[1] - box_r], 2*box_r, 2*box_r,
         edgecolor='black', linewidth=2.0, fill=False,
     )) for pos in (pos1, -pos1)]
+
+
+def _plot_predicted_success(ax: 'Axes', metrics: t.Dict[str, float]):
+    from phaser.utils.optics import predict_recons_success
+
+    bwr_r: Colormap = matplotlib.colormaps['bwr_r']  # type: ignore
+
+    gamma = 2.0
+    lin_norm = Normalize(0.5, 1.0)
+    prob_cmap = LinearSegmentedColormap.from_list(
+        'prob', numpy.stack([
+            bwr_r(lin_norm.inverse(numpy.abs(lin_norm(x))**gamma * numpy.sign(lin_norm(x)))) for x in numpy.linspace(0., 1., 2 * bwr_r.N, endpoint=True)
+        ], axis=0)
+    )
+
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+
+    ax.set_xlabel("Ronchi. mag [$\\mathrm{px/\\AA}$]")
+    ax.set_ylabel("Areal oversampling")
+
+    ronchi_mag = metrics['ronchi_mag']
+    areal_oversamp = metrics['areal_oversamp']
+
+    ylim = (
+        min(8e-1, areal_oversamp / 3),
+        max(1e4, areal_oversamp * 3),
+    )
+    xlim = (
+        min(8e-1, ronchi_mag / 1.5),
+        max(1e2, ronchi_mag * 4),
+    )
+
+    yy = numpy.geomspace(ylim[1], ylim[0], 100)
+    xx = numpy.geomspace(xlim[0], xlim[1], 100)
+    yy, xx = numpy.meshgrid(yy, xx, indexing='ij')
+
+    pp = predict_recons_success(xx, yy)
+    ax.pcolormesh(xx, yy, pp, alpha=0.8, cmap=prob_cmap, vmin=0.0, vmax=1.0)
+
+    prob = predict_recons_success(ronchi_mag, areal_oversamp)
+    ax.scatter([ronchi_mag], [areal_oversamp], marker='x', s=80, c='black')
+    ax.annotate(f"{prob:.1%}", (ronchi_mag, areal_oversamp),
+                (0.5, 0.7), textcoords='offset fontsize')
 
 
 def plot_pacbed(raw: NDArray[numpy.floating],

@@ -23,7 +23,6 @@ class Patterns():
             to_numpy(self.patterns), to_numpy(self.pattern_mask)
         )
 
-
 @jax_dataclass
 class IterState():
     engine_num: int

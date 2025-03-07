@@ -227,12 +227,13 @@ def estimate_probe_radius(wavelength: float, aperture: float, defocus: float, *,
 
     rel_defocus = numpy.abs(defocus) / wavelength
 
-    # 4*nyquist
-    sampling = 1/(8 * aperture)
+    # 8*nyquist
+    sampling = 1/(16 * aperture)
     min_box_size = 5. * rel_defocus * aperture
     # number of points required is size / sampling
     # we round up to nearest power of 2
-    n = max(512, int(numpy.exp2(numpy.ceil(numpy.log2(min_box_size / sampling)))))
+    with numpy.errstate(divide='ignore'):
+        n = max(1024, int(numpy.exp2(numpy.ceil(numpy.log2(min_box_size / sampling)))))
     if n > 2**14:
         raise ValueError("Can't calculate probe radii (requires too much phase space)") from None
 
@@ -263,7 +264,8 @@ def estimate_probe_radius(wavelength: float, aperture: float, defocus: float, *,
 def calc_metrics(*,
     wavelength: t.Optional[float] = None, voltage: t.Optional[float] = None,
     conv_angle: float, defocus: float, scan_step: float, diff_step: float,
-    threshold: t.Union[t.Literal['geom'], float] = 0.9, xp: t.Any = None,
+    probe_radius: t.Optional[float] = None, xp: t.Any = None,
+    threshold: t.Union[t.Literal['geom'], float] = 0.9,
 ) -> t.Dict[str, float]:
     """
     Calculate sampling metrics for the given parameters. Units are as follows:
@@ -279,10 +281,11 @@ def calc_metrics(*,
         from phaser.utils.physics import Electron
         wavelength = Electron(voltage).wavelength
 
-    probe_radius = estimate_probe_radius(
-        wavelength=wavelength, aperture=conv_angle,
-        defocus=defocus, threshold=threshold, xp=xp
-    )
+    if probe_radius is None:
+        probe_radius = estimate_probe_radius(
+            wavelength=wavelength, aperture=conv_angle,
+            defocus=defocus, threshold=threshold, xp=xp
+        )
 
     # diff_step in 1/A
     d_step = diff_step*1e-3 / wavelength
@@ -301,3 +304,64 @@ def calc_metrics(*,
         'scan_step': scan_step,
         'diff_step': diff_step,
     }
+
+
+class _FittedQDA:
+    def __init__(self, means: ArrayLike, rotations: t.Sequence[ArrayLike],
+                 scalings: t.Sequence[ArrayLike], priors: t.Optional[ArrayLike] = None):
+        self.means_ = numpy.asarray(means)
+        self.n_classes = self.means_.shape[0]
+        self.rotations_ = list(map(numpy.asarray, rotations))
+        self.scalings_ = list(map(numpy.asarray, scalings))
+        self.priors_ = numpy.asarray(priors) if priors is not None else numpy.full(self.n_classes, 1/self.n_classes)
+
+    def predict_log_proba(self, X: ArrayLike) -> NDArray[numpy.floating]:
+        X = numpy.asarray(X)
+        assert X.ndim == 2
+
+        norm2 = []
+        for i in range(self.n_classes):
+            X2 = (X - self.means_[i]) @ (self.rotations_[i] * (self.scalings_[i] ** -0.5))
+            norm2.append(numpy.sum(X2**2, axis=-1))
+
+        norm2 = numpy.array(norm2).T
+        u = numpy.asarray([numpy.sum(numpy.log(s)) for s in self.scalings_])
+        scores = -0.5 * (norm2 + u) + numpy.log(self.priors_)
+
+        log_likelihood = scores - numpy.max(scores, axis=-1, keepdims=True)
+        log_likelihood -= numpy.log(numpy.sum(numpy.exp(log_likelihood), axis=-1, keepdims=True))
+
+        return log_likelihood
+
+    def predict_proba(self, X: ArrayLike) -> NDArray[numpy.floating]:
+        return numpy.exp(self.predict_log_proba(X))
+
+    def predict_prob_success(self, X: ArrayLike) -> NDArray[numpy.floating]:
+        return numpy.exp(self.predict_log_proba(X)[..., 1])
+
+
+def predict_recons_success(ronchi_mag: ArrayLike, areal_oversamp: ArrayLike) -> NDArray[numpy.floating]:
+    """
+    Empirically predict the probability of reconstruction success, given the Ronchigram magnification
+    and areal oversampling.
+
+    Broadcasts `ronchi_mag` and `areal_oversamp` together, and returns an array of the same shape,
+    with values indicating the estimated probability of success.
+
+    Fitted on simulated Si data, using an intensity threshold of 90% to calculate the probe radius.
+    """
+
+    clf = _FittedQDA(
+        means=[[0.49027803, 1.82918678], [0.80980859, 2.00158048]],
+        rotations=[
+            [[-0.2316652028331075, 0.972795576571098], [0.972795576571098, 0.2316652028331075]],
+            [[-0.26985970170864165, 0.9628996528162853], [0.9628996528162853, 0.26985970170864165]]
+        ],
+        scalings=[[0.56440416, 0.07769331], [0.4110058 , 0.06621369]],
+    )
+
+    ronchi_mag, areal_oversamp = numpy.broadcast_arrays(ronchi_mag, areal_oversamp)
+
+    return clf.predict_prob_success(
+        numpy.log10(numpy.stack((ronchi_mag, areal_oversamp), axis=-1).reshape(-1, 2))
+    ).reshape(ronchi_mag.shape)
