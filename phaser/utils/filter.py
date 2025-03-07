@@ -14,14 +14,20 @@ NumT = t.TypeVar('NumT', bound=numpy.number)
 
 
 @t.overload
-def remove_linear_ramp(data: NDArray[NumT], mask: t.Optional[NDArray[numpy.bool_]] = None) -> NDArray[NumT]:
+def remove_linear_ramp(  # pyright: ignore[reportOverlappingOverload]
+    data: NDArray[NumT], mask: t.Optional[NDArray[numpy.bool_]] = None
+) -> NDArray[NumT]:
     ...
 
 @t.overload
-def remove_linear_ramp(data: ArrayLike, mask: t.Optional[NDArray[numpy.bool_]] = None) -> NDArray[numpy.float64]:
+def remove_linear_ramp(
+    data: ArrayLike, mask: t.Optional[NDArray[numpy.bool_]] = None
+) -> NDArray[numpy.float64]:
     ...
 
-def remove_linear_ramp(data: ArrayLike, mask: t.Optional[NDArray[numpy.bool_]] = None) -> NDArray[numpy.number]:
+def remove_linear_ramp(
+    data: ArrayLike, mask: t.Optional[NDArray[numpy.bool_]] = None
+) -> NDArray[numpy.number]:
     """
     Removes a linear 'ramp' from an image or stack of images.
     """

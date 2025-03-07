@@ -2,8 +2,7 @@
 from functools import partial
 import typing as t
 
-import jax
-from jax.typing import ArrayLike
+import jax  # pyright: ignore[reportMissingImports]
 
 
 def to_2d(arr: jax.Array) -> jax.Array:

@@ -168,28 +168,31 @@ def _plot_object_data(
 
 class _ScalebarTransform(Affine2DBase):
     def __init__(self, ax, origin):
+        self._invalid: bool
         super().__init__("ScalebarTransform")
         self.origin = origin
-        self._mtx = None
+        self._mtx: t.Optional[numpy.ndarray] = None
         self.transAxes = ax.transAxes
         self.transLimits = ax.transLimits
         self.set_children(self.transAxes, self.transLimits)
 
-    def _calc_matrix(self):
+    def _calc_matrix(self) -> numpy.ndarray:
         sx, sy = numpy.diag(self.transLimits.get_matrix())[:2]
         m = numpy.diag([sx, 1., 1.]) @ self.transAxes.get_matrix()
         m[0, 2] = (m[0, 2] + m[0, 0] * self.origin[0]) / sx
         m[1, 2] += m[1, 1] * self.origin[1]
         return m
 
-    def get_matrix(self):
-        if self._invalid:  # type: ignore
+    def get_matrix(self) -> numpy.ndarray:
+        if self._invalid or self._mtx is None:
             self._mtx = self._calc_matrix()
         return self._mtx
+
 
 def add_scalebar(ax: 'Axes', size: float, height: float = 0.05):
     from matplotlib.patches import Rectangle
     ax.add_patch(Rectangle((0.0, 0.0), size, height, fc='white', ec='black', linewidth=2.0, transform=_ScalebarTransform(ax, (0.04, 0.06))))
+
 
 def add_scalebar_top(ax: 'Axes', size: float, height: float = 0.05):
     from matplotlib.patches import Rectangle
@@ -248,7 +251,7 @@ def _plot_linear_metrics(ax: 'Axes', metrics: t.Dict[str, float]):
     ax.axvline(step_scale, linestyle='dashdot', color='#f58231') # orange
     ax.contour(xx, yy, fps, [1.0], linestyles=['solid'], colors=['#e6194b']) # red
 
-    ax.scatter([x], [y], marker='x', color='black', s=80)  # type: ignore
+    ax.scatter([x], [y], marker='x', color='black', s=80)
 
     ax.set_ylim(*ylim)
     ax.set_xlim(*xlim)
@@ -273,14 +276,14 @@ def _plot_probe_overlap(ax: 'Axes', metrics: t.Dict[str, float]):
     pos1 = numpy.array([numpy.cos(theta), numpy.sin(theta)]) * scan_r
 
     _ = [ax.add_patch(Circle(
-        list(pos), probe_r, facecolor='green', alpha=0.6, edgecolor='black',
+        t.cast(t.Tuple[float, float], tuple(pos)), probe_r, facecolor='green', alpha=0.6, edgecolor='black',
         linewidth=2.0,
     )) for pos in (pos1, -pos1)]
 
     ax.plot([pos1[0], -pos1[0]], [pos1[1], -pos1[1]], '.-k', linewidth=2.0)
 
     _ = [ax.add_patch(Rectangle(
-        [pos[0] - box_r, pos[1] - box_r], 2*box_r, 2*box_r,
+        (pos[0] - box_r, pos[1] - box_r), 2*box_r, 2*box_r,
         edgecolor='black', linewidth=2.0, fill=False,
     )) for pos in (pos1, -pos1)]
 
@@ -294,7 +297,8 @@ def _plot_predicted_success(ax: 'Axes', metrics: t.Dict[str, float]):
     lin_norm = Normalize(0.5, 1.0)
     prob_cmap = LinearSegmentedColormap.from_list(
         'prob', numpy.stack([
-            bwr_r(lin_norm.inverse(numpy.abs(lin_norm(x))**gamma * numpy.sign(lin_norm(x)))) for x in numpy.linspace(0., 1., 2 * bwr_r.N, endpoint=True)
+            bwr_r(lin_norm.inverse(numpy.abs(lin_norm(x))**gamma * numpy.sign(lin_norm(x))))
+            for x in numpy.linspace(0., 1., 512, endpoint=True)
         ], axis=0)
     )
 
@@ -362,7 +366,7 @@ def plot_pacbed(raw: NDArray[numpy.floating],
     ax.imshow(
         pacbed,
         norm=t.cast('Normalize', LogNorm() if log else None),
-        extent=t.cast(t.Sequence[float], extent)
+        extent=t.cast(t.Tuple[float, float, float, float], extent),
     )
 
     return ax
@@ -390,8 +394,8 @@ def plot_raw(raw: NDArray[numpy.floating],
 
     real_img = numpy.tensordot(raw, mask, axes=((-1, -2), (-1, -2)))
     recip_img = raw[*idx]
-    vmin = numpy.nanquantile(raw, 0.001)  # used for lognorm
-    vmax = numpy.nanquantile(raw, 0.999)
+    vmin = float(numpy.nanquantile(raw, 0.001))  # used for lognorm
+    vmax = float(numpy.nanquantile(raw, 0.999))
 
     (recip_ax, real_ax) = fig.subplots(ncols=2)
 
@@ -456,16 +460,16 @@ def _raw_interact(
     idx: t.Tuple[int, int], recip_imshow: 'AxesImage',
     scan_step: NDArray[numpy.floating],
 ):
-    from threading import Thread, Event
+    import threading
 
     import matplotlib.path as path
     from matplotlib.patches import PathPatch
-    from matplotlib.backend_bases import KeyEvent, MouseEvent, MouseButton
+    from matplotlib.backend_bases import KeyEvent, MouseEvent, MouseButton, Event
 
-    class Timer(Thread):
+    class Timer(threading.Thread):
         def __init__(self, interval: float, fn: t.Callable[[], bool]):
             super().__init__()
-            self.stop_event: Event = Event()
+            self.stop_event: threading.Event = threading.Event()
             self.interval: float = interval
             self.fn: t.Callable[[], bool] = fn
 
@@ -557,7 +561,7 @@ def _raw_interact(
             x, y = click_x, click_y
             update()
 
-    fig.canvas.mpl_connect('key_press_event', key_pressed)
-    fig.canvas.mpl_connect('key_release_event', key_released)
-    fig.canvas.mpl_connect('button_press_event', mouse_event)
-    fig.canvas.mpl_connect('motion_notify_event', mouse_event)
+    fig.canvas.mpl_connect('key_press_event', t.cast(t.Callable[[Event], t.Any], key_pressed))
+    fig.canvas.mpl_connect('key_release_event', t.cast(t.Callable[[Event], t.Any], key_released))
+    fig.canvas.mpl_connect('button_press_event', t.cast(t.Callable[[Event], t.Any], mouse_event))
+    fig.canvas.mpl_connect('motion_notify_event', t.cast(t.Callable[[Event], t.Any], mouse_event))

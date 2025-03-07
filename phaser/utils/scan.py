@@ -11,7 +11,7 @@ from .num import get_array_module, cast_array_module, NumT
 
 
 @t.overload
-def make_raster_scan(shape: t.Tuple[int, int], scan_step: ArrayLike,
+def make_raster_scan(shape: t.Tuple[int, int], scan_step: ArrayLike,  # pyright: ignore[reportOverlappingOverload]
                      rotation: float = 0., *, dtype: NumT, xp: t.Any = None) -> NDArray[NumT]:
     ...
 

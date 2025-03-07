@@ -143,7 +143,9 @@ class ObjectSampling:
         return (pos - get_array_module(pos).round(pos)).astype(numpy.float64)
 
     @t.overload
-    def cutout(self, arr: NDArray[DTypeT], pos: ArrayLike, shape: t.Tuple[int, ...]) -> ObjectCutout[DTypeT]:
+    def cutout(  # pyright: ignore[reportOverlappingOverload]
+        self, arr: NDArray[DTypeT], pos: ArrayLike, shape: t.Tuple[int, ...]
+    ) -> ObjectCutout[DTypeT]:
         ...
 
     @t.overload
@@ -193,7 +195,9 @@ class ObjectSampling:
         return mask
 
     @t.overload
-    def grid(self, *, dtype: t.Type[NumT], xp: t.Any = None) -> t.Tuple[NDArray[NumT], NDArray[NumT]]:
+    def grid(  # pyright: ignore[reportOverlappingOverload]
+        self, *, dtype: t.Type[NumT], xp: t.Any = None
+    ) -> t.Tuple[NDArray[NumT], NDArray[NumT]]:
         ...
 
     @t.overload

@@ -1,9 +1,8 @@
 
 import functools
 import typing as t
-from types import NotImplementedType
 
-import cupy
+import cupy  # pyright: ignore[reportMissingImports]
 import numpy
 
 # grid
@@ -140,7 +139,7 @@ _DTYPE_TO_KERNEL_TYPE: t.Dict[t.Type[numpy.generic], str] = {
 }
 
 @functools.cache
-def _get_cutout_kernel(dtype: numpy.dtype, operation: str) -> t.Union[cupy.RawKernel, NotImplementedType]:
+def _get_cutout_kernel(dtype: numpy.dtype, operation: str) -> cupy.RawKernel:
     try:
         ty = _DTYPE_TO_KERNEL_TYPE[dtype.type]
         op = _CUTOUT_OPERATIONS[operation]

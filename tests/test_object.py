@@ -176,6 +176,7 @@ def test_add_view_at_pos(backend: str, dtype: str) -> numpy.ndarray:
             5.41544805, 1.44714743, 4.48405743, 2.50836483, 3.31088288
         ], dtype=numpy.float32)
         cutouts = xp.full((30, *cutout_shape), 10., dtype=numpy.complex64) * xp.exp(1.j * phases[:, None, None])
+        mag = 1.  # needed for type checking
     else:
         raise ValueError()
 

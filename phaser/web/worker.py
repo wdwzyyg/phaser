@@ -46,15 +46,16 @@ class WorkerObserver(Observer):
         self.job_id = job_id
         self.msg_time = time.monotonic()
 
-    def send_message(self, msg: WorkerMessage) -> ServerResponse:
+    def send_message(self, msg: WorkerMessage) -> t.Optional[ServerResponse]:
         try:
             resp = self._send_message(msg)
         except (requests.RequestException, pane.ConvertError):
             logging.error("Failed to update server", exc_info=sys.exc_info(), extra={'local': True})
-        else:
-            self.msg_time = time.monotonic()
-            if resp.msg == 'signal':
-                raise SignalException(resp.signal, resp.urgent)
+            return
+
+        self.msg_time = time.monotonic()
+        if resp.msg == 'signal':
+            raise SignalException(resp.signal, resp.urgent)
         return resp
 
     def send_update(self, state: t.Union[ReconsState, PartialReconsState]):

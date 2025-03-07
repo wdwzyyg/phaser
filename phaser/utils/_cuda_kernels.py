@@ -1,9 +1,8 @@
 
 import functools
 import typing as t
-from types import NotImplementedType
 
-import cupy
+import cupy  # pyright: ignore[reportMissingImports]
 import numpy
 
 # grid

@@ -1,20 +1,19 @@
 
 import pytest
-from _pytest.fixtures import SubRequest
 import numpy
 
 BACKENDS: set[str] = set(('cpu', 'jax', 'cuda'))
 AVAILABLE_BACKENDS: set[str] = set(('cpu',))
 
 try:
-    import cupy
+    import cupy  # pyright: ignore[reportMissingImports]
     if cupy.cuda.runtime.getDeviceCount() > 0:
         AVAILABLE_BACKENDS.add('cuda')
 except ImportError:
     pass
 
 try:
-    import jax
+    import jax  # pyright: ignore[reportMissingImports]  # noqa: F401
     AVAILABLE_BACKENDS.add('jax')
 except ImportError:
     pass

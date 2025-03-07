@@ -2,7 +2,6 @@
 General numeric utilities.
 """
 
-from functools import wraps
 import functools
 import logging
 import typing as t
@@ -104,6 +103,8 @@ def cast_array_module(xp: t.Any):
 
 
 def get_scipy_module(*arrs: ArrayLike):
+    # pyright: ignore[reportMissingImports,reportUnusedImport]
+
     import scipy
 
     try:
@@ -114,9 +115,9 @@ def get_scipy_module(*arrs: ArrayLike):
     except ImportError:
         pass
     try:
-        import cupyx.scipy.signal
-        import cupyx.scipy.ndimage
-        from cupyx.scipy import get_array_module as f  # type: ignore
+        import cupyx.scipy.signal  # pyright: ignore[reportMissingImports]
+        import cupyx.scipy.ndimage  # pyright: ignore[reportMissingImports]  # noqa: F401
+        from cupyx.scipy import get_array_module as f  # pyright: ignore[reportMissingImports]
         if not t.TYPE_CHECKING:
             return f(*arrs)
     except ImportError:
@@ -130,7 +131,7 @@ def fuse(*args, **kwargs) -> t.Callable[[T], T]:
     Equivalent to `cupy.fuse`, if supported.
     """
     try:
-        import cupy  # type: ignore
+        import cupy  # pyright: ignore[reportMissingImports]
         if not t.TYPE_CHECKING:
             return cupy.fuse(*args, **kwargs)
     except ImportError:
@@ -182,7 +183,7 @@ def to_array(arr: ArrayLike) -> numpy.ndarray:
 
 def is_cupy(arr: NDArray[DTypeT]) -> bool:
     try:
-        import cupy  # type: ignore
+        import cupy  # pyright: ignore[reportMissingImports]
     except ImportError:
         return False
     return isinstance(arr, cupy.ndarray)
@@ -190,7 +191,7 @@ def is_cupy(arr: NDArray[DTypeT]) -> bool:
 
 def is_jax(arr: t.Any) -> bool:
     try:
-        import jax  # type: ignore
+        import jax  # pyright: ignore[reportMissingImports]
     except ImportError:
         return False
     return any(
@@ -200,7 +201,7 @@ def is_jax(arr: t.Any) -> bool:
 
 def xp_is_cupy(xp: t.Any) -> bool:
     try:
-        import cupy
+        import cupy  # pyright: ignore[reportMissingImports]
         return xp is cupy
     except ImportError:
         return False
@@ -208,7 +209,7 @@ def xp_is_cupy(xp: t.Any) -> bool:
 
 def xp_is_jax(xp: t.Any) -> bool:
     try:
-        import jax.numpy
+        import jax.numpy  # pyright: ignore[reportMissingImports]
         return xp is jax.numpy
     except ImportError:
         return False
@@ -230,7 +231,7 @@ class _JitKernel(t.Generic[P, T]):
 
         if cupy_fuse:
             try:
-                import cupy
+                import cupy  # pyright: ignore[reportMissingImports]
                 self.inner = cupy.fuse()(self.inner)
             except ImportError:
                 pass
@@ -547,11 +548,15 @@ class Sampling:
             raise ValueError("Either 'extent' or 'sampling' must be specified")
 
     @t.overload
-    def real_grid(self, *, dtype: t.Type[NumT], xp: t.Any = None) -> t.Tuple[NDArray[NumT], NDArray[NumT]]:
+    def real_grid(  # pyright: ignore[reportOverlappingOverload]
+        self, *, dtype: t.Type[NumT], xp: t.Any = None
+    ) -> t.Tuple[NDArray[NumT], NDArray[NumT]]:
         ...
 
     @t.overload
-    def real_grid(self, *, dtype: t.Optional[DTypeLike] = None, xp: t.Any = None) -> t.Tuple[NDArray[numpy.floating], NDArray[numpy.floating]]:
+    def real_grid(
+        self, *, dtype: t.Optional[DTypeLike] = None, xp: t.Any = None
+    ) -> t.Tuple[NDArray[numpy.floating], NDArray[numpy.floating]]:
         ...
 
     def real_grid(self, *, dtype: t.Any = None, xp: t.Any = None) -> t.Tuple[NDArray[numpy.number], NDArray[numpy.number]]:
@@ -567,14 +572,20 @@ class Sampling:
         return tuple(xp2.meshgrid(ys, xs, indexing='ij'))  # type: ignore
 
     @t.overload
-    def recip_grid(self, *, centered: bool = False, dtype: t.Type[NumT], xp: t.Any = None) -> t.Tuple[NDArray[NumT], NDArray[NumT]]:
+    def recip_grid(  # pyright: ignore[reportOverlappingOverload]
+        self, *, centered: bool = False, dtype: t.Type[NumT], xp: t.Any = None
+    ) -> t.Tuple[NDArray[NumT], NDArray[NumT]]:
         ...
 
     @t.overload
-    def recip_grid(self, *, centered: bool = False, dtype: t.Optional[DTypeLike] = None, xp: t.Any = None) -> t.Tuple[NDArray[numpy.floating], NDArray[numpy.floating]]:
+    def recip_grid(
+        self, *, centered: bool = False, dtype: t.Optional[DTypeLike] = None, xp: t.Any = None
+    ) -> t.Tuple[NDArray[numpy.floating], NDArray[numpy.floating]]:
         ...
 
-    def recip_grid(self, *, centered: bool = False, dtype: t.Any = None, xp: t.Any = None) -> t.Tuple[NDArray[numpy.number], NDArray[numpy.number]]:
+    def recip_grid(
+        self, *, centered: bool = False, dtype: t.Any = None, xp: t.Any = None
+    ) -> t.Tuple[NDArray[numpy.number], NDArray[numpy.number]]:
         """
         Return the reciprocal space sampling grid `(kyy, kxx)`.
 

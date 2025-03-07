@@ -4,7 +4,7 @@ import abc
 import importlib
 import typing as t
 
-from pane.convert import ConverterHandlers
+from pane.convert import ConverterHandlers, DataType
 from pane.converters import Converter, make_converter
 from pane.errors import ErrorNode, WrongTypeError, ParseInterrupt, ProductErrorNode
 
@@ -84,7 +84,7 @@ class HookConverter(t.Generic[T, U], Converter[Hook[T, U]]):
             return "hooks to functions"
         return "hook to function"
 
-    def into_data(self, val: Hook[T, U]) -> t.Union[str, t.Dict[str, t.Any]]:
+    def into_data(self, val: Hook[T, U]) -> DataType:
         if val.props is not None:
             return {
                 'type': val.func_ref(),
@@ -111,6 +111,8 @@ class HookConverter(t.Generic[T, U], Converter[Hook[T, U]]):
             props = converter.try_convert(props)
         elif ':' not in ref:
             raise ParseInterrupt()
+        else:
+            ty = None
 
         return self.cls(ref, props, ty)
 
