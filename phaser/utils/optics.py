@@ -36,12 +36,12 @@ def make_focused_probe(ky: NDArray[numpy.floating], kx: NDArray[numpy.floating],
     xp = get_array_module(ky, kx)
 
     thetay, thetax = ky * wavelength, kx * wavelength
-    theta2 = thetay**2. + thetax**2.
+    theta2 = thetay**2 + thetax**2
 
     phase = (defocus/(2. * wavelength)) * theta2
     probe = xp.exp(-2.j*numpy.pi * phase)
 
-    mask = theta2 <= (aperture * 1e-3)**2.
+    mask = theta2 <= (aperture * 1e-3)**2
     probe *= mask
 
     # normalize intensity of probe

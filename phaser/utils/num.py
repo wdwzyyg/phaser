@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 try:
     import jax
-    jax.config.update('jax_enable_x64', True)
+    jax.config.update('jax_enable_x64', jax.default_backend() != 'METAL')
     #jax.config.update('jax_log_compiles', True)
     #jax.config.update('jax_debug_nans', True)
 except ImportError:
@@ -598,10 +598,11 @@ class Sampling:
 
         ky: NDArray[numpy.number] = xp2.fft.fftfreq(self.shape[0], self.sampling[0]).astype(dtype)
         kx: NDArray[numpy.number] = xp2.fft.fftfreq(self.shape[1], self.sampling[1]).astype(dtype)
+
         if centered:
             ky = xp2.fft.fftshift(ky)
             kx = xp2.fft.fftshift(kx)
-        return tuple(xp2.meshgrid(ky, kx, indexing='ij'))  # type: ignore (missing overload)
+        return tuple(xp2.meshgrid(ky, kx, indexing='ij'))  # type: ignore
 
     def bwlim(self) -> float:
         """Return the bandwidth limit (in inverse length units) for this sampling grid."""
