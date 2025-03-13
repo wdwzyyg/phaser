@@ -2,7 +2,9 @@
 from functools import partial
 import typing as t
 
+from numpy.typing import ArrayLike
 import jax  # pyright: ignore[reportMissingImports]
+import jax.numpy as jnp    # pyright: ignore[reportMissingImports]
 
 
 def to_2d(arr: jax.Array) -> jax.Array:
@@ -49,3 +51,32 @@ def get_cutouts(obj: jax.Array, start_idxs: jax.Array, cutout_shape: t.Tuple[int
 @partial(jax.jit, static_argnums=0)
 def outer(ufunc: t.Any, x: jax.Array, y: jax.Array) -> jax.Array:
     return jax.vmap(jax.vmap(ufunc, (None, 0)), (0, None))(x, y)
+
+
+def affine_transform(
+    input: jax.Array,
+    matrix: ArrayLike,
+    offset: t.Optional[ArrayLike] = None,
+    output_shape: t.Optional[t.Tuple[int, ...]] = None,
+    order: int = 1,
+    mode: str = 'constant',
+    cval: t.Any = 0.0,
+) -> jax.Array:
+    import jax.scipy.ndimage
+    jax_mode = {'grid-constant': 'constant', 'grid-wrap': 'wrap'}.get(mode, mode)
+
+    if output_shape is None:
+        output_shape = input.shape
+
+    indices = jnp.indices(output_shape)
+
+    matrix = jnp.array(matrix)
+    if matrix.shape == (input.ndim + 1, input.ndim + 1):
+        # homogenous transform matrix
+        coords = (matrix @ jnp.stack((*indices, jnp.ones_like(indices[0])), axis=-0))[:-1]
+    elif matrix.shape == (input.ndim,):
+        coords = (indices.T * matrix + jnp.array(offset)).T
+    else:
+        raise ValueError(f"Expected matrix of shape ({input.ndim + 1}, {input.ndim + 1}) or ({input.ndim},), instead got shape {matrix.shape}")
+
+    return jax.scipy.ndimage.map_coordinates(input, tuple(coords), order=order, mode=jax_mode, cval=cval)

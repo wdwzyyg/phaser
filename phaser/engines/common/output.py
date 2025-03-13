@@ -7,7 +7,7 @@ from numpy.typing import NDArray
 import tifffile
 
 from phaser.utils.num import to_numpy, abs2, fft2, get_array_module
-from phaser.utils.filter import remove_linear_ramp, colorize_complex
+from phaser.utils.image import remove_linear_ramp, colorize_complex
 from phaser.state import ReconsState, ProbeState, ObjectState
 from phaser.plan import SaveOptions
 

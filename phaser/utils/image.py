@@ -2,12 +2,13 @@
 Utilities for image processing & filtering
 """
 
+import warnings
 import typing as t
 
 import numpy
 from numpy.typing import ArrayLike, NDArray
 
-from .num import get_array_module, to_numpy, at
+from .num import get_array_module, get_scipy_module, to_numpy, at, is_jax
 
 
 NumT = t.TypeVar('NumT', bound=numpy.number)
@@ -70,3 +71,40 @@ def colorize_complex(vals: ArrayLike, magnitude_only=False) -> NDArray[numpy.flo
     s = 0.85 * xp.ones_like(mag)
     v = mag / max_mag 
     return hsv_to_rgb(to_numpy(xp.stack((h, s, v), axis=-1)))
+
+
+_BoundaryMode: t.TypeAlias = t.Literal['constant', 'nearest', 'mirror', 'reflect', 'wrap', 'grid-mirror', 'grid-wrap', 'grid-constant']
+
+
+def affine_transform(
+    input: NDArray[NumT],
+    matrix: ArrayLike,
+    offset: t.Optional[ArrayLike] = None,
+    output_shape: t.Optional[t.Tuple[int, ...]] = None,
+    order: int = 1,
+    mode: _BoundaryMode = 'grid-constant',
+    cval: t.Union[NumT, float] = 0.0,
+) -> NDArray[NumT]:
+    if mode in ('constant', 'wrap'):
+        # these modes aren't supported by jax
+        raise ValueError(f"Resampling mode '{mode}' not supported (try 'grid-constant' or 'grid-wrap' instead)")
+    if order > 1:
+        raise ValueError(f"Interpolation order {order} not supported (currently only support order=0, 1)")
+
+    scipy = get_scipy_module(input, matrix, offset)
+
+    if is_jax(input):
+        from ._jax_kernels import affine_transform, jax
+        return t.cast(NDArray[NumT], affine_transform(
+            t.cast(jax.Array, input), matrix, offset,
+            output_shape, order, mode, cval
+        ))
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings(action='ignore', message="The behavior of affine_transform with a 1-D array")
+
+        return scipy.ndimage.affine_transform(
+            input, matrix, offset=offset,
+            output_shape=output_shape,
+            order=order, mode=mode, cval=cval,
+        )

@@ -79,7 +79,7 @@ def get_default_backend_module():
     return numpy
 
 
-def get_array_module(*arrs: ArrayLike):
+def get_array_module(*arrs: t.Optional[ArrayLike]):
     try:
         import jax
         if any(isinstance(arr, jax.Array) for arr in arrs) \
@@ -102,7 +102,7 @@ def cast_array_module(xp: t.Any):
     return xp
 
 
-def get_scipy_module(*arrs: ArrayLike):
+def get_scipy_module(*arrs: t.Optional[ArrayLike]):
     # pyright: ignore[reportMissingImports,reportUnusedImport]
 
     import scipy
@@ -568,7 +568,7 @@ class Sampling:
 
         hp = self.sampling/2.
         ys = xp2.linspace(-self.extent[0]/2. + hp[0], self.extent[0]/2. + hp[0], self.shape[0], endpoint=False, dtype=dtype)
-        xs = xp2.linspace(-self.extent[0]/2. + hp[1], self.extent[1]/2. + hp[1], self.shape[1], endpoint=False, dtype=dtype)
+        xs = xp2.linspace(-self.extent[1]/2. + hp[1], self.extent[1]/2. + hp[1], self.shape[1], endpoint=False, dtype=dtype)
         return tuple(xp2.meshgrid(ys, xs, indexing='ij'))  # type: ignore
 
     @t.overload
@@ -634,6 +634,16 @@ class Sampling:
         # also, shift pixel corners to centers
         shift = hp * (self.shape % 2) - hp * int(center)
         return (-kmax[1] + shift[1], kmax[1] + shift[1], kmax[0] + shift[0], -kmax[0] + shift[0])
+
+    def _coord_to_real(self) -> NDArray[numpy.floating]:
+        a = numpy.diag([*self.sampling, 1.])
+        a[:2, 2] = -(self.extent + self.sampling)/2.
+        return a
+
+    def _real_to_coord(self) -> NDArray[numpy.floating]:
+        a = numpy.diag([*1/self.sampling, 1.])
+        a[:2, 2] = (self.extent + self.sampling)/2. / self.sampling
+        return a
 
 #_IndexingMode: t.TypeAlias = t.Literal['promise_in_bounds', 'clip', 'drop', 'fill']
 

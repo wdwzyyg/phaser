@@ -30,6 +30,7 @@ def test_get_array_module(backend: str):
         assert get_array_module(
             numpy.array([1., 2., 3.]),
             expected.array([1, 2, 3]),
+            None,
             numpy.array([1., 2., 3.]),
         ) is expected
 
@@ -54,6 +55,7 @@ def test_get_scipy_module(backend: str):
         assert get_scipy_module(
             numpy.array([1., 2., 3.]),
             xp.array([1, 2, 3]),
+            None,
             numpy.array([1., 2., 3.]),
         ) is expected
 

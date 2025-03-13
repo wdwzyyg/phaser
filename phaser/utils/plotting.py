@@ -8,7 +8,7 @@ from matplotlib.colors import Colormap, Normalize, LinearSegmentedColormap
 from matplotlib.transforms import Affine2DBase, Affine2D
 
 from .num import get_array_module, abs2, to_numpy
-from .filter import remove_linear_ramp
+from .image import remove_linear_ramp
 from .object import ObjectSampling
 
 
