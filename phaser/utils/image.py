@@ -91,6 +91,7 @@ def affine_transform(
     if order > 1:
         raise ValueError(f"Interpolation order {order} not supported (currently only support order=0, 1)")
 
+    xp = get_array_module(input, matrix, offset)
     scipy = get_scipy_module(input, matrix, offset)
 
     if is_jax(input):
@@ -104,7 +105,7 @@ def affine_transform(
         warnings.filterwarnings(action='ignore', message="The behavior of affine_transform with a 1-D array")
 
         return scipy.ndimage.affine_transform(
-            input, matrix, offset=offset,
+            input, xp.array(matrix), offset=offset,
             output_shape=output_shape,
             order=order, mode=mode, cval=cval,
         )

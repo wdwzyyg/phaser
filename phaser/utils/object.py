@@ -125,7 +125,7 @@ class ObjectSampling:
         will return an array of shape `(32, 32)`.
         """
 
-        idxs = self._pos_to_object_idx(numpy.array(pos), cutout_shape)
+        idxs = self._pos_to_object_idx(pos, cutout_shape)
         (start_i, start_j) = map(int, numpy.round(idxs).astype(numpy.int64))
         assert start_i >= 0 and start_j >= 0
         return (

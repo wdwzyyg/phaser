@@ -4,6 +4,7 @@ General numeric utilities.
 
 import functools
 import logging
+import warnings
 import typing as t
 
 import numpy
@@ -115,9 +116,14 @@ def get_scipy_module(*arrs: t.Optional[ArrayLike]):
     except ImportError:
         pass
     try:
-        import cupyx.scipy.signal  # pyright: ignore[reportMissingImports]
-        import cupyx.scipy.ndimage  # pyright: ignore[reportMissingImports]  # noqa: F401
-        from cupyx.scipy import get_array_module as f  # pyright: ignore[reportMissingImports]
+        with warnings.catch_warnings():
+            # https://github.com/cupy/cupy/issues/8718
+            warnings.filterwarnings(action='ignore', message=r"cupyx\.jit\.rawkernel is experimental", category=FutureWarning)
+
+            import cupyx.scipy.signal  # pyright: ignore[reportMissingImports]
+            import cupyx.scipy.ndimage  # pyright: ignore[reportMissingImports]  # noqa: F401
+            from cupyx.scipy import get_array_module as f  # pyright: ignore[reportMissingImports]
+
         if not t.TYPE_CHECKING:
             return f(*arrs)
     except ImportError:
