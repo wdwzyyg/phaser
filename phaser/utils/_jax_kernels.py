@@ -53,6 +53,7 @@ def outer(ufunc: t.Any, x: jax.Array, y: jax.Array) -> jax.Array:
     return jax.vmap(jax.vmap(ufunc, (None, 0)), (0, None))(x, y)
 
 
+@partial(jax.jit, static_argnames=('output_shape', 'order', 'mode', 'cval'))
 def affine_transform(
     input: jax.Array,
     matrix: ArrayLike,
@@ -68,15 +69,19 @@ def affine_transform(
     if output_shape is None:
         output_shape = input.shape
 
-    indices = jnp.indices(output_shape)
+    indices = jnp.indices(output_shape, dtype=float)
 
     matrix = jnp.array(matrix)
     if matrix.shape == (input.ndim + 1, input.ndim + 1):
         # homogenous transform matrix
-        coords = (matrix @ jnp.stack((*indices, jnp.ones_like(indices[0])), axis=-0))[:-1]
+        coords = jnp.tensordot(
+            matrix, jnp.stack((*indices, jnp.ones_like(indices[0])), axis=0), axes=1
+        )[:-1]
     elif matrix.shape == (input.ndim,):
         coords = (indices.T * matrix + jnp.array(offset)).T
     else:
         raise ValueError(f"Expected matrix of shape ({input.ndim + 1}, {input.ndim + 1}) or ({input.ndim},), instead got shape {matrix.shape}")
+
+    coords += jnp.finfo(coords.dtype).eps
 
     return jax.scipy.ndimage.map_coordinates(input, tuple(coords), order=order, mode=jax_mode, cval=cval)

@@ -14,6 +14,10 @@ from phaser.types import BackendName
 from .misc import jax_dataclass
 
 
+if t.TYPE_CHECKING:
+    from phaser.utils.image import _BoundaryMode
+
+
 NumT = t.TypeVar('NumT', bound=numpy.number)
 FloatT = t.TypeVar('FloatT', bound=numpy.floating)
 ComplexT = t.TypeVar('ComplexT', bound=numpy.complexfloating)
@@ -641,15 +645,44 @@ class Sampling:
         shift = hp * (self.shape % 2) - hp * int(center)
         return (-kmax[1] + shift[1], kmax[1] + shift[1], kmax[0] + shift[0], -kmax[0] + shift[0])
 
-    def _coord_to_real(self) -> NDArray[numpy.floating]:
+    def _coord_to_real(self, center: bool = True) -> NDArray[numpy.floating]:
         a = numpy.diag([*self.sampling, 1.])
-        a[:2, 2] = -(self.extent + self.sampling)/2.
+        a[:2, 2] = -self.extent/2. + self.sampling/2. * int(center)
         return a
 
-    def _real_to_coord(self) -> NDArray[numpy.floating]:
+    def _real_to_coord(self, center: bool = True) -> NDArray[numpy.floating]:
         a = numpy.diag([*1/self.sampling, 1.])
-        a[:2, 2] = (self.extent + self.sampling)/2. / self.sampling
+        a[:2, 2] = (self.extent/2. - self.sampling/2. * int(center)) / self.sampling
         return a
+
+    def resample(
+        self, arr: NDArray[NumT], new_samp: 'Sampling',
+        rotation: float = 0.0,
+        order: int = 1,
+        mode: '_BoundaryMode' = 'grid-constant',
+        cval: t.Union[NumT, float] = 0.0,
+    ) -> NDArray[NumT]:
+        from .image import affine_transform
+
+        if arr.shape[-2:] != tuple(self.shape):
+            raise ValueError("Image dimension don't match sampling dimensions")
+
+        if rotation != 0.0:
+            t = rotation * numpy.pi/180.
+
+            rot = numpy.array([
+                [numpy.cos(t), numpy.sin(t), 0.,],
+                [-numpy.sin(t), numpy.cos(t), 0.],
+                [0., 0., 1.],
+            ])
+            matrix = self._real_to_coord(True) @ rot @ new_samp._coord_to_real(True)
+
+            return affine_transform(arr, matrix, output_shape=tuple(new_samp.shape), order=order, mode=mode, cval=cval)
+
+        matrix = new_samp.sampling / self.sampling
+        offset = ((self.shape - 1) - matrix * (new_samp.shape - 1)) / 2.
+
+        return affine_transform(arr, matrix, offset, output_shape=tuple(new_samp.shape), order=order, mode=mode, cval=cval)
 
 #_IndexingMode: t.TypeAlias = t.Literal['promise_in_bounds', 'clip', 'drop', 'fill']
 
