@@ -7,38 +7,44 @@ import jax  # pyright: ignore[reportMissingImports]
 import jax.numpy as jnp    # pyright: ignore[reportMissingImports]
 
 
-def to_2d(arr: jax.Array) -> jax.Array:
-    arr = arr.reshape(-1, *arr.shape[-1:])
-    if arr.ndim == 1:
-        return jax.lax.expand_dims(arr, [0])
+def to_nd(arr: jax.Array, n: int) -> jax.Array:
+    if arr.ndim > n:
+        arr = arr.reshape(-1, *arr.shape[arr.ndim - n + 1:])
+    elif arr.ndim < n:
+        arr = jax.lax.expand_dims(arr, [0] * (n - arr.ndim))
+
     return arr
 
+to_2d = partial(to_nd, n=2)
+to_3d = partial(to_nd, n=3)
 
-def to_3d(arr: jax.Array) -> jax.Array:
-    arr = arr.reshape(-1, *arr.shape[-2:])
-    if arr.ndim == 2:
-        return jax.lax.expand_dims(arr, [0])
-    return arr
-
+def _flatten_ndim(arr: jax.Array, n: int) -> jax.Array:
+    return arr.reshape(-1, *arr.shape[n+1:])
 
 @jax.jit
 def set_cutouts(obj: jax.Array, cutouts: jax.Array, start_idxs: jax.Array) -> jax.Array:
-    for cutout, start_idx in zip(to_3d(cutouts), to_2d(start_idxs)):
-        obj = jax.vmap(lambda o: jax.lax.dynamic_update_slice(o, cutout, start_idx))(
-            to_3d(obj)
-        ).reshape(obj.shape)
+    def inner(obj: jax.Array, v: t.Tuple[jax.Array, jax.Array]) -> t.Tuple[jax.Array, None]:
+        (cutouts, start_idxs) = v
+        obj = jax.vmap(lambda slice, cutouts: jax.lax.dynamic_update_slice(slice, cutouts, start_idxs))(obj, to_3d(cutouts))
+        return (obj, None)
 
-    return obj
+    start_idxs = jnp.atleast_2d(start_idxs)
+    (cutouts, start_idxs) = map(lambda a: _flatten_ndim(a, start_idxs.ndim - 2), (cutouts, start_idxs))
+    return jax.lax.scan(inner, to_3d(obj), (cutouts, start_idxs))[0].reshape(obj.shape)
 
 
 @jax.jit
 def add_cutouts(obj: jax.Array, cutouts: jax.Array, start_idxs: jax.Array) -> jax.Array:
     zero_obj = jax.numpy.zeros_like(obj, shape=obj.shape[-2:])
 
-    for cutout, start_idx in zip(to_3d(cutouts), to_2d(start_idxs)):
-        obj += jax.lax.dynamic_update_slice(zero_obj, cutout, start_idx)
+    def inner(obj: jax.Array, v: t.Tuple[jax.Array, jax.Array]) -> t.Tuple[jax.Array, None]:
+        (cutouts, start_idxs) = v
+        obj += jax.vmap(lambda cutouts: jax.lax.dynamic_update_slice(zero_obj, cutouts, start_idxs))(to_3d(cutouts))
+        return (obj, None)
 
-    return obj
+    start_idxs = jnp.atleast_2d(start_idxs)
+    (cutouts, start_idxs) = map(lambda a: _flatten_ndim(a, start_idxs.ndim - 2), (cutouts, start_idxs))
+    return jax.lax.scan(inner, to_3d(obj), (cutouts, start_idxs))[0].reshape(obj.shape)
 
 
 @partial(jax.jit, static_argnums=2)

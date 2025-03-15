@@ -123,7 +123,7 @@ def check_array_equals_file(name: str, *, out_name: t.Optional[str] = None, deci
 
             try:
                 assert_array_almost_equal(actual, file_contents_array, decimal=decimal)
-            except AssertionError as e:
+            except AssertionError:
                 try:
                     print(f"Saving actual result to '{out_path}'")
                     write_array(out_path, actual)
