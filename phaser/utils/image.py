@@ -91,6 +91,10 @@ def affine_transform(
     if order > 1:
         raise ValueError(f"Interpolation order {order} not supported (currently only support order=0, 1)")
 
+    if output_shape is None:
+        output_shape = input.shape
+    n_axes = len(output_shape)
+
     xp = get_array_module(input, matrix, offset)
     scipy = get_scipy_module(input, matrix, offset)
 
@@ -104,8 +108,13 @@ def affine_transform(
     with warnings.catch_warnings():
         warnings.filterwarnings(action='ignore', message="The behavior of affine_transform with a 1-D array")
 
-        return scipy.ndimage.affine_transform(
-            input, xp.array(matrix), offset=offset,
-            output_shape=output_shape,
-            order=order, mode=mode, cval=cval,
-        )
+        output = xp.empty((*input.shape[:-n_axes], *output_shape), dtype=input.dtype)
+
+        for idx in numpy.ndindex(input.shape[:-n_axes]):
+            scipy.ndimage.affine_transform(
+                input[*idx], xp.array(matrix), offset=offset,
+                output_shape=output_shape, output=output[*idx],
+                order=order, mode=mode, cval=cval,
+            )
+
+        return output

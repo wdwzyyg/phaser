@@ -18,8 +18,10 @@ def to_nd(arr: jax.Array, n: int) -> jax.Array:
 to_2d = partial(to_nd, n=2)
 to_3d = partial(to_nd, n=3)
 
+
 def _flatten_ndim(arr: jax.Array, n: int) -> jax.Array:
     return arr.reshape(-1, *arr.shape[n+1:])
+
 
 @jax.jit
 def set_cutouts(obj: jax.Array, cutouts: jax.Array, start_idxs: jax.Array) -> jax.Array:
@@ -74,6 +76,7 @@ def affine_transform(
 
     if output_shape is None:
         output_shape = input.shape
+    n_axes = len(output_shape)  # num axes to transform over
 
     indices = jnp.indices(output_shape, dtype=float)
 
@@ -90,4 +93,6 @@ def affine_transform(
 
     coords += jnp.finfo(coords.dtype).eps
 
-    return jax.scipy.ndimage.map_coordinates(input, tuple(coords), order=order, mode=jax_mode, cval=cval)
+    return jax.vmap(
+        lambda a: jax.scipy.ndimage.map_coordinates(a, tuple(coords), order=order, mode=jax_mode, cval=cval),
+    )(to_nd(input, n_axes + 1)).reshape((*input.shape[:-n_axes], *output_shape))

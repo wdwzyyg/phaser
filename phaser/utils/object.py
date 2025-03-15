@@ -175,17 +175,17 @@ class ObjectSampling:
 
         return cls((n_y, n_x), sampling, (y_min - pad[0], x_min - pad[1]), (y_min, x_min), (y_max, x_max))
 
-    def _pos_to_object_idx(self, pos: NDArray[numpy.float64], cutout_shape: t.Tuple[int, ...]) -> NDArray[numpy.float64]:
+    def _pos_to_object_idx(self, pos: ArrayLike, cutout_shape: t.Tuple[int, ...]) -> NDArray[numpy.float64]:
         """Return starting index for the cutout closest to centered around `pos` (`(y, x)`)"""
-        
+
         if not is_jax(pos):  # allow jax tracers to work right
-            pos = to_numpy(pos)
+            pos = as_numpy(pos)
 
         # for a given cutout, shift to the top left pixel of that cutout
         # e.g. a 2x2 cutout needs shifted by s/2
         shift = -numpy.maximum(0., (numpy.array(cutout_shape[-2:]) - 1.)) / 2.
 
-        return ((pos - self.corner) / self.sampling + shift).astype(numpy.float64)
+        return ((pos - self.corner) / self.sampling + shift).astype(numpy.float64)  # type: ignore
 
     def slice_at_pos(self, pos: ArrayLike, cutout_shape: t.Tuple[int, ...]) -> t.Tuple[slice, slice]:
         """
