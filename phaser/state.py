@@ -3,12 +3,13 @@ import typing as t
 import numpy
 from numpy.typing import NDArray
 
-from phaser.utils.num import Sampling, to_numpy
+from phaser.utils.num import Sampling, to_numpy, NumT
 from phaser.utils.misc import jax_dataclass
 from phaser.utils.object import ObjectSampling
 
 if t.TYPE_CHECKING:
     from phaser.utils.io import HdfLike
+    from phaser.utils.image import _BoundaryMode
 
 
 @jax_dataclass
@@ -52,6 +53,20 @@ class ProbeState():
     """Probe coordinate system. See `Sampling` for more details."""
     data: NDArray[numpy.complexfloating]
     """Probe wavefunction, in realspace. Shape (modes, y, x)"""
+
+    def resample(
+        self, new_samp: Sampling,
+        rotation: float = 0.0,
+        order: int = 1,
+        mode: '_BoundaryMode' = 'grid-constant',
+    ) -> t.Self:
+        new_data = self.sampling.resample(
+            self.data, new_samp,
+            rotation=rotation,
+            order=order,
+            mode=mode,
+        )
+        return self.__class__(new_samp, new_data)
 
     def to_numpy(self) -> t.Self:
         return self.__class__(

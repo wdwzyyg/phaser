@@ -9,7 +9,7 @@ import typing as t
 import numpy
 from numpy.typing import ArrayLike, DTypeLike, NDArray
 
-from .num import get_array_module, cast_array_module, to_real_dtype, as_numpy
+from .num import get_array_module, cast_array_module, to_real_dtype, as_numpy, at
 from .num import to_numpy, to_array, is_cupy, is_jax, NumT, ComplexT, DTypeT
 from .misc import create_rng, jax_dataclass
 
@@ -44,6 +44,81 @@ def random_phase_object(shape: t.Iterable[int], sigma: float = 1e-6, *, seed: t.
     real_dtype = to_real_dtype(dtype) if dtype is not None else numpy.float64
     obj_angle = xp2.array(rng.normal(0., sigma, tuple(shape)), dtype=real_dtype)
     return xp2.cos(obj_angle) + xp2.sin(obj_angle) * 1.j
+
+
+def resample_slices(
+    obj: NDArray[NumT], old_zs: ArrayLike, old_slice_thick: ArrayLike,
+    new_zs: ArrayLike, new_slice_thick: ArrayLike, *,
+    mode: t.Literal['edge', 'vacuum', 'average'] = 'vacuum',
+) -> NDArray[NumT]:
+    """
+    Resample an object in Z, such that projected potential is conserved.
+
+    Returns an object of shape `(len(new_zs)-1, *obj.shape[1:])`.
+    """
+    xp = get_array_module(obj)
+
+    old_zs = to_numpy(numpy.asarray(old_zs))
+    new_zs = to_numpy(numpy.asarray(new_zs))
+    old_slice_thick = numpy.broadcast_to(as_numpy(old_slice_thick), old_zs.shape)
+    new_slice_thick = numpy.broadcast_to(as_numpy(new_slice_thick), new_zs.shape)
+
+    if obj.shape[0] != len(old_zs):
+        raise ValueError(f"Expected an object with {len(old_zs)} slices, instead got object shape {obj.shape}")
+
+    # resample from center of slices
+    old_zs += old_slice_thick / 2.
+    new_zs += new_slice_thick / 2.
+
+    # log to make linear, normalize from projected potential to potential
+    obj = (xp.log(obj) / old_slice_thick).astype(obj.dtype)
+
+    if mode == 'edge':
+        before_slice = obj[0]
+        after_slice = obj[-1]
+    elif mode == 'average':
+        before_slice = after_slice = xp.nanmean(obj, axis=0)  # type: ignore
+    elif mode == 'vacuum':
+        before_slice = after_slice = xp.zeros_like(obj[0])
+    else:
+        raise ValueError(f"Unknown padding mode '{mode}'. Expected 'edge', 'vacuum', or 'average'.")
+
+    # pad old object with outer slices
+    old_zs = numpy.concatenate(([old_zs[0] - old_slice_thick[0]], old_zs, [old_zs[-1] + old_slice_thick[-1]]))
+    obj = xp.concatenate((before_slice[None, ...], obj, after_slice[None, ...]), axis=0)
+
+    new_obj = _interp1d(obj, old_zs, new_zs)
+
+    # convert back to projected potential, undo log
+    return xp.exp((new_obj * new_slice_thick).astype(obj.dtype))
+
+
+def _interp1d(arr: NDArray[NumT], old_zs: NDArray[numpy.floating], new_zs: NDArray[numpy.floating]) -> NDArray[NumT]:
+    """
+    Interpolates along the first dimension of `arr`. Boundary values are replaced with the edge value.
+    """
+    xp = get_array_module(arr)
+    slice_is = numpy.searchsorted(old_zs, new_zs) - 1
+
+    new_arr = xp.empty((len(new_zs), *arr.shape[1:]), dtype=arr.dtype)
+
+    delta_zs = numpy.diff(old_zs)
+
+    # TODO specialize this for jax?
+    for i, new_z in enumerate(new_zs):
+        if new_z <= old_zs[0]: # before
+            slice = arr[0]
+        elif old_zs[-1] <= new_z: # after
+            slice = arr[-1]
+        else:
+            slice_i = slice_is[i]
+            # linearly interpolate
+            t = float((new_z - old_zs[slice_i]) / delta_zs[slice_i])
+            slice = ((1-t)*arr[slice_i] + t*arr[slice_i + 1]).astype(arr.dtype)
+
+        new_arr = at(new_arr, i).set(slice)
+
+    return new_arr
 
 
 @jax_dataclass(frozen=True, init=False)
