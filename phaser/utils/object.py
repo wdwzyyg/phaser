@@ -10,7 +10,7 @@ import numpy
 from numpy.typing import ArrayLike, DTypeLike, NDArray
 
 from .num import get_array_module, cast_array_module, to_real_dtype, as_numpy, at
-from .num import to_numpy, to_array, is_cupy, is_jax, NumT, ComplexT, DTypeT
+from .num import to_numpy, as_array, is_cupy, is_jax, NumT, ComplexT, DTypeT
 from .misc import create_rng, jax_dataclass
 
 
@@ -214,7 +214,7 @@ class ObjectSampling:
 
         Returns the shift from the rounded position towards the actual position.
         """
-        pos = self._pos_to_object_idx(to_array(pos), cutout_shape)
+        pos = self._pos_to_object_idx(as_array(pos), cutout_shape)
         return (pos - get_array_module(pos).round(pos)).astype(numpy.float64)
 
     @t.overload
@@ -394,3 +394,9 @@ class ObjectCutout(t.Generic[DTypeT]):
 
     def __array__(self) -> NDArray[DTypeT]:
         return self.get()
+
+
+__all__ = [
+    'random_phase_object', 'resample_slices',
+    'ObjectSampling', 'ObjectCutout',
+]

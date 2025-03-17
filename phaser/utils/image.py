@@ -91,10 +91,6 @@ def affine_transform(
     if order > 1:
         raise ValueError(f"Interpolation order {order} not supported (currently only support order=0, 1)")
 
-    if output_shape is None:
-        output_shape = input.shape
-    n_axes = len(output_shape)
-
     xp = get_array_module(input, matrix, offset)
     scipy = get_scipy_module(input, matrix, offset)
 
@@ -105,12 +101,16 @@ def affine_transform(
             output_shape, order, mode, cval
         ))
 
+    if output_shape is None:
+        output_shape = input.shape
+    n_axes = len(output_shape)  # num axes to transform over
+
     with warnings.catch_warnings():
         warnings.filterwarnings(action='ignore', message="The behavior of affine_transform with a 1-D array")
 
         output = xp.empty((*input.shape[:-n_axes], *output_shape), dtype=input.dtype)
 
-        for idx in numpy.ndindex(input.shape[:-n_axes]):
+        for idx in numpy.ndindex(input.shape[:-n_axes]):  # TODO: parallelize this on CUDA?
             scipy.ndimage.affine_transform(
                 input[*idx], xp.array(matrix), offset=offset,
                 output_shape=output_shape, output=output[*idx],
@@ -118,3 +118,9 @@ def affine_transform(
             )
 
         return output
+
+
+__all__ = [
+    'remove_linear_ramp', 'colorize_complex',
+    'affine_transform',
+]

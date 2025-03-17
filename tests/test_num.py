@@ -9,7 +9,7 @@ from phaser.utils.num import (
     get_array_module, get_scipy_module,
     to_real_dtype, to_complex_dtype,
     fft2, ifft2, abs2,
-    to_numpy, to_array
+    to_numpy, as_array
 )
 
 
@@ -190,9 +190,9 @@ def test_to_array(backend: str):
     xp = get_backend_module(backend)
 
     arr = xp.array([1., 2., 3., 4.])
-    assert to_array(arr) is arr
+    assert as_array(arr) is arr
 
-    arr = to_array([1., 2., 3., 4.])
+    arr = as_array([1., 2., 3., 4.])
     assert isinstance(arr, numpy.ndarray)
     assert_array_almost_equal(
         arr,

@@ -365,3 +365,11 @@ def predict_recons_success(ronchi_mag: ArrayLike, areal_oversamp: ArrayLike) -> 
     return clf.predict_prob_success(
         numpy.log10(numpy.stack((ronchi_mag, areal_oversamp), axis=-1).reshape(-1, 2))
     ).reshape(ronchi_mag.shape)
+
+
+__all__ = [
+    'make_focused_probe',
+    'make_hermetian_modes', 'hermetian_modes',
+    'fourier_shift_filter', 'fresnel_propagator',
+    'estimate_probe_radius', 'calc_metrics', 'predict_recons_success',
+]

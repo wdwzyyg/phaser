@@ -3,7 +3,7 @@ import typing as t
 import numpy
 from numpy.typing import NDArray
 
-from phaser.utils.num import Sampling, to_numpy, NumT
+from phaser.utils.num import Sampling, to_numpy
 from phaser.utils.misc import jax_dataclass
 from phaser.utils.object import ObjectSampling
 

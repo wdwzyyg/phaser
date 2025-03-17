@@ -136,19 +136,6 @@ def get_scipy_module(*arrs: t.Optional[ArrayLike]):
     return scipy
 
 
-def fuse(*args, **kwargs) -> t.Callable[[T], T]:
-    """
-    Equivalent to `cupy.fuse`, if supported.
-    """
-    try:
-        import cupy  # pyright: ignore[reportMissingImports]
-        if not t.TYPE_CHECKING:
-            return cupy.fuse(*args, **kwargs)
-    except ImportError:
-        pass
-    return lambda x: x
-
-
 def to_numpy(arr: NDArray[DTypeT], stream=None) -> NDArray[DTypeT]:
     """
     Convert an array to numpy.
@@ -179,7 +166,7 @@ def as_numpy(arr: ArrayLike, stream=None) -> NDArray:
     return numpy.asarray(arr)
 
 
-def to_array(arr: ArrayLike) -> numpy.ndarray:
+def as_array(arr: ArrayLike) -> numpy.ndarray:
     """
     Convert an ArrayLike to an array, but not necessarily
     a numpy array.
@@ -288,6 +275,19 @@ def jit(
         inline=inline, #compiler_options=compiler_options,
         cupy_fuse=cupy_fuse
     )
+
+
+def fuse(*args, **kwargs) -> t.Callable[[T], T]:
+    """
+    Equivalent to `cupy.fuse`, if supported.
+    """
+    try:
+        import cupy  # pyright: ignore[reportMissingImports]
+        if not t.TYPE_CHECKING:
+            return cupy.fuse(*args, **kwargs)
+    except ImportError:
+        pass
+    return lambda x: x
 
 
 def debug_callback(callback: t.Callable[P, None], *args: P.args, **kwargs: P.kwargs):
@@ -739,3 +739,16 @@ def at(arr: NDArray[DTypeT], idx: IndexLike) -> _AtImpl[DTypeT]:
         return arr.at[idx]
 
     return _AtImpl(arr, idx)
+
+
+__all__ = [
+    'get_backend_module', 'get_default_backend_module',
+    'get_array_module', 'cast_array_module', 'get_scipy_module',
+    'to_numpy', 'as_numpy', 'as_array',
+    'is_cupy', 'is_jax', 'xp_is_cupy', 'xp_is_jax',
+    'jit', 'fuse', 'debug_callback',
+    'to_complex_dtype', 'to_real_dtype',
+    'fft2', 'ifft2', 'abs2', 'split_array',
+    'at', 'ufunc_outer', 'check_finite',
+    'Sampling', 'IndexLike',
+]

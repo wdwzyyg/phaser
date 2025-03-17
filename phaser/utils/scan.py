@@ -52,3 +52,8 @@ def make_raster_scan(shape: t.Tuple[int, int], scan_step: ArrayLike,
         pts = (pts @ mat.T)
 
     return pts * xp2.broadcast_to(xp2.array(scan_step), (2,)).astype(dtype)  # type: ignore
+
+
+__all__ = [
+    'make_raster_scan',
+]

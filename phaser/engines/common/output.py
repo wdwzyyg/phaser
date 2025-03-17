@@ -55,7 +55,7 @@ def output_images(state: ReconsState, out_dir: Path, options: SaveOptions):
         except KeyError as e:
             raise ValueError(f"Invalid format string in 'img_fmt' (unknown key {e})") from None
         except Exception as e:
-            raise ValueError(f"Invalid format string in 'img_fmt'") from e
+            raise ValueError("Invalid format string in 'img_fmt'") from e
 
         _SAVE_FUNCS[ty](state, out_path, options)
 
@@ -68,7 +68,7 @@ def output_state(state: ReconsState, out_dir: Path, options: SaveOptions):
     except KeyError as e:
         raise ValueError(f"Invalid format string in 'hdf5_fmt' (unknown key {e})") from None
     except Exception as e:
-        raise ValueError(f"Invalid format string in 'hdf5_fmt'") from e
+        raise ValueError("Invalid format string in 'hdf5_fmt'") from e
 
     state.write_hdf5(out_dir / out_name)
 
