@@ -20,7 +20,7 @@ class Dataclass(pane.PaneBase, kw_only=True, allow_extra=False):
 
 
 class SliceList(Dataclass):
-    zs: t.List[float]
+    thicknesses: t.List[float]
 
 class SliceStep(Dataclass):
     n: int
@@ -30,6 +30,10 @@ class SliceStep(Dataclass):
     def zs(self) -> t.List[float]:
         return [float(z) for z in numpy.arange(self.n) * self.slice_thickness]
 
+    @property
+    def thicknesses(self) -> t.List[float]:
+        return [self.slice_thickness] * self.n
+
 class SliceTotal(Dataclass):
     n: int
     total_thickness: float
@@ -37,6 +41,10 @@ class SliceTotal(Dataclass):
     @property
     def zs(self) -> t.List[float]:
         return [float(z) for z in numpy.arange(self.n) * self.total_thickness / self.n]
+
+    @property
+    def thicknesses(self) -> t.List[float]:
+        return [self.total_thickness / self.n] * self.n
 
 Slices: t.TypeAlias = t.Union[SliceList, SliceStep, SliceTotal]
 
@@ -55,7 +63,7 @@ class Flag(Dataclass):
     def __call__(self, args: 'FlagArgs') -> bool:
         i = args['state'].iter.engine_iter
         return (
-            (i < self.before if self.before is not None else True)
+            (self.before is None or i < self.before)
             and i > self.after
             and (i - self.after) % self.every == 0
         )

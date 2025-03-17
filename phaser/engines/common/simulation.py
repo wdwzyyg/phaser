@@ -61,7 +61,8 @@ class SimulationState:
 
 
 def make_propagators(sim: SimulationState) -> t.Optional[NDArray[numpy.complexfloating]]:
-    delta_zs = numpy.diff(to_numpy(sim.state.object.zs))
+    # ignore last slice; we don't need it
+    delta_zs = to_numpy(sim.state.object.thicknesses)[:-1]
     if len(delta_zs) == 0:
         return None
 

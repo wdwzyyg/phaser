@@ -92,8 +92,10 @@ def hdf5_read_probe_state(group: h5py.Group) -> ProbeState:
 def hdf5_read_object_state(group: h5py.Group) -> ObjectState:
     obj = numpy.asarray(_hdf5_read_dataset(group, 'data', numpy.complexfloating))
     (n_z, n_y, n_x) = obj.shape
-    zs = numpy.asarray(_hdf5_read_dataset(group, 'zs', numpy.floating))
-    assert zs.shape == (n_z,)
+    #zs = numpy.asarray(_hdf5_read_dataset(group, 'zs', numpy.floating))
+    thicknesses = numpy.asarray(_hdf5_read_dataset(group, 'thicknesses', numpy.floating))
+    assert thicknesses.ndim == 1
+    assert thicknesses.size == n_z if n_z > 1 else thicknesses.size in (0, 1)
 
     sampling = _hdf5_read_dataset_shape(group, 'sampling', numpy.float64, (2,))
     corner = _hdf5_read_dataset_shape(group, 'corner', numpy.float64, (2,))
@@ -103,7 +105,7 @@ def hdf5_read_object_state(group: h5py.Group) -> ObjectState:
 
     return ObjectState(
         ObjectSampling((n_y, n_x), sampling, corner, region_min, region_max),
-        data=obj, zs=zs
+        data=obj, thicknesses=thicknesses
     )
 
 
@@ -159,15 +161,17 @@ def hdf5_write_probe_state(state: ProbeState, group: h5py.Group):
 
 def hdf5_write_object_state(state: ObjectState, group: h5py.Group):
     assert state.data.ndim == 3
-    assert state.zs.ndim == 1
-    assert len(state.zs) == state.data.shape[0]
+    assert state.thicknesses.ndim == 1
+    n_z = state.data.shape[0]
+    assert state.thicknesses.ndim == 1
+    assert state.thicknesses.size == n_z if n_z > 1 else state.thicknesses.size in (0, 1)
 
-    zs = group.create_dataset('zs', data=to_numpy(state.zs))
-    zs.make_scale("z")
+    group.create_dataset('thicknesses', data=to_numpy(state.thicknesses))
+    #zs.make_scale("z")
 
     dataset = group.create_dataset('data', data=to_numpy(state.data))
     dataset.dims[0].label = 'z'
-    dataset.dims[0].attach_scale(zs)
+    #dataset.dims[0].attach_scale(zs)
     dataset.dims[1].label = 'y'
     dataset.dims[2].label = 'x'
 

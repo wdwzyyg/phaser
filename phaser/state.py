@@ -24,6 +24,7 @@ class Patterns():
             to_numpy(self.patterns), to_numpy(self.pattern_mask)
         )
 
+
 @jax_dataclass
 class IterState():
     engine_num: int
@@ -84,12 +85,15 @@ class ObjectState():
     """Object coordinate system. See `ObjectSampling` for more details."""
     data: NDArray[numpy.complexfloating]
     """Object wavefunction. Shape (z, y, x)"""
-    zs: NDArray[numpy.floating]
-    """Z positions of slices (in length units)."""
+    thicknesses: NDArray[numpy.floating]
+    """
+    Slice thicknesses (in length units).
+    Length < 2 for single slice, equal to the number of slices otherwise.
+    """
 
     def to_numpy(self) -> t.Self:
         return self.__class__(
-            self.sampling, to_numpy(self.data), to_numpy(self.zs)
+            self.sampling, to_numpy(self.data), to_numpy(self.thicknesses)
         )
 
     def copy(self) -> t.Self:

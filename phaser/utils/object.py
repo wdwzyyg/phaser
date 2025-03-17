@@ -4,13 +4,14 @@ Object & object cutout utilities
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import warnings
 import typing as t
 
 import numpy
 from numpy.typing import ArrayLike, DTypeLike, NDArray
 
 from .num import get_array_module, cast_array_module, to_real_dtype, as_numpy, at
-from .num import to_numpy, as_array, is_cupy, is_jax, NumT, ComplexT, DTypeT
+from .num import as_array, is_cupy, is_jax, NumT, ComplexT, DTypeT
 from .misc import create_rng, jax_dataclass
 
 
@@ -47,50 +48,103 @@ def random_phase_object(shape: t.Iterable[int], sigma: float = 1e-6, *, seed: t.
 
 
 def resample_slices(
-    obj: NDArray[NumT], old_zs: ArrayLike, old_slice_thick: ArrayLike,
-    new_zs: ArrayLike, new_slice_thick: ArrayLike, *,
-    mode: t.Literal['edge', 'vacuum', 'average'] = 'vacuum',
+    obj: NDArray[NumT], old_thicknesses: ArrayLike, new_thicknesses: ArrayLike, *,
+    align: t.Literal['middle', 'top', 'bottom'] = 'middle',
+    pad_mode: t.Literal['edge', 'vacuum', 'average'] = 'vacuum',
+    rescale_projected: bool = False,
 ) -> NDArray[NumT]:
     """
-    Resample an object in Z, such that projected potential is conserved.
+    Resample an object in Z, such that average potential is roughly conserved.
 
-    Returns an object of shape `(len(new_zs)-1, *obj.shape[1:])`.
+    `align` determines how the old object is aligned relative to the new object. The
+    default, 'center' keeps the center of the object fixed, padding or cropping both
+    object surfaces equally. 'top' and 'bottom' align the top and bottom surfaces,
+    respectively.
+
+    `pad_mode` determines how the edges of the sample are handled. The default,
+    'vacuum', pads with vacuum slices. 'edge' duplicates the edge slice, and
+    'average' duplicates with the average object potential.
+
+    In the case of a multi <-> single slice conversion, the position or thickness
+    of the single slice is not taken into account. Instead, projected potential is
+    conserved such as to create a uniform potential distribution.
+
+    Returns an object of shape `(max(1, len(new_thicknesses)), *obj.shape[1:])`.
     """
     xp = get_array_module(obj)
 
-    old_zs = to_numpy(numpy.asarray(old_zs))
-    new_zs = to_numpy(numpy.asarray(new_zs))
-    old_slice_thick = numpy.broadcast_to(as_numpy(old_slice_thick), old_zs.shape)
-    new_slice_thick = numpy.broadcast_to(as_numpy(new_slice_thick), new_zs.shape)
+    old_thicknesses = as_numpy(old_thicknesses)
+    new_thicknesses = as_numpy(new_thicknesses)
 
-    if obj.shape[0] != len(old_zs):
-        raise ValueError(f"Expected an object with {len(old_zs)} slices, instead got object shape {obj.shape}")
+    if len(new_thicknesses) < 2:
+        if obj.shape[0] == 1:
+            # single -> single slice, don't resample
+            return obj
 
-    # resample from center of slices
-    old_zs += old_slice_thick / 2.
-    new_zs += new_slice_thick / 2.
+        # multi -> single
+        return xp.prod(obj, axis=0, keepdims=True)  # type: ignore
+
+    if obj.shape[0] == 1:
+        # single -> multi, keep projected potential constant
+        # TODO more options in this case?
+        new_total_thick = numpy.sum(new_thicknesses)
+
+        slice_frac = (new_thicknesses / new_total_thick)[:, (None,) * (obj.ndim - 1)]
+        return xp.exp((xp.log(obj) * slice_frac).astype(obj.dtype))
+
+    if obj.shape[0] != len(old_thicknesses):
+        raise ValueError(f"Expected an object with {len(old_thicknesses)} slices, instead got object shape {obj.shape}")
+
+    # center of slices
+    old_zs = xp.cumsum(old_thicknesses) - old_thicknesses / 2.
+    new_zs = xp.cumsum(new_thicknesses) - new_thicknesses / 2.
+
+    # shift new_zs for proper alignment
+    if align == 'bottom':
+        new_zs += numpy.sum(old_thicknesses) - numpy.sum(new_thicknesses)
+    elif align == 'middle':
+        new_zs += (numpy.sum(old_thicknesses) - numpy.sum(new_thicknesses)) / 2.
+    elif align != 'top':
+        raise ValueError(f"Unknown alignment type '{align}'. Expected 'top', 'middle', or 'bottom'.")
 
     # log to make linear, normalize from projected potential to potential
-    obj = (xp.log(obj) / old_slice_thick).astype(obj.dtype)
+    obj = (xp.log(obj) / old_thicknesses).astype(obj.dtype)
 
-    if mode == 'edge':
+    if pad_mode == 'edge':
         before_slice = obj[0]
         after_slice = obj[-1]
-    elif mode == 'average':
+    elif pad_mode == 'average':
         before_slice = after_slice = xp.nanmean(obj, axis=0)  # type: ignore
-    elif mode == 'vacuum':
+    elif pad_mode == 'vacuum':
         before_slice = after_slice = xp.zeros_like(obj[0])
     else:
-        raise ValueError(f"Unknown padding mode '{mode}'. Expected 'edge', 'vacuum', or 'average'.")
+        raise ValueError(f"Unknown padding mode '{pad_mode}'. Expected 'edge', 'vacuum', or 'average'.")
 
     # pad old object with outer slices
-    old_zs = numpy.concatenate(([old_zs[0] - old_slice_thick[0]], old_zs, [old_zs[-1] + old_slice_thick[-1]]))
+    old_zs = numpy.concatenate(([old_zs[0] - old_thicknesses[0]], old_zs, [old_zs[-1] + old_thicknesses[-1]]))
     obj = xp.concatenate((before_slice[None, ...], obj, after_slice[None, ...]), axis=0)
 
     new_obj = _interp1d(obj, old_zs, new_zs)
 
     # convert back to projected potential, undo log
-    return xp.exp((new_obj * new_slice_thick).astype(obj.dtype))
+    new_obj *= new_thicknesses
+
+    def _calc_projected(o) -> numpy.floating:
+        # TODO the object probably needs to be unwrapped before this
+        proj_pot = xp.imag(o)
+        slice_proj_pot = (
+            xp.nanquantile(proj_pot, 0.99, axis=tuple(range(1, o.ndim))) -
+            xp.nanquantile(proj_pot, 0.01, axis=tuple(range(1, o.ndim)))
+        )
+        return xp.abs(xp.sum(slice_proj_pot))
+
+    if rescale_projected:
+        warnings.warn("The `rescale_projected` feature is experimental. Use at your own risk.")
+        # TODO: we may not be able to trust the raw potentials w/out phase ramp removal here
+        scale = _calc_projected(obj) / _calc_projected(new_obj)
+        new_obj *= scale
+
+    return xp.exp(new_obj.astype(obj.dtype))
 
 
 def _interp1d(arr: NDArray[NumT], old_zs: NDArray[numpy.floating], new_zs: NDArray[numpy.floating]) -> NDArray[NumT]:

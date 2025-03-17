@@ -142,7 +142,7 @@ export interface ProbeData {
 export interface ObjectData {
     sampling: ObjectSampling;
     data: NArray;
-    zs: NArray;
+    thicknesses: NArray;
 };
 
 export interface ProgressData {

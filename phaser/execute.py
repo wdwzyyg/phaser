@@ -5,9 +5,9 @@ import typing as t
 import numpy
 from numpy.typing import NDArray
 
-from phaser.utils.num import cast_array_module, get_backend_module, is_jax, xp_is_jax
+from phaser.utils.num import cast_array_module, get_backend_module, xp_is_jax
 from phaser.utils.object import ObjectSampling
-from .plan import GradientEnginePlan, ReconsPlan, EnginePlan, FlagLike
+from .plan import GradientEnginePlan, ReconsPlan, EnginePlan
 from .state import Patterns, ObjectState, ReconsState, PartialReconsState, IterState, ProgressState
 
 
@@ -61,7 +61,7 @@ class Observer:
         self.iter_start_time = finish_time
 
     def finish_solver(self):
-        logging.info(f"Solver finished!")
+        logging.info("Solver finished!")
         if self.solver_start_time is not None:
             finish_time = time.monotonic()
             delta = finish_time - self.solver_start_time
@@ -142,7 +142,7 @@ def initialize_reconstruction(plan: ReconsPlan, xp: t.Any, observer: Observer) -
     })
     if obj.data.ndim == 2:
         obj.data = obj.data.reshape((1, *obj.data.shape))
-        obj.zs = numpy.array([0.], dtype=dtype)
+        obj.thicknesses = numpy.array([], dtype=dtype)
 
     state = ReconsState(
         iter=IterState(0, 0, 0),
@@ -194,12 +194,10 @@ def prepare_for_engine(patterns: Patterns, state: ReconsState, xp: t.Any, engine
             raise NotImplementedError()
 
     if engine.slices is not None:
-        if not numpy.allclose(engine.slices.zs, state.object.zs):
-            # TODO this is a quick hack
-            if len(state.object.zs) == 1:
-                new_obj = numpy.pad(state.object.data, ((len(engine.slices.zs) - 1, 0), (0, 0), (0, 0)), constant_values=1.0)
-                state.object = ObjectState(state.object.sampling, new_obj, numpy.array(engine.slices.zs))
-            else:
-                raise NotImplementedError()
+        if not numpy.allclose(engine.slices.thicknesses, state.object.thicknesses):
+            from phaser.utils.object import resample_slices
+
+            state.object.data = resample_slices(state.object.data, state.object.thicknesses, engine.slices.thicknesses)
+            state.object.thicknesses = xp.array(engine.slices.thicknesses, dtype=state.object.thicknesses.dtype)
 
     return patterns, state
