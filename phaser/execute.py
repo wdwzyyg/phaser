@@ -5,7 +5,7 @@ import typing as t
 import numpy
 from numpy.typing import NDArray
 
-from phaser.utils.num import cast_array_module, get_backend_module, xp_is_jax
+from phaser.utils.num import cast_array_module, get_backend_module, xp_is_jax, Sampling
 from phaser.utils.object import ObjectSampling
 from .plan import GradientEnginePlan, ReconsPlan, EnginePlan
 from .state import Patterns, ObjectState, ReconsState, PartialReconsState, IterState, ProgressState
@@ -173,9 +173,25 @@ def initialize_reconstruction(plan: ReconsPlan, xp: t.Any, observer: Observer) -
 
 
 def prepare_for_engine(patterns: Patterns, state: ReconsState, xp: t.Any, engine: EnginePlan) -> t.Tuple[Patterns, ReconsState]:
-    if engine.sim_shape is not None:
-        if engine.sim_shape != state.probe.data.shape[-2:]:
-            raise NotImplementedError()
+    if engine.sim_shape is not None and engine.sim_shape != state.probe.data.shape[-2:]:
+        if engine.resize_method == 'pad_crop':
+            new_sampling = Sampling(engine.sim_shape, extent=tuple(state.probe.sampling.extent))
+        else:
+            new_sampling = Sampling(engine.sim_shape, sampling=tuple(state.probe.sampling.sampling))
+
+        logging.info(f"Resampling probe and patterns to shape {new_sampling.shape}...")
+        state.probe.data = state.probe.sampling.resample(state.probe.data, new_sampling)
+        # resample patterns as well
+        patterns.patterns = state.probe.sampling.resample(patterns.patterns, new_sampling)
+        patterns.pattern_mask = state.probe.sampling.resample(patterns.pattern_mask, new_sampling, order=0)
+
+        state.probe.sampling = new_sampling
+
+    if not numpy.allclose(state.probe.sampling.sampling, state.object.sampling.sampling):
+        # resample object -> probe
+        logging.info(f"Resampling object to pixel size {list(state.probe.sampling.sampling)}...")
+        new_sampling = state.object.sampling.with_sampling(state.probe.sampling.sampling)
+        state.object.data = state.object.sampling.resample(state.object.data, new_sampling)
 
     if isinstance(engine, GradientEnginePlan) and not xp_is_jax(xp):
         raise ValueError("The gradient descent engine requires the jax backend.")
@@ -193,11 +209,10 @@ def prepare_for_engine(patterns: Patterns, state: ReconsState, xp: t.Any, engine
         else:
             raise NotImplementedError()
 
-    if engine.slices is not None:
-        if not numpy.allclose(engine.slices.thicknesses, state.object.thicknesses):
-            from phaser.utils.object import resample_slices
-
-            state.object.data = resample_slices(state.object.data, state.object.thicknesses, engine.slices.thicknesses)
-            state.object.thicknesses = xp.array(engine.slices.thicknesses, dtype=state.object.thicknesses.dtype)
+    if engine.slices is not None and not numpy.allclose(engine.slices.thicknesses, state.object.thicknesses):
+        from phaser.utils.object import resample_slices
+        logging.info(f"Reslicing object from {max(1, len(state.object.thicknesses))} to {max(1, len(engine.slices.thicknesses))} slice(s)...")
+        state.object.data = resample_slices(state.object.data, state.object.thicknesses, engine.slices.thicknesses)
+        state.object.thicknesses = xp.array(engine.slices.thicknesses, dtype=state.object.thicknesses.dtype)
 
     return patterns, state

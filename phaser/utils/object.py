@@ -15,6 +15,10 @@ from .num import as_array, is_cupy, is_jax, NumT, ComplexT, DTypeT
 from .misc import create_rng, jax_dataclass
 
 
+if t.TYPE_CHECKING:
+    from phaser.utils.image import _BoundaryMode
+
+
 @t.overload
 def random_phase_object(shape: t.Iterable[int], sigma: float = 1e-6, *, seed: t.Optional[object] = None,
                         dtype: t.Optional[ComplexT] = None, xp: t.Any = None) -> NDArray[ComplexT]:
@@ -72,6 +76,9 @@ def resample_slices(
     Returns an object of shape `(max(1, len(new_thicknesses)), *obj.shape[1:])`.
     """
     xp = get_array_module(obj)
+
+    while obj.ndim < 3:
+        obj = obj[None, ...]
 
     old_thicknesses = as_numpy(old_thicknesses)
     new_thicknesses = as_numpy(new_thicknesses)
@@ -356,6 +363,38 @@ class ObjectSampling:
         # shift pixel corners to centers
         shift = self.min - self.sampling/2. * int(center)
         return (shift[1], self.extent[1] + shift[1], self.extent[0] + shift[0], shift[0])
+
+    def resample(
+        self, arr: NDArray[NumT], new_samp: 'ObjectSampling', *,
+        order: int = 1, mode: '_BoundaryMode' = 'grid-constant',
+        cval: t.Union[NumT, float] = 1.0,
+    ) -> NDArray[NumT]:
+        from .image import affine_transform
+
+        if arr.shape[-2:] != tuple(self.shape):
+            raise ValueError("Image dimension don't match sampling dimensions")
+
+        matrix = new_samp.sampling / self.sampling
+        offset = (new_samp.corner - self.corner) / self.sampling
+
+        return affine_transform(
+            arr, matrix, offset, output_shape=tuple(new_samp.shape),
+            order=order, mode=mode, cval=cval
+        )
+
+    def with_sampling(self, sampling: ArrayLike) -> t.Self:
+        sampling = numpy.broadcast_to(sampling, (2,))
+        new_shape = numpy.ceil(self.sampling / sampling * self.shape).astype(int)
+        growth = sampling * new_shape - self.sampling * self.shape
+        assert numpy.all(growth >= 0.)
+        return self.__class__(
+            shape=tuple(new_shape),
+            sampling=sampling,
+            # split half of growth to each corner
+            corner=self.corner - growth / 2. + (sampling - self.sampling)/2.,
+            region_min=self.region_min,
+            region_max=self.region_max,
+        )
 
 
 @dataclass

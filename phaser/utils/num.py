@@ -656,7 +656,7 @@ class Sampling:
         return a
 
     def resample(
-        self, arr: NDArray[NumT], new_samp: 'Sampling',
+        self, arr: NDArray[NumT], new_samp: 'Sampling', *,
         rotation: float = 0.0,
         order: int = 1,
         mode: '_BoundaryMode' = 'grid-constant',
