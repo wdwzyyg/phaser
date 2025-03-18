@@ -140,7 +140,8 @@ class LocalWorker(Worker):
     def _start(self):
         from phaser.web.worker import run_worker
 
-        self.process = multiprocessing.Process(target=run_worker, args=[self.url, True], daemon=True)
+        quiet = False
+        self.process = multiprocessing.Process(target=run_worker, args=[self.url, quiet], daemon=True)
         self.status = 'starting'
         self.process.start()
 

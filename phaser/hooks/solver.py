@@ -22,6 +22,11 @@ class HasState(abc.ABC, t.Generic[StateT]):
 
 
 class NoiseModel(HasState[StateT], abc.ABC):
+    @classmethod
+    @abc.abstractmethod
+    def name(cls) -> str:
+        ...
+
     @abc.abstractmethod
     def calc_loss(
         self,
@@ -137,14 +142,40 @@ class RegularizerHook(Hook[None, t.Union[ConstraintRegularizer, GradientRegulari
 
 
 class ConventionalSolver(abc.ABC):
+    @classmethod
     @abc.abstractmethod
-    def solve(
+    def name(cls) -> str:
+        ...
+
+    @abc.abstractmethod
+    def init(self, sim: 'SimulationState') -> 'SimulationState':
+        ...
+
+    @abc.abstractmethod
+    def presolve(
         self,
         sim: 'SimulationState',
-        recons_name: str,
-        engine_i: int,
-        observer: 'Observer',
+        propagators: t.Optional[NDArray[numpy.complexfloating]],
+        groups: t.Sequence[NDArray[numpy.int_]],
     ) -> 'SimulationState':
+        ...
+
+    @abc.abstractmethod
+    def run_iteration(
+        self,
+        sim: 'SimulationState',
+        propagators: t.Optional[NDArray[numpy.complexfloating]],
+        groups: t.Sequence[NDArray[numpy.int_]], *,
+        update_object: bool,
+        update_probe: bool,
+        update_positions: bool,
+        calc_error: bool,
+        calc_error_mask: NDArray[numpy.bool_],
+        observer: 'Observer',
+    ) -> t.Tuple['SimulationState', NDArray[numpy.floating], t.List[NDArray[numpy.floating]]]:
+        """
+        Run an iteration of the reconstruction. Return a tuple `(sim, pos_update, iter_errors)`.
+        """
         ...
 
 

@@ -64,11 +64,11 @@ class RegularizeLayers(ConstraintRegularizer[None]):
         scipy = get_scipy_module(sim.state.object.data)
         dtype = to_real_dtype(sim.state.object.data)
 
-        if len(sim.state.object.zs) < 2:
+        if len(sim.state.object.thicknesses) < 2:
             return (sim, None)
 
         # approximate layers as equally spaced
-        layer_spacing = float((sim.state.object.zs[-1] - sim.state.object.zs[0]) / (len(sim.state.object.zs) - 1))
+        layer_spacing = numpy.mean(sim.state.object.thicknesses)
         # calculate size of filter (go to ~sigma in each direction)
         r = int(numpy.ceil(2. * self.sigma / layer_spacing))
         n = 2*r + 1

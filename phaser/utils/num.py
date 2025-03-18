@@ -136,7 +136,7 @@ def get_scipy_module(*arrs: t.Optional[ArrayLike]):
     return scipy
 
 
-def to_numpy(arr: NDArray[DTypeT], stream=None) -> NDArray[DTypeT]:
+def to_numpy(arr: t.Union[DTypeT, NDArray[DTypeT]], stream=None) -> NDArray[DTypeT]:
     """
     Convert an array to numpy.
     For cupy backend, this is equivalent to `cupy.asnumpy`.
@@ -148,7 +148,7 @@ def to_numpy(arr: NDArray[DTypeT], stream=None) -> NDArray[DTypeT]:
         if is_cupy(arr):
             return arr.get(stream)
 
-    return arr
+    return numpy.array(arr)
 
 
 def as_numpy(arr: ArrayLike, stream=None) -> NDArray:

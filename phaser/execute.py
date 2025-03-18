@@ -209,7 +209,8 @@ def prepare_for_engine(patterns: Patterns, state: ReconsState, xp: t.Any, engine
         else:
             raise NotImplementedError()
 
-    if engine.slices is not None and not numpy.allclose(engine.slices.thicknesses, state.object.thicknesses):
+    if engine.slices is not None and (len(engine.slices.thicknesses) != len(state.object.thicknesses)
+                                      or not numpy.allclose(engine.slices.thicknesses, state.object.thicknesses)):
         from phaser.utils.object import resample_slices
         logging.info(f"Reslicing object from {max(1, len(state.object.thicknesses))} to {max(1, len(engine.slices.thicknesses))} slice(s)...")
         state.object.data = resample_slices(state.object.data, state.object.thicknesses, engine.slices.thicknesses)

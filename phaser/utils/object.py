@@ -4,6 +4,7 @@ Object & object cutout utilities
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from itertools import repeat
 import warnings
 import typing as t
 
@@ -96,7 +97,7 @@ def resample_slices(
         # TODO more options in this case?
         new_total_thick = numpy.sum(new_thicknesses)
 
-        slice_frac = (new_thicknesses / new_total_thick)[:, (None,) * (obj.ndim - 1)]
+        slice_frac = xp.array((new_thicknesses / new_total_thick)[:, *repeat(None, obj.ndim - 1)])
         return xp.exp((xp.log(obj) * slice_frac).astype(obj.dtype))
 
     if obj.shape[0] != len(old_thicknesses):
@@ -159,6 +160,7 @@ def _interp1d(arr: NDArray[NumT], old_zs: NDArray[numpy.floating], new_zs: NDArr
     Interpolates along the first dimension of `arr`. Boundary values are replaced with the edge value.
     """
     xp = get_array_module(arr)
+    real_dtype = to_real_dtype(arr.dtype)
     slice_is = numpy.searchsorted(old_zs, new_zs) - 1
 
     new_arr = xp.empty((len(new_zs), *arr.shape[1:]), dtype=arr.dtype)
@@ -174,7 +176,7 @@ def _interp1d(arr: NDArray[NumT], old_zs: NDArray[numpy.floating], new_zs: NDArr
         else:
             slice_i = slice_is[i]
             # linearly interpolate
-            t = float((new_z - old_zs[slice_i]) / delta_zs[slice_i])
+            t = xp.array(float((new_z - old_zs[slice_i]) / delta_zs[slice_i]), dtype=real_dtype)
             slice = ((1-t)*arr[slice_i] + t*arr[slice_i + 1]).astype(arr.dtype)
 
         new_arr = at(new_arr, i).set(slice)

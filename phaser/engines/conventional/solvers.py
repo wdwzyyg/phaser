@@ -7,13 +7,11 @@ import numpy
 from numpy.typing import NDArray
 
 from phaser.utils.num import cast_array_module, at, abs2, fft2, ifft2, jit, check_finite, to_complex_dtype, to_numpy
-from phaser.utils.misc import create_compact_groupings, create_sparse_groupings, mask_fraction_of_groups
 from phaser.hooks.solver import ConstraintRegularizer, ConventionalSolver
 from phaser.plan import ConventionalEnginePlan, LSQMLSolverPlan, EPIESolverPlan
-from phaser.types import process_flag, flag_any_true
 from phaser.execute import Observer
-from phaser.engines.common.simulation import SimulationState, make_propagators, cutout_group, slice_forwards, slice_backwards
-from phaser.engines.common.output import output_images, output_state
+from phaser.engines.common.simulation import SimulationState, cutout_group, slice_forwards, slice_backwards
+from .run import apply_regularizers_group
 
 
 class LSQMLSolver(ConventionalSolver):
@@ -21,159 +19,101 @@ class LSQMLSolver(ConventionalSolver):
         self.plan: LSQMLSolverPlan = props
         self.engine_plan: ConventionalEnginePlan = plan
 
-    def solve(
-        self, sim: SimulationState, recons_name: str, engine_i: int, observer: Observer
+    @classmethod
+    def name(cls) -> str:
+        return "LSQML"
+
+    def init(self, sim: SimulationState) -> SimulationState:
+        self.logger = logging.getLogger(__name__)
+        xp = sim.xp
+
+        self.obj_mag: NDArray[numpy.floating] = xp.zeros(sim.state.probe.data.shape[-2:], dtype=sim.dtype)
+        self.probe_mag: NDArray[numpy.floating] = xp.zeros_like(sim.state.object.data, dtype=sim.dtype)
+
+        return sim
+
+    def presolve(
+        self,
+        sim: SimulationState,
+        propagators: t.Optional[NDArray[numpy.complexfloating]],
+        groups: t.Sequence[NDArray[numpy.int_]],
     ) -> SimulationState:
-        logger = logging.getLogger(__name__)
-        xp = cast_array_module(sim.xp)
-        real_dtype = sim.dtype
-
-        assert sim.patterns.dtype == real_dtype
-        assert sim.pattern_mask.dtype == real_dtype
-
-        update_probe = process_flag(self.engine_plan.update_probe)
-        update_object = process_flag(self.engine_plan.update_object)
-        update_positions = process_flag(self.engine_plan.update_positions)
-        calc_error = process_flag(self.engine_plan.calc_error)
-        save = process_flag(self.engine_plan.save)
-        save_images = process_flag(self.engine_plan.save_images)
-
-        try:
-            out_dir = self.engine_plan.save_options.out_dir.format(
-                # TODO: more EnginePlan keys here
-                engine_i=engine_i, name=recons_name,
-            )
-            out_dir = Path(out_dir).expanduser().absolute()
-        except KeyError as e:
-            raise ValueError(f"Invalid format string in 'out_dir' (unknown key {e})") from None
-        except Exception as e:
-            raise ValueError("Invalid format string in 'out_dir'") from e
-
-        if flag_any_true(save, self.engine_plan.niter) or flag_any_true(save_images, self.engine_plan.niter):
-            try:
-                out_dir.mkdir(exist_ok=True)
-            except Exception as e:
-                e.add_note(f"Unable to create output dir '{out_dir}'")
-                raise
-
-        position_solver = None if self.engine_plan.position_solver is None else self.engine_plan.position_solver(None)
-        position_solver_state = None if position_solver is None else position_solver.init_state(sim)
-
-        if self.engine_plan.compact:
-            groups = create_compact_groupings(sim.state.scan, self.engine_plan.grouping or 64)
-        else:
-            groups = create_sparse_groupings(sim.state.scan, self.engine_plan.grouping or 64)
-
-        calc_error_mask = mask_fraction_of_groups(len(groups), self.engine_plan.calc_error_fraction)
-
-        cutout_shape = sim.state.probe.data.shape[-2:]
-        props = make_propagators(sim)
-
-        observer.init_solver(sim.state, engine_i)
-
-        obj_mag = xp.zeros(cutout_shape, dtype=real_dtype)
-        probe_mag = xp.zeros_like(sim.state.object.data, dtype=real_dtype)
-
         rescale_factors = []
 
-        # dry run to pre-compute obj_mag and probe_mag
+        # precompute obj_mag, probe_mag, and rescale probe intensity
         for (group_i, group) in enumerate(groups):
-            (obj_mag, probe_mag, group_rescale_factors) = lsqml_dry_run(sim, props, group, obj_mag, probe_mag)
+            (self.obj_mag, self.probe_mag, group_rescale_factors) = lsqml_dry_run(
+                sim, propagators, group, self.obj_mag, self.probe_mag
+            )
 
             rescale_factors.append(to_numpy(group_rescale_factors))
 
         rescale_factors = numpy.concatenate(rescale_factors, axis=0)
         rescale_factor = numpy.mean(rescale_factors)
 
-        logger.info("Pre-calculated intensities")
-        logger.info(f"Rescaling initial probe intensity by {rescale_factor:.2e}")
+        self.logger.info("Pre-calculated intensities")
+        self.logger.info(f"Rescaling initial probe intensity by {rescale_factor:.2e}")
         sim.state.probe.data *= numpy.sqrt(rescale_factor)
-        probe_mag *= rescale_factor
-
-        observer.start_solver()
-
-        for i in range(1, self.engine_plan.niter+1):
-            new_obj_mag = xp.zeros_like(obj_mag)
-            new_probe_mag = xp.zeros_like(probe_mag)
-            iter_update_object = update_object({'state': sim.state, 'niter': self.engine_plan.niter})
-            iter_update_probe = update_probe({'state': sim.state, 'niter': self.engine_plan.niter})
-            iter_update_positions = update_positions({'state': sim.state, 'niter': self.engine_plan.niter})
-            iter_calc_error = calc_error({'state': sim.state, 'niter': self.engine_plan.niter})
-            iter_errors = []
-            pos_update = xp.zeros_like(sim.state.scan, dtype=real_dtype)
-
-            for (group_i, group) in enumerate(groups):
-                group_calc_error = iter_calc_error and calc_error_mask[group_i]
-
-                (sim, obj_mag, probe_mag, new_obj_mag, new_probe_mag, errors, group_pos_update) = lsqml_run(
-                    sim, group, props=props,
-                    obj_mag=obj_mag, probe_mag=probe_mag,
-                    new_obj_mag=new_obj_mag, new_probe_mag=new_probe_mag,
-                    beta_object=self.plan.beta_object,
-                    beta_probe=self.plan.beta_probe,
-                    update_object=iter_update_object,
-                    update_probe=iter_update_probe,
-                    update_position=iter_update_positions,
-                    calc_error=group_calc_error,
-                    illum_reg_object=self.plan.illum_reg_object,
-                    illum_reg_probe=self.plan.illum_reg_probe,
-                    gamma=self.plan.gamma,
-                )
-                check_finite(sim.state.object.data, sim.state.probe.data, context=f"object or probe, group {group_i}")
-
-                sim = apply_regularizers_group(sim, group)
-
-                if iter_update_positions:
-                    assert group_pos_update is not None
-                    pos_update[*group] = group_pos_update
-
-                assert sim.state.object.data.dtype == to_complex_dtype(sim.dtype)
-                assert sim.state.probe.data.dtype == to_complex_dtype(sim.dtype)
-
-                observer.update_group(sim.state, self.engine_plan.send_every_group)
-
-                if group_calc_error:
-                    assert errors is not None
-                    iter_errors.append(errors)
-
-            obj_mag = new_obj_mag
-            probe_mag = new_probe_mag
-
-            if iter_update_positions:
-                if not position_solver:
-                    raise ValueError("Updating positions with no PositionSolver specified")
-
-                # subtract mean position update
-                pos_update -= xp.mean(pos_update, tuple(range(pos_update.ndim - 1)))
-                pos_update, position_solver_state = position_solver.perform_update(sim.state.scan, pos_update, position_solver_state)
-                # subtract mean again (this can change with momentum)
-                pos_update -= xp.mean(pos_update, tuple(range(pos_update.ndim - 1)))
-                update_mag = xp.linalg.norm(pos_update, axis=-1, keepdims=True)
-                logger.info(f"Position update: mean {xp.mean(update_mag)}")
-                sim.state.scan += pos_update
-                assert sim.state.scan.dtype == real_dtype
-
-            sim = apply_regularizers_iter(sim)
-
-            error = None
-            if iter_calc_error:
-                error = float(to_numpy(xp.nanmean(xp.concatenate(iter_errors))))  # type: ignore
-
-                # TODO don't do this
-                sim.state.progress.iters = numpy.concatenate([sim.state.progress.iters, [i]])
-                sim.state.progress.detector_errors = numpy.concatenate([sim.state.progress.detector_errors, [error]])
-
-            observer.update_iteration(sim.state, i, self.engine_plan.niter, error)
-
-            if save({'state': sim.state, 'niter': self.engine_plan.niter}):
-                output_state(sim.state, out_dir, self.engine_plan.save_options)
-
-            if save_images({'state': sim.state, 'niter': self.engine_plan.niter}):
-                output_images(sim.state, out_dir, self.engine_plan.save_options)
-
-        observer.finish_solver()
+        self.probe_mag *= rescale_factor
 
         return sim
+
+    def run_iteration(
+        self,
+        sim: SimulationState,
+        propagators: t.Optional[NDArray[numpy.complexfloating]],
+        groups: t.Sequence[NDArray[numpy.int_]], *,
+        update_object: bool,
+        update_probe: bool,
+        update_positions: bool,
+        calc_error: bool,
+        calc_error_mask: NDArray[numpy.bool_],
+        observer: 'Observer',
+    ) -> t.Tuple[SimulationState, NDArray[numpy.floating], t.List[NDArray[numpy.floating]]]:
+        xp = sim.xp
+
+        new_obj_mag = xp.zeros_like(self.obj_mag)
+        new_probe_mag = xp.zeros_like(self.probe_mag)
+        pos_update = xp.zeros_like(sim.state.scan, dtype=sim.dtype)
+        iter_errors = []
+
+        for (group_i, group) in enumerate(groups):
+            group_calc_error = calc_error and calc_error_mask[group_i]
+
+            (sim, new_obj_mag, new_probe_mag, errors, group_pos_update) = lsqml_run(
+                sim, group, props=propagators,
+                obj_mag=self.obj_mag, probe_mag=self.probe_mag,
+                new_obj_mag=new_obj_mag, new_probe_mag=new_probe_mag,
+                beta_object=self.plan.beta_object,
+                beta_probe=self.plan.beta_probe,
+                update_object=update_object,
+                update_probe=update_probe,
+                update_position=update_positions,
+                calc_error=group_calc_error,
+                illum_reg_object=self.plan.illum_reg_object,
+                illum_reg_probe=self.plan.illum_reg_probe,
+                gamma=self.plan.gamma,
+            )
+            check_finite(sim.state.object.data, sim.state.probe.data, context=f"object or probe, group {group_i}")
+            assert sim.state.object.data.dtype == to_complex_dtype(sim.dtype)
+            assert sim.state.probe.data.dtype == to_complex_dtype(sim.dtype)
+
+            sim = apply_regularizers_group(sim, group)
+
+            if update_positions:
+                assert group_pos_update is not None
+                pos_update[*group] = group_pos_update
+
+            observer.update_group(sim.state, self.engine_plan.send_every_group)
+
+            if group_calc_error:
+                assert errors is not None
+                iter_errors.append(errors)
+
+        self.obj_mag = new_obj_mag
+        self.probe_mag = new_probe_mag
+
+        return (sim, pos_update, iter_errors)
 
 
 @partial(jit, donate_argnames=('obj_mag', 'probe_mag'))
@@ -214,7 +154,7 @@ def lsqml_dry_run(
 
 @partial(
     jit,
-    donate_argnames=('sim', 'obj_mag', 'probe_mag', 'new_obj_mag', 'new_probe_mag'),
+    donate_argnames=('sim', 'new_obj_mag', 'new_probe_mag'),
     static_argnames=('update_object', 'update_probe', 'update_position', 'calc_error'),
 )
 def lsqml_run(
@@ -234,7 +174,7 @@ def lsqml_run(
     illum_reg_object: float,
     illum_reg_probe: float,
     gamma: float,
-) -> t.Tuple[SimulationState, NDArray[numpy.floating], NDArray[numpy.floating], NDArray[numpy.floating], NDArray[numpy.floating], t.Optional[NDArray[numpy.floating]], t.Optional[NDArray[numpy.floating]]]:
+) -> t.Tuple[SimulationState, NDArray[numpy.floating], NDArray[numpy.floating], t.Optional[NDArray[numpy.floating]], t.Optional[NDArray[numpy.floating]]]:
     xp = cast_array_module(sim.xp)
     obj_grid = sim.state.object.sampling
     n_slices = sim.state.object.data.shape[0]
@@ -327,7 +267,7 @@ def lsqml_run(
     else:
         pos_update = None
 
-    return (sim, obj_mag, probe_mag, new_obj_mag, new_probe_mag, errors, pos_update)
+    return (sim, new_obj_mag, new_probe_mag, errors, pos_update)
 
 
 class EPIESolver(ConventionalSolver):
@@ -335,85 +275,78 @@ class EPIESolver(ConventionalSolver):
         self.engine_plan: ConventionalEnginePlan = engine_plan
         self.plan: EPIESolverPlan = props
 
-    def solve(
-        self, sim: SimulationState, recons_name: str, engine_i: int, observer: Observer
+    @classmethod
+    def name(cls) -> str:
+        return "ePIE"
+
+    def init(self, sim: SimulationState) -> SimulationState:
+        self.logger = logging.getLogger(__name__)
+        return sim
+
+    def presolve(
+        self,
+        sim: SimulationState,
+        propagators: t.Optional[NDArray[numpy.complexfloating]],
+        groups: t.Sequence[NDArray[numpy.int_]],
     ) -> SimulationState:
-        logger = logging.getLogger(__name__)
-        xp = cast_array_module(sim.xp)
-
-        update_probe = process_flag(self.engine_plan.update_probe)
-        update_object = process_flag(self.engine_plan.update_object)
-        calc_error = process_flag(self.engine_plan.calc_error)
-
-        observer.init_solver(sim.state, engine_i)
-
-        if self.engine_plan.compact:
-            groups = create_compact_groupings(sim.state.scan, self.engine_plan.grouping or 64)
-        else:
-            groups = create_sparse_groupings(sim.state.scan, self.engine_plan.grouping or 64)
-
-        calc_error_mask = mask_fraction_of_groups(len(groups), self.engine_plan.calc_error_fraction)
-
-        props = make_propagators(sim)
-
-        # dry run to pre-compute obj_mag and probe_mag
         rescale_factors = []
         for (group_i, group) in enumerate(groups):
-            group_rescale_factors = epie_dry_run(sim, props, group)
+            group_rescale_factors = epie_dry_run(sim, propagators, group)
             rescale_factors.append(to_numpy(group_rescale_factors))
 
         rescale_factors = numpy.concatenate(rescale_factors, axis=0)
         rescale_factor = numpy.mean(rescale_factors)
 
-        logger.info("Pre-calculated intensities")
-        logger.info(f"Rescaling initial probe intensity by {rescale_factor:.2e}")
+        self.logger.info("Pre-calculated intensities")
+        self.logger.info(f"Rescaling initial probe intensity by {rescale_factor:.2e}")
         sim.state.probe.data *= numpy.sqrt(rescale_factor)
 
-        observer.start_solver()
-
-        for i in range(1, self.engine_plan.niter+1):
-            iter_update_object = update_object({'state': sim.state, 'niter': self.engine_plan.niter})
-            iter_update_probe = update_probe({'state': sim.state, 'niter': self.engine_plan.niter})
-            iter_calc_error = calc_error({'state': sim.state, 'niter': self.engine_plan.niter})
-            iter_errors = []
-
-            for (group_i, group) in enumerate(groups):
-                group_calc_error = iter_calc_error and calc_error_mask[group_i]
-
-                (sim, errors) = epie_run(
-                    sim, group, props=props,
-                    beta_object=self.plan.beta_object,
-                    beta_probe=self.plan.beta_probe,
-                    update_object=iter_update_object,
-                    update_probe=iter_update_probe,
-                )
-                check_finite(sim.state.object.data, sim.state.probe.data, context=f"object or probe, group {group_i}")
-
-                sim = apply_regularizers_group(sim, group)
-                assert sim.state.object.data.dtype == to_complex_dtype(sim.dtype)
-                assert sim.state.probe.data.dtype == to_complex_dtype(sim.dtype)
-
-                observer.update_group(sim.state, self.engine_plan.send_every_group)
-
-                if group_calc_error:
-                    assert errors is not None
-                    iter_errors.append(errors)
-
-            sim = apply_regularizers_iter(sim)
-
-            error = None
-            if iter_calc_error:
-                error = float(to_numpy(xp.nanmean(xp.concatenate(iter_errors))))  # type: ignore
-
-                # TODO don't do this
-                sim.state.progress.iters = numpy.concatenate([sim.state.progress.iters, [i]])
-                sim.state.progress.detector_errors = numpy.concatenate([sim.state.progress.detector_errors, [error]])
-
-            observer.update_iteration(sim.state, i, self.engine_plan.niter, error)
-
-        observer.finish_solver()
-
         return sim
+
+    def run_iteration(
+        self,
+        sim: SimulationState,
+        propagators: t.Optional[NDArray[numpy.complexfloating]],
+        groups: t.Sequence[NDArray[numpy.int_]], *,
+        update_object: bool,
+        update_probe: bool,
+        update_positions: bool,
+        calc_error: bool,
+        calc_error_mask: NDArray[numpy.bool_],
+        observer: 'Observer',
+    ) -> t.Tuple[SimulationState, NDArray[numpy.floating], t.List[NDArray[numpy.floating]]]:
+        xp = sim.xp
+
+        pos_update = xp.zeros_like(sim.state.scan)
+        iter_errors = []
+
+        for (group_i, group) in enumerate(groups):
+            group_calc_error = calc_error and calc_error_mask[group_i]
+
+            (sim, errors) = epie_run(
+                sim, group, props=propagators,
+                beta_object=self.plan.beta_object,
+                beta_probe=self.plan.beta_probe,
+                update_object=update_object,
+                update_probe=update_probe,
+            )
+            check_finite(sim.state.object.data, sim.state.probe.data, context=f"object or probe, group {group_i}")
+            assert sim.state.object.data.dtype == to_complex_dtype(sim.dtype)
+            assert sim.state.probe.data.dtype == to_complex_dtype(sim.dtype)
+
+            sim = apply_regularizers_group(sim, group)
+
+            #if update_positions:
+            #    assert group_pos_update is not None
+            #    pos_update[*group] = group_pos_update
+
+            observer.update_group(sim.state, self.engine_plan.send_every_group)
+
+            if group_calc_error:
+                assert errors is not None
+                iter_errors.append(errors)
+
+        return (sim, pos_update, iter_errors)
 
 
 @partial(jit)
@@ -512,31 +445,3 @@ def epie_run(
     (sim, chi) = slice_backwards(props, (sim, chi), update_slice)
 
     return (sim, errors)
-
-
-def apply_regularizers_group(sim: SimulationState, group: NDArray[numpy.integer]) -> SimulationState:
-
-    def apply_reg(reg: ConstraintRegularizer, state: t.Any):
-        nonlocal sim
-        (sim, state) = reg.apply_group(group, sim, state)
-        return state
-
-    sim.regularizer_states = tuple(
-        apply_reg(reg, state) for (reg, state) in zip(sim.regularizers, sim.regularizer_states)
-    )
-
-    return sim
-
-
-def apply_regularizers_iter(sim: SimulationState) -> SimulationState:
-
-    def apply_reg(reg: ConstraintRegularizer, state: t.Any):
-        nonlocal sim
-        (sim, state) = reg.apply_iter(sim, state)
-        return state
-
-    sim.regularizer_states = tuple(
-        apply_reg(reg, state) for (reg, state) in zip(sim.regularizers, sim.regularizer_states)
-    )
-
-    return sim

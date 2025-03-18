@@ -11,6 +11,10 @@ from .simulation import SimulationState
 
 
 class AmplitudeNoiseModel(NoiseModel[None]):
+    @classmethod
+    def name(cls) -> str:
+        return "amplitude"
+
     def __init__(self, args: None, props: AmplitudeNoisePlan):
         self.offset: float = props.offset
         self.gaussian_variance: float = props.gaussian_variance
@@ -60,5 +64,9 @@ class AmplitudeNoiseModel(NoiseModel[None]):
 
 
 class AnscombeNoiseModel(AmplitudeNoiseModel):
+    @classmethod
+    def name(cls) -> str:
+        return "anscombe"
+
     def __init__(self, args: None, props: AnscombeNoisePlan):
         super().__init__(args, props)

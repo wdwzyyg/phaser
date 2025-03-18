@@ -92,7 +92,7 @@ def hdf5_read_probe_state(group: h5py.Group) -> ProbeState:
 def hdf5_read_object_state(group: h5py.Group) -> ObjectState:
     obj = numpy.asarray(_hdf5_read_dataset(group, 'data', numpy.complexfloating))
     (n_z, n_y, n_x) = obj.shape
-    #zs = numpy.asarray(_hdf5_read_dataset(group, 'zs', numpy.floating))
+    
     thicknesses = numpy.asarray(_hdf5_read_dataset(group, 'thicknesses', numpy.floating))
     assert thicknesses.ndim == 1
     assert thicknesses.size == n_z if n_z > 1 else thicknesses.size in (0, 1)
@@ -166,12 +166,14 @@ def hdf5_write_object_state(state: ObjectState, group: h5py.Group):
     assert state.thicknesses.ndim == 1
     assert state.thicknesses.size == n_z if n_z > 1 else state.thicknesses.size in (0, 1)
 
-    group.create_dataset('thicknesses', data=to_numpy(state.thicknesses))
-    #zs.make_scale("z")
+    thick = to_numpy(state.thicknesses)
+    group.create_dataset('thicknesses', data=thick)
+    zs = group.create_dataset('zs', data=numpy.cumsum(thick) - thick[0] if len(thick) > 1 else numpy.array([0.], dtype=thick.dtype))
+    zs.make_scale("z")
 
     dataset = group.create_dataset('data', data=to_numpy(state.data))
     dataset.dims[0].label = 'z'
-    #dataset.dims[0].attach_scale(zs)
+    dataset.dims[0].attach_scale(zs)
     dataset.dims[1].label = 'y'
     dataset.dims[2].label = 'x'
 
