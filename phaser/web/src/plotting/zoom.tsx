@@ -7,13 +7,28 @@ import { Transform1D, Transform2D } from "./transform";
 import { PlotContext, FigureContext, Axis } from "./plot";
 
 
-function viewCoords(node: SVGElement, client: Pair): Pair {
+function getScreenCTM(svg: SVGSVGElement): SVGMatrix {
+    // workaround on safari
+    if (typeof navigator !== 'undefined' && /Version\/[\d\.]+.*Safari/.test(navigator.userAgent)) {
+        const m = svg.createSVGMatrix();
+        // TODO this doesn't account for viewBox with scaling
+        m.e = svg.getBoundingClientRect().x - svg.viewBox.animVal.x;
+        m.f = svg.getBoundingClientRect().y - svg.viewBox.animVal.y;
+        return m;
+    }
+    return svg.getScreenCTM()!;
+}
+
+
+function getEventCoords(node: SVGElement, event: MouseEvent | WheelEvent | Touch): Pair {
     let svg = node.ownerSVGElement || node as SVGSVGElement;
     let pt = svg.createSVGPoint();
-    pt.x = client[0]; pt.y = client[1];
-    pt = pt.matrixTransform(svg.getScreenCTM()!.inverse());
+    pt.x = event.clientX; pt.y = event.clientY;
+    let trans = getScreenCTM(svg);
+    pt = pt.matrixTransform(trans.inverse());
     return [pt.x, pt.y];
 }
+
 
 export function Zoomer({children: children}: {children?: React.ReactNode}) {
     const fig = React.useContext(FigureContext)!;
@@ -24,7 +39,7 @@ export function Zoomer({children: children}: {children?: React.ReactNode}) {
     const managerRef: React.MutableRefObject<ZoomManager | null> = React.useRef(null);
 
     let xaxis: Axis, yaxis: Axis;
-    let xtrans: Transform1D, ytrans; Transform1D;
+    let xtrans: Transform1D, ytrans: Transform1D;
     let setXTrans: (value: Transform1D) => void, setYTrans: (value: Transform1D) => void;
 
     if (typeof plot.xaxis === 'string') {
@@ -217,7 +232,7 @@ class ZoomManager {
 
     mousedown(elem: (HTMLElement & SVGElement), event: MouseEvent) {
         if (event.button != 0) { return; } // LMB only
-        const [x, y] = this.transform.unapply(viewCoords(elem, [event.clientX, event.clientY]));
+        const [x, y] = this.transform.unapply(getEventCoords(elem, event));
 
         this.state = "drag";
         this.dragStart = [x, y];
@@ -231,7 +246,7 @@ class ZoomManager {
     mousemove(elem: (HTMLElement & SVGElement), event: MouseEvent) {
         if (this.state != "drag") { return; }
 
-        let [x, y] = this.transform.unapply(viewCoords(elem, [event.clientX, event.clientY]));
+        let [x, y] = this.transform.unapply(getEventCoords(elem, event));
         let [deltaX, deltaY] = [x - this.dragStart[0], y - this.dragStart[1]];
 
         this.setTransform(this.constrain(this.transform.translate(deltaX, deltaY)));
@@ -245,7 +260,7 @@ class ZoomManager {
     }
 
     wheel(elem: (HTMLElement & SVGElement), event: WheelEvent) {
-        const [x, y] = viewCoords(elem, [event.clientX, event.clientY]);
+        const [x, y] = getEventCoords(elem, event);
         const k = Math.exp(-event.deltaY / 500.0);
         const totalK: Pair = [
             clamp(k * this.transform.k[0], this.zoomExtent[0]),

@@ -114,6 +114,7 @@ export interface PlotContextData<K> {
     yaxis_pos: 'left' | 'right'
 
     fixedAspect: boolean
+    clipId: string
 }
 
 export const PlotContext = React.createContext<PlotContextData<string> | undefined>(undefined);
@@ -261,14 +262,7 @@ export function Plot(props: PlotProps) {
     const xaxis_pos = props.xaxis_pos ?? 'bottom';
     const yaxis_pos = props.yaxis_pos ?? 'left';
 
-    let ctx: PlotContextData<string> = {
-        xaxis: (typeof props.xaxis === "string") ? props.xaxis : xaxis,
-        yaxis: (typeof props.yaxis === "string") ? props.yaxis : yaxis,
-        fixedAspect: props.fixedAspect ?? false,
-
-        xaxis_pos: xaxis_pos,
-        yaxis_pos: yaxis_pos,
-    };
+    
 
     const show_xaxis = props.show_xaxis ?? !!xaxis.show;
     const show_yaxis = props.show_yaxis ?? !!yaxis.show;
@@ -293,6 +287,16 @@ export function Plot(props: PlotProps) {
     const dims = calc_plot_dims(fig, xaxis, yaxis, show_xaxis, show_yaxis, xaxis_pos, yaxis_pos, props.margins);
 
     const clipId = React.useMemo(() => makeId("ax-clip"), []);
+
+    let ctx: PlotContextData<string> = {
+        xaxis: (typeof props.xaxis === "string") ? props.xaxis : xaxis,
+        yaxis: (typeof props.yaxis === "string") ? props.yaxis : yaxis,
+        fixedAspect: props.fixedAspect ?? false,
+
+        xaxis_pos: xaxis_pos,
+        yaxis_pos: yaxis_pos,
+        clipId: clipId,
+    };
 
     return <PlotContext.Provider value={ctx}> <Zoomer>
         <svg className="plot" viewBox={dims.viewBox.join(" ")} width={dims.totalWidth} height={dims.totalHeight}>
@@ -549,6 +553,36 @@ export function PlotImage(props: PlotImageProps) {
 
         ctx.putImageData(imageData, 0, 0);
     }, [data, currentRange]);
+
+    // fix for safari rendering the canvas outside of the SVG context
+    // this ensures that the child contents render with the correct transformation, with correct clip paths
+    if (typeof navigator !== 'undefined' && /Version\/[\d\.]+.*Safari/.test(navigator.userAgent)) { // is safari
+        let xtrans = (typeof plot.xaxis === "string") ? useAtom(fig.transforms.get(plot.xaxis)!) : new Transform1D();
+        let ytrans = (typeof plot.xaxis === "string") ? useAtom(fig.transforms.get(plot.xaxis)!) : new Transform1D();
+
+        React.useEffect(() => {
+            const canvas = canvasRef.current;
+            if (!canvas) return;
+
+            const parent = canvas.parentNode as SVGForeignObjectElement;
+            const t = parent.getCTM()!;
+            const viewbox = parent.ownerSVGElement!.viewBox.animVal;
+
+            // we have to apply the SVG transformation stack manually
+            canvas.style.transform = `matrix(${t.a}, ${t.b}, ${t.c}, ${t.d}, ${t.e}, ${t.f}`;
+            canvas.style.transformOrigin = "0px 0px";
+
+            // as well as the axis clip box
+            // this basically untransforms the clip box by the transform we just applied
+            const [left, right] = [(xaxis.scale.range[0] - t.e - viewbox.x) / t.a, (xaxis.scale.range[1] - t.e - viewbox.x) / t.a];
+            const [top, bottom] = [(yaxis.scale.range[0] - t.f - viewbox.y) / t.d, (yaxis.scale.range[1] - t.f - viewbox.y) / t.d];
+            canvas.style.clipPath = `rect(${top}px ${right}px ${bottom}px ${left}px)`;
+
+            // and we make sure the canvas draws underneath the SVG object
+            canvas.style.position = "relative";
+            canvas.style.zIndex = "-1";
+        }, [xtrans, ytrans]);
+    }
 
     return <g transform={transform.toString()}>
     <foreignObject x={0} y={0} width={width} height={height}>
