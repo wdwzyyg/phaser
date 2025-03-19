@@ -138,13 +138,14 @@ def _obj_write_opts(obj: ObjectState, stack: bool, crop: bool) -> t.Dict[str, t.
         # TODO this isn't quite correct, make a better API in ObjectSapling
         obj_min = obj.sampling.region_min if crop and obj.sampling.region_min is not None else obj.sampling.min
         slices = obj.data.shape[0]
-        zs = numpy.cumsum(obj.thicknesses) - obj.thicknesses[0] if len(obj.thicknesses) > 2 else [0.]
+        zs = list(to_numpy(obj.zs()))
+        assert len(zs) == slices
         d['metadata']['OME']['Plane'] = {
             'PositionX': [obj_min[1]] * slices,
             'PositionXUnit': [unit] * slices,
             'PositionY': [obj_min[0]] * slices,
             'PositionYUnit': [unit] * slices,
-            'PositionZ': list(to_numpy(zs)),
+            'PositionZ': zs,
             'PositionZUnit': [unit] * slices,
         }
 

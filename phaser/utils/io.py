@@ -168,7 +168,7 @@ def hdf5_write_object_state(state: ObjectState, group: h5py.Group):
 
     thick = to_numpy(state.thicknesses)
     group.create_dataset('thicknesses', data=thick)
-    zs = group.create_dataset('zs', data=numpy.cumsum(thick) - thick[0] if len(thick) > 1 else numpy.array([0.], dtype=thick.dtype))
+    zs = group.create_dataset('zs', data=state.zs())
     zs.make_scale("z")
 
     dataset = group.create_dataset('data', data=to_numpy(state.data))

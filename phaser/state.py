@@ -3,7 +3,7 @@ import typing as t
 import numpy
 from numpy.typing import NDArray
 
-from phaser.utils.num import Sampling, to_numpy
+from phaser.utils.num import Sampling, to_numpy, get_array_module
 from phaser.utils.misc import jax_dataclass
 from phaser.utils.object import ObjectSampling
 
@@ -95,6 +95,12 @@ class ObjectState():
         return self.__class__(
             self.sampling, to_numpy(self.data), to_numpy(self.thicknesses)
         )
+
+    def zs(self) -> NDArray[numpy.floating]:
+        xp = get_array_module(self.thicknesses)
+        if len(self.thicknesses) < 2:
+            return xp.array([0.], dtype=self.thicknesses.dtype)
+        return xp.cumsum(self.thicknesses) - self.thicknesses
 
     def copy(self) -> t.Self:
         import copy
