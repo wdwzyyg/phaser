@@ -1,6 +1,6 @@
 ---
 name: "srtio3_exp"
-backend: jax
+backend: cupy
 
 # raw data source
 raw_data:
@@ -29,19 +29,19 @@ preprocessing:
  - type: scale
    scale: 0.0011534
 
+slices:
+  n: 10
+  total_thickness: 200
+
 engines:
  - type: 'conventional'
    probe_modes: 4
-   slices:
-     n: 10
-     total_thickness: 200
-
    niter: 150
    grouping: 128
 
    noise_model:
      type: 'anscombe'
-     eps: 0.5
+     eps: 0.1
 
    solver:
      type: 'lsqml'
@@ -55,11 +55,13 @@ engines:
      - type: layers
        sigma: 50.0
        weight: 0.9
+     - type: obj_low_pass
+       max_freq: 0.4
      - type: limit_probe_support
        max_angle: 26.0
 
    update_probe: {after: 5}
-   update_positions: {after: 50}
+   update_positions: {after: 10}
    position_solver:
      type: momentum
      momentum: 0.90
