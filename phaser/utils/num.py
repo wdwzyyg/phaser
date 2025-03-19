@@ -519,6 +519,10 @@ class Sampling:
         """
         return (1/(2 * self.sampling)).astype(numpy.float64)
 
+    @property
+    def corner(self) -> NDArray[numpy.float64]:
+        return ((-self.extent + self.sampling) / 2.).astype(numpy.float64)
+
     @t.overload
     def __init__(self,
                  shape: t.Tuple[int, int], *,
@@ -576,9 +580,9 @@ class Sampling:
         if dtype is None:
             dtype = numpy.common_type(self.extent, self.sampling)
 
-        hp = self.sampling/2.
-        ys = xp2.linspace(-self.extent[0]/2. + hp[0], self.extent[0]/2. + hp[0], self.shape[0], endpoint=False, dtype=dtype)
-        xs = xp2.linspace(-self.extent[1]/2. + hp[1], self.extent[1]/2. + hp[1], self.shape[1], endpoint=False, dtype=dtype)
+        corner = self.corner
+        ys = xp2.linspace(corner[0], corner[0] + self.extent[0], self.shape[0], endpoint=False, dtype=dtype)
+        xs = xp2.linspace(corner[1], corner[1] + self.extent[1], self.shape[1], endpoint=False, dtype=dtype)
         return tuple(xp2.meshgrid(ys, xs, indexing='ij'))  # type: ignore
 
     @t.overload

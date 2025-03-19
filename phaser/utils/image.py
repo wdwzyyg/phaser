@@ -8,7 +8,7 @@ import typing as t
 import numpy
 from numpy.typing import ArrayLike, NDArray
 
-from .num import get_array_module, get_scipy_module, to_numpy, at, is_jax
+from .num import get_array_module, get_scipy_module, to_numpy, at, is_jax, abs2
 
 
 NumT = t.TypeVar('NumT', bound=numpy.number)
@@ -60,17 +60,47 @@ def colorize_complex(vals: ArrayLike, magnitude_only=False) -> NDArray[numpy.flo
     xp = get_array_module(vals)
 
     vals = xp.asarray(vals, dtype=numpy.complexfloating)
-    mag = t.cast(NDArray[numpy.floating], xp.abs(vals))
+    mag = abs2(vals)
     arg = xp.angle(vals) 
     max_mag = xp.max(mag)
 
     if magnitude_only:
-        return mag**2
+        return mag
 
     h = (arg + numpy.pi) / (2*numpy.pi)
     s = 0.85 * xp.ones_like(mag)
     v = mag / max_mag 
     return hsv_to_rgb(to_numpy(xp.stack((h, s, v), axis=-1)))
+
+
+def scale_to_integral_type(
+    arr: NDArray[numpy.floating],
+    ty: t.Literal['8bit', '16bit', '32bit', '64bit'],
+    mask: t.Optional[NDArray[numpy.bool_]] = None,
+    min_range: t.Optional[float] = None,
+) -> NDArray[numpy.unsignedinteger]:
+    xp = get_array_module(arr)
+
+    dtype = {
+        '8bit': numpy.uint8,
+        '16bit': numpy.uint16,
+        '32bit': numpy.uint32,
+        '64bit': numpy.uint64,
+    }[ty]
+
+    imax = numpy.iinfo(dtype).max
+
+    arr_crop = arr[..., mask] if mask is not None else arr
+    # TODO: cupy doesn't support nanquantile
+    vmax = xp.nanquantile(arr_crop, 0.999)
+    vmin = xp.nanquantile(arr_crop, 0.001)
+
+    if min_range is not None and (delta := min_range - (vmax - vmin)) > 0:
+        # expand max and min to cover min_range
+        vmax += delta/2
+        vmin -= delta/2
+
+    return (xp.clip((imax + 1) / (vmax - vmin) * (arr - vmin), 0, imax)).astype(dtype)
 
 
 _BoundaryMode: t.TypeAlias = t.Literal['constant', 'nearest', 'mirror', 'reflect', 'wrap', 'grid-mirror', 'grid-wrap', 'grid-constant']
@@ -121,6 +151,6 @@ def affine_transform(
 
 
 __all__ = [
-    'remove_linear_ramp', 'colorize_complex',
+    'remove_linear_ramp', 'colorize_complex', 'scale_to_integral_type',
     'affine_transform',
 ]

@@ -5,7 +5,7 @@ import numpy
 from numpy.typing import NDArray
 import h5py
 
-from phaser.utils.num import Sampling, to_numpy
+from phaser.utils.num import Sampling, to_numpy, get_array_module
 from phaser.utils.object import ObjectSampling
 from phaser.state import ReconsState, IterState, ProbeState, ObjectState, ProgressState, PartialReconsState
 
@@ -168,7 +168,7 @@ def hdf5_write_object_state(state: ObjectState, group: h5py.Group):
 
     thick = to_numpy(state.thicknesses)
     group.create_dataset('thicknesses', data=thick)
-    zs = group.create_dataset('zs', data=state.zs())
+    zs = group.create_dataset('zs', data=to_numpy(state.zs()))
     zs.make_scale("z")
 
     dataset = group.create_dataset('data', data=to_numpy(state.data))
@@ -281,8 +281,81 @@ def _hdf5_write_nullable_dataset(group: h5py.Group, name: str, data: t.Optional[
         numpy.array(1, dtype=numpy.floating)
 
 
+def tiff_write_opts(
+    sampling: t.Union[Sampling, ObjectSampling],
+    corner: t.Optional[NDArray[numpy.floating]] = None, *,
+    unit: t.Literal['angstrom'] = 'angstrom',  # other units not yet supported
+    n_slices: int = 1,
+    zs: t.Union[t.Sequence[float], NDArray[numpy.floating], None] = None,
+) -> t.Dict[str, t.Any]:
+    if corner is None:
+        corner = sampling.corner
+
+    z_dict = {}
+    if zs is not None:
+        n_slices = len(zs)
+        z_dict['PositionZ'] = list(map(float, zs))
+        z_dict['PositionZUnit'] = [unit] * n_slices
+
+    return {
+        # 1/angstrom -> 1/cm
+        'resolution': tuple(float(1e8/s) for s in reversed(sampling.sampling)),
+        'resolutionunit': 'CENTIMETER',
+        'metadata': {
+            'OME': {
+                'PhysicalSizeX': float(sampling.sampling[1]),
+                'PhysicalSizeXUnit': unit,
+                'PhysicalSizeY': float(sampling.sampling[0]),
+                'PhysicalSizeYUnit': unit,
+                'Plane': {
+                    'PositionX': [float(corner[1])] * n_slices,
+                    'PositionXUnit': [unit] * n_slices,
+                    'PositionY': [float(corner[0])] * n_slices,
+                    'PositionYUnit': [unit] * n_slices,
+                    **z_dict
+                }
+            }
+        }
+    }
+
+
+def tiff_write_opts_recip(
+    sampling: t.Union[Sampling, ObjectSampling], *,
+    unit: t.Literal['1/angstrom'] = '1/angstrom',  # other units not yet supported
+    n_slices: int = 1,
+    zs: t.Union[t.Sequence[float], NDArray[numpy.floating], None] = None,
+) -> t.Dict[str, t.Any]:
+    z_dict = {}
+    if zs is not None:
+        n_slices = len(zs)
+        z_dict['PositionZ'] = list(map(float, zs))
+        z_dict['PositionZUnit'] = [unit] * n_slices
+
+    d = {
+        'metadata': {
+            'OME': {
+                'PhysicalSizeX': float(1/sampling.extent[1]),
+                'PhysicalSizeXUnit': unit,
+                'PhysicalSizeY': float(1/sampling.extent[0]),
+                'PhysicalSizeYUnit': unit,
+                'Plane': {
+                    # TODO get recip corner here
+                    'PositionX': [0.0] * n_slices,
+                    'PositionXUnit': [unit] * n_slices,
+                    'PositionY': [0.0] * n_slices,
+                    'PositionYUnit': [unit] * n_slices,
+                    **z_dict,
+                }
+            }
+        }
+    }
+
+    return d
+
+
 __all__ = [
     'open_hdf5',
     'hdf5_read_state', 'hdf5_write_state',
+    'tiff_write_opts', 'tiff_write_opts_recip',
     'HdfLike', 'OpenMode',
 ]

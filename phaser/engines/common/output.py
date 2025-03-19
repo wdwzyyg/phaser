@@ -7,39 +7,10 @@ from numpy.typing import NDArray
 import tifffile
 
 from phaser.utils.num import to_numpy, abs2, fft2, get_array_module
-from phaser.utils.image import remove_linear_ramp, colorize_complex
-from phaser.state import ReconsState, ProbeState, ObjectState
+from phaser.utils.image import remove_linear_ramp, colorize_complex, scale_to_integral_type
+from phaser.utils.io import tiff_write_opts, tiff_write_opts_recip
+from phaser.state import ReconsState
 from phaser.plan import SaveOptions
-
-
-def _scale_to_integral_type(
-    arr: NDArray[numpy.floating],
-    ty: t.Literal['8bit', '16bit', '32bit', '64bit'],
-    mask: t.Optional[NDArray[numpy.bool_]] = None,
-    min_range: t.Optional[float] = None,
-) -> NDArray[numpy.unsignedinteger]:
-    xp = get_array_module(arr)
-
-    dtype = {
-        '8bit': numpy.uint8,
-        '16bit': numpy.uint16,
-        '32bit': numpy.uint32,
-        '64bit': numpy.uint64,
-    }[ty]
-
-    imax = numpy.iinfo(dtype).max
-
-    arr_crop = arr[..., mask] if mask is not None else arr
-    # TODO: cupy doesn't support nanquantile
-    vmax = xp.nanquantile(arr_crop, 0.999)
-    vmin = xp.nanquantile(arr_crop, 0.001)
-
-    if min_range is not None and (delta := min_range - (vmax - vmin)) > 0:
-        # expand max and min to cover min_range
-        vmax += delta/2
-        vmin -= delta/2
-
-    return (xp.clip((imax + 1) / (vmax - vmin) * (arr - vmin), 0, imax)).astype(dtype)
 
 
 def output_images(state: ReconsState, out_dir: Path, options: SaveOptions):
@@ -73,88 +44,9 @@ def output_state(state: ReconsState, out_dir: Path, options: SaveOptions):
     state.write_hdf5(out_dir / out_name)
 
 
-def _probe_write_opts(probe: ProbeState) -> t.Dict[str, t.Any]:
-    unit = 'angstrom'
-    nprobes = probe.data.shape[0]
-    return {
-        # 1/angstrom -> 1/centimeter
-        'resolution': (1e8/probe.sampling.sampling[1], 1e8/probe.sampling.sampling[0]),
-        'resolutionunit': "CENTIMETER",
-        'metadata': {
-            'OME': {
-                'PhysicalSizeX': float(probe.sampling.sampling[1]),
-                'PhysicalSizeXUnit': unit,
-                'PhysicalSizeY': float(probe.sampling.sampling[0]),
-                'PhysicalSizeYUnit': unit,
-                'Plane': {
-                    'PositionX': [0.0] * nprobes,
-                    'PositionXUnit': [unit] * nprobes,
-                    'PositionY': [0.0] * nprobes,
-                    'PositionYUnit': [unit] * nprobes,
-                }
-            },
-        }
-    }
-
-
-def _probe_recip_write_opts(probe: ProbeState) -> t.Dict[str, t.Any]:
-    unit = '1/angstrom'
-    nprobes = probe.data.shape[0]
-    return {
-        'metadata': {
-            'OME': {
-                'PhysicalSizeX': float(1/probe.sampling.extent[1]),
-                'PhysicalSizeXUnit': unit,
-                'PhysicalSizeY': float(1/probe.sampling.extent[0]),
-                'PhysicalSizeYUnit': unit,
-                'Plane': {
-                    'PositionX': [0.0] * nprobes,
-                    'PositionXUnit': [unit] * nprobes,
-                    'PositionY': [0.0] * nprobes,
-                    'PositionYUnit': [unit] * nprobes,
-                }
-            },
-        }
-    }
-
-
-def _obj_write_opts(obj: ObjectState, stack: bool, crop: bool) -> t.Dict[str, t.Any]:
-    unit = 'angstrom'
-    d = {
-        # 1/angstrom -> 1/centimeter
-        'resolution': (1e8/obj.sampling.sampling[1], 1e8/obj.sampling.sampling[0]),
-        'resolutionunit': "CENTIMETER",
-        'metadata': {
-            'OME': {
-                'PhysicalSizeX': float(obj.sampling.sampling[1]),
-                'PhysicalSizeXUnit': unit,
-                'PhysicalSizeY': float(obj.sampling.sampling[0]),
-                'PhysicalSizeYUnit': unit,
-            },
-        }
-    }
-
-    if stack:
-        # TODO this isn't quite correct, make a better API in ObjectSapling
-        obj_min = obj.sampling.region_min if crop and obj.sampling.region_min is not None else obj.sampling.min
-        slices = obj.data.shape[0]
-        zs = list(to_numpy(obj.zs()))
-        assert len(zs) == slices
-        d['metadata']['OME']['Plane'] = {
-            'PositionX': [obj_min[1]] * slices,
-            'PositionXUnit': [unit] * slices,
-            'PositionY': [obj_min[0]] * slices,
-            'PositionYUnit': [unit] * slices,
-            'PositionZ': zs,
-            'PositionZUnit': [unit] * slices,
-        }
-
-    return d
-
-
 def _save_probe(state: ReconsState, out_path: Path, options: SaveOptions):
-    write_opts = _probe_write_opts(state.probe)
     probe = to_numpy(state.probe.data)
+    write_opts = tiff_write_opts(state.probe.sampling, n_slices=probe.shape[0])
 
     if options.img_dtype == 'float':
         # save complex image
@@ -163,7 +55,7 @@ def _save_probe(state: ReconsState, out_path: Path, options: SaveOptions):
             w.write(probe, **write_opts)
         return
 
-    img = _scale_to_integral_type(
+    img = scale_to_integral_type(
         colorize_complex(probe), options.img_dtype
     )
     with tifffile.TiffWriter(out_path, ome=True) as w:
@@ -172,11 +64,11 @@ def _save_probe(state: ReconsState, out_path: Path, options: SaveOptions):
 
 
 def _save_probe_mag(state: ReconsState, out_path: Path, options: SaveOptions):
-    write_opts = _probe_write_opts(state.probe)
     probe_mag = abs2(state.probe.data)
+    write_opts = tiff_write_opts(state.probe.sampling, n_slices=probe_mag.shape[0])
 
     if options.img_dtype != 'float':
-        probe_mag = _scale_to_integral_type(to_numpy(probe_mag), options.img_dtype, min_range=0.2)
+        probe_mag = scale_to_integral_type(to_numpy(probe_mag), options.img_dtype, min_range=0.2)
 
     with tifffile.TiffWriter(out_path, ome=True) as w:
         write_opts['metadata']['axes'] = 'CYX'
@@ -184,9 +76,9 @@ def _save_probe_mag(state: ReconsState, out_path: Path, options: SaveOptions):
 
 
 def _save_probe_recip(state: ReconsState, out_path: Path, options: SaveOptions):
-    write_opts = _probe_recip_write_opts(state.probe)
     xp = get_array_module(state.probe.data)
     probe = to_numpy(xp.fft.fftshift(fft2(state.probe.data), axes=(-1, -2)))
+    write_opts = tiff_write_opts_recip(state.probe.sampling, n_slices=probe.shape[0])
 
     if options.img_dtype == 'float':
         # save complex image
@@ -195,7 +87,7 @@ def _save_probe_recip(state: ReconsState, out_path: Path, options: SaveOptions):
             w.write(probe, **write_opts)
         return
 
-    img = _scale_to_integral_type(
+    img = scale_to_integral_type(
         colorize_complex(probe), options.img_dtype
     )
     with tifffile.TiffWriter(out_path, ome=True) as w:
@@ -204,12 +96,12 @@ def _save_probe_recip(state: ReconsState, out_path: Path, options: SaveOptions):
 
 
 def _save_probe_recip_mag(state: ReconsState, out_path: Path, options: SaveOptions):
-    write_opts = _probe_recip_write_opts(state.probe)
     xp = get_array_module(state.probe.data)
     probe_mag = to_numpy(abs2(xp.fft.fftshift(fft2(state.probe.data), axes=(-1, -2))))
+    write_opts = tiff_write_opts_recip(state.probe.sampling, n_slices=probe_mag.shape[0])
 
     if options.img_dtype != 'float':
-        probe_mag = _scale_to_integral_type(probe_mag, options.img_dtype, min_range=0.2)
+        probe_mag = scale_to_integral_type(probe_mag, options.img_dtype, min_range=0.2)
 
     with tifffile.TiffWriter(out_path, ome=True) as w:
         write_opts['metadata']['axes'] = 'CYX'
@@ -218,10 +110,16 @@ def _save_probe_recip_mag(state: ReconsState, out_path: Path, options: SaveOptio
 
 def _save_object_phase(state: ReconsState, out_path: Path, options: SaveOptions, stack: bool = False):
     crop = options.crop_roi
-    write_opts = _obj_write_opts(state.object, stack=stack, crop=crop)
 
     xp = get_array_module(state.object.data)
     obj_phase = xp.angle(state.object.data)
+
+    obj_sampling = state.object.sampling
+    write_opts = tiff_write_opts(
+        obj_sampling,
+        corner=obj_sampling.region_min if crop else None,
+        zs=state.object.zs() if stack else None,
+    )
 
     if crop:
         obj_phase = obj_phase[..., *state.object.sampling.get_region_crop()]
@@ -240,7 +138,7 @@ def _save_object_phase(state: ReconsState, out_path: Path, options: SaveOptions,
     mask = to_numpy(mask)
 
     if options.img_dtype != 'float':
-        obj_phase = _scale_to_integral_type(obj_phase, options.img_dtype, mask)
+        obj_phase = scale_to_integral_type(obj_phase, options.img_dtype, mask)
 
     with tifffile.TiffWriter(out_path, ome=True) as w:
         write_opts['metadata']['axes'] = 'ZYX' if stack else 'YX'
@@ -249,7 +147,13 @@ def _save_object_phase(state: ReconsState, out_path: Path, options: SaveOptions,
 
 def _save_object_mag(state: ReconsState, out_path: Path, options: SaveOptions, stack: bool = False):
     crop = options.crop_roi
-    write_opts = _obj_write_opts(state.object, stack=stack, crop=crop)
+
+    obj_sampling = state.object.sampling
+    write_opts = tiff_write_opts(
+        obj_sampling,
+        corner=obj_sampling.region_min if crop else None,
+        zs=state.object.zs() if stack else None,
+    )
 
     xp = get_array_module(state.object.data)
     obj_mag = abs2(state.object.data)
@@ -265,7 +169,7 @@ def _save_object_mag(state: ReconsState, out_path: Path, options: SaveOptions, s
 
     obj_mag = to_numpy(obj_mag)
     if options.img_dtype != 'float':
-        obj_mag = _scale_to_integral_type(obj_mag, options.img_dtype, mask, min_range=0.2)
+        obj_mag = scale_to_integral_type(obj_mag, options.img_dtype, mask, min_range=0.2)
 
     with tifffile.TiffWriter(out_path, ome=True) as w:
         write_opts['metadata']['axes'] = 'ZYX' if stack else 'YX'
