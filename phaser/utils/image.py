@@ -131,6 +131,8 @@ def affine_transform(
             output_shape, order, mode, cval
         ))
 
+    if offset is None:
+        offset = 0.
     if output_shape is None:
         output_shape = input.shape
     n_axes = len(output_shape)  # num axes to transform over
