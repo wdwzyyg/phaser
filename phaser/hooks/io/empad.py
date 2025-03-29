@@ -20,7 +20,7 @@ def load_empad(args: None, props: LoadEmpadProps) -> RawData:
     sampling = Sampling((128, 128), extent=(a, a))
 
     # TODO handle metadata here
-    patterns = numpy.fft.ifftshift(load_4d(path), axes=(-1, -2))
+    patterns = numpy.fft.ifftshift(load_4d(path, memmap=True), axes=(-1, -2))
 
     mask = numpy.zeros_like(patterns, shape=patterns.shape[-2:])
     mask[2:-2, 2:-2] = 1.
@@ -32,6 +32,7 @@ def load_empad(args: None, props: LoadEmpadProps) -> RawData:
         'wavelength': wavelength,
         'scan': None,
         'probe_options': None,
+        'seed': None,
     }
 
 

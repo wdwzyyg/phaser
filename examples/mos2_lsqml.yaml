@@ -9,6 +9,12 @@ raw_data:
   diff_step: 1.0  # mrad/px
   kv: 120.        # keV
 
+post_load:
+ - type: crop_data
+   crop: [~, 30, ~, 30]
+ - type: poisson
+   scale: 1.0e+6
+
 # initialization
 
 init_probe:
@@ -20,12 +26,8 @@ init_object: 'random'
 
 init_scan:
   type: 'raster'
-  shape: [64, 64] # ny, nx
+  shape: [30, 30] # ny, nx
   step_size: 0.6  # angstrom
-
-preprocessing:
- - type: poisson
-   scale: 1.0e+6
 
 # for each reconstruction engine
 engines:

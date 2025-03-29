@@ -10,38 +10,54 @@ from phaser.utils.misc import create_rng, create_sparse_groupings
 from phaser.utils.optics import fourier_shift_filter
 from phaser.utils.image import affine_transform
 from phaser.state import Patterns, ReconsState
-from . import PreprocessingArgs, PoissonProps, ScaleProps, DropNanProps, ROICropProps
+from . import RawData, PostInitArgs, PoissonProps, ScaleProps, DropNanProps, CropDataProps
 
 logger = logging.getLogger(__name__)
 
 
-def scale_patterns(args: PreprocessingArgs, props: ScaleProps) -> t.Tuple[Patterns, ReconsState]:
-    args['data'].patterns *= props.scale
-    return (args['data'], args['state'])
+def crop_data(raw_data: RawData, props: CropDataProps) -> RawData:
+    if raw_data['patterns'].ndim != 4:
+        raise ValueError(f"'crop_data' expects a 4D array of patterns, got shape {raw_data['patterns'].shape} instead")
+
+    (y_i, y_f, x_i, x_f) = props.crop
+    logging.info(f"Cropping raw data to {0 if y_i is None else y_i}:{raw_data['patterns'].shape[0] if y_f is None else y_f},"
+                 f" {0 if x_i is None else x_i}:{raw_data['patterns'].shape[1] if x_f is None else x_f}")
+    raw_data['patterns'] = raw_data['patterns'][slice(y_i, y_f), slice(x_i, x_f)]
+
+    if (scan := raw_data['scan']) is not None:
+        raw_data['scan'] = scan[slice(y_i, y_f), slice(x_i, x_f)]
+
+    return raw_data
 
 
-def add_poisson_noise(args: PreprocessingArgs, props: PoissonProps) -> t.Tuple[Patterns, ReconsState]:
-    xp = get_array_module(args['data'].patterns)
-    dtype = args['dtype']
+def scale_patterns(raw_data: RawData, props: ScaleProps) -> RawData:
+    raw_data['patterns'] *= props.scale
+    return raw_data
+
+
+def add_poisson_noise(raw_data: RawData, props: PoissonProps) -> RawData:
+    xp = get_array_module(raw_data['patterns'])
+    dtype = raw_data['patterns'].dtype
 
     if props.scale is not None:
         logger.info(f"Adding poisson noise to raw patterns, after scaling by {props.scale:.2e}")
-        args['data'].patterns *= props.scale
+        raw_data['patterns'] *= props.scale
     else:
         logger.info(f"Adding poisson noise to raw patterns")
 
-    rng = create_rng(args['seed'], 'poisson_noise')
+    rng = create_rng(raw_data['seed'], 'poisson_noise')
 
-    patterns = rng.poisson(to_numpy(args['data'].patterns)).astype(dtype)
+    # TODO do this in batches?
+    patterns = rng.poisson(to_numpy(raw_data['patterns'])).astype(dtype)
 
     if props.gaussian is not None:
         patterns += rng.normal(scale=props.gaussian, size=patterns.shape)
 
-    args['data'].patterns = xp.array(patterns)
-    return (args['data'], args['state'])
+    raw_data['patterns'] = xp.array(patterns)
+    return raw_data
 
 
-def drop_nan_patterns(args: PreprocessingArgs, props: DropNanProps) -> t.Tuple[Patterns, ReconsState]:
+def drop_nan_patterns(args: PostInitArgs, props: DropNanProps) -> t.Tuple[Patterns, ReconsState]:
     xp = get_array_module(args['data'].patterns)
 
     # flatten scan and patterns
@@ -64,7 +80,7 @@ def drop_nan_patterns(args: PreprocessingArgs, props: DropNanProps) -> t.Tuple[P
     return (args['data'], args['state'])
 
 
-def diffraction_align(args: PreprocessingArgs, props: t.Any = None) -> t.Tuple[Patterns, ReconsState]:
+def diffraction_align(args: PostInitArgs, props: t.Any = None) -> t.Tuple[Patterns, ReconsState]:
     patterns, state = args['data'], args['state']
 
     xp = cast_array_module(args['xp'])

@@ -110,11 +110,22 @@ def initialize_reconstruction(plan: ReconsPlan, xp: t.Any, observer: Observer) -
     if wavelength is None:
         raise ValueError("`wavelength` must be specified by raw_data or manually")
 
+    raw_data['wavelength'] = wavelength
+    raw_data['seed'] = seed
+
     # normalize pattern intensity
     #raw_data['patterns'] /= numpy.mean(numpy.sum(raw_data['patterns'], axis=(-1, -2)))
     # ensure raw data is of the correct type
     if raw_data['patterns'].dtype != dtype:
         raw_data['patterns'] = raw_data['patterns'].astype(dtype)
+
+    # process post_load hooks:
+    for p in plan.post_load:
+        raw_data = p(raw_data)
+
+    # materialize memmap
+    if isinstance(raw_data['patterns'], numpy.memmap):
+        raw_data['patterns'] = raw_data['patterns'].copy()
 
     data = Patterns(raw_data['patterns'], raw_data['mask'])
 
@@ -127,20 +138,14 @@ def initialize_reconstruction(plan: ReconsPlan, xp: t.Any, observer: Observer) -
 
     logging.info("Initializing scan...")
 
-    data_crop = None
     if plan.init_scan is None:
         if raw_data['scan'] is None:
             raise ValueError("`init_scan` must be specified by raw_data or manually")
         scan = xp.array(raw_data['scan']).astype(dtype)
     else:
-        scan, data_crop = plan.init_scan({'dtype': dtype, 'seed': seed, 'xp': xp})
+        scan = plan.init_scan({'dtype': dtype, 'seed': seed, 'xp': xp})
 
-    if data_crop != None:
-        yi, yf, xi, xf = data_crop
-        data.patterns = data.patterns[yi:yf, xi:xf,:, :]
-        # data.pattern_mask = data.pattern_mask[yi:yf, xi:xf,:,:]
-        # print(data.pattern_mask.shape)
-
+    # TODO: magic numbers
     obj_sampling = ObjectSampling.from_scan(scan, sampling.sampling, sampling.extent / 2. + 20. * sampling.sampling)
 
     logging.info("Initializing object...")
@@ -161,7 +166,8 @@ def initialize_reconstruction(plan: ReconsPlan, xp: t.Any, observer: Observer) -
         wavelength=wavelength
     )
 
-    for p in plan.preprocessing:
+    # process post_init hooks
+    for p in plan.post_init:
         (data, state) = p({
             'data': data, 'state': state,
             'dtype': dtype, 'seed': seed, 'xp': xp

@@ -9,6 +9,10 @@ raw_data:
   diff_step: 0.8  # mrad/px
   kv: 300.        # keV
 
+post_load:
+ - type: poisson
+   scale: 1.0e+7
+
 # initialization
 
 init_probe:
@@ -22,10 +26,6 @@ init_scan:
   type: 'raster'
   shape: [80, 80] # ny, nx
   step_size: 0.3  # angstrom
-
-preprocessing:
- - type: poisson
-   scale: 1.0e+7
 
 slices:
   n: 20

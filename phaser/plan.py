@@ -3,7 +3,7 @@ from __future__ import annotations
 import typing as t
 
 from .types import Dataclass, Slices, BackendName, Flag, ReconsVars
-from .hooks import RawDataHook, ProbeHook, ObjectHook, ScanHook, EngineHook, FlagHook, PreprocessingHook
+from .hooks import RawDataHook, ProbeHook, ObjectHook, ScanHook, EngineHook, FlagHook, PostInitHook, PostLoadHook
 from .hooks.solver import NoiseModelHook, ConventionalSolverHook, PositionSolverHook, GradientSolverHook
 from .hooks.solver import IterConstraintHook, GroupConstraintHook, CostRegularizerHook
 
@@ -145,11 +145,13 @@ class ReconsPlan(Dataclass, kw_only=True):
 
     raw_data: RawDataHook
 
+    post_load: t.Sequence[PostLoadHook] = ()
+
     init_probe: ProbeHook
     init_object: ObjectHook
     init_scan: ScanHook
 
-    preprocessing: t.Sequence[PreprocessingHook] = ()
+    post_init: t.Sequence[PostInitHook] = ()
 
     slices: t.Optional[Slices] = None
 

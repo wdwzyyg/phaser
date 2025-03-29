@@ -24,6 +24,7 @@ class RawData(t.TypedDict):
     wavelength: t.Optional[float]
     scan: t.Optional[NDArray[numpy.floating]]
     probe_options: t.Any
+    seed: t.Optional[object]
 
 
 class LoadEmpadProps(Dataclass):
@@ -85,7 +86,6 @@ class ScanHookArgs(t.TypedDict):
 
 class RasterScanProps(Dataclass):
     shape: t.Tuple[int, int]  # ny, nx (total shape)
-    crop: t.Optional[tuple] = None
     step_size: float          # A
     rotation: float = 0.0     # degrees CCW
 
@@ -96,7 +96,7 @@ class ScanHook(Hook[ScanHookArgs, NDArray[numpy.floating]]):
     }
 
 
-class PreprocessingArgs(t.TypedDict):
+class PostInitArgs(t.TypedDict):
     data: 'Patterns'
     state: 'ReconsState'
     seed: t.Optional[object]
@@ -108,8 +108,11 @@ class ScaleProps(Dataclass):
     scale: float
 
 
-class ROICropProps(Dataclass):
-    region: t.Tuple[int, int, int, int] #nxi, nxf, nyi, nyf 
+class CropDataProps(Dataclass):
+    crop: t.Tuple[
+        # y_i, y_f, x_i, x_f
+        t.Optional[int], t.Optional[int], t.Optional[int], t.Optional[int],
+    ] 
 
 
 class PoissonProps(Dataclass):
@@ -125,13 +128,18 @@ class DiffractionAlignProps(Dataclass):
     ...
 
 
-class PreprocessingHook(Hook[PreprocessingArgs, t.Tuple['Patterns', 'ReconsState']]):
+class PostLoadHook(Hook[RawData, RawData]):
     known = {
+        'crop_data': ('phaser.hooks.preprocessing:crop_data', CropDataProps),
         'poisson': ('phaser.hooks.preprocessing:add_poisson_noise', PoissonProps),
         'scale': ('phaser.hooks.preprocessing:scale_patterns', ScaleProps),
+    }
+
+
+class PostInitHook(Hook[PostInitArgs, t.Tuple['Patterns', 'ReconsState']]):
+    known = {
         'drop_nans': ('phaser.hooks.preprocessing:drop_nan_patterns', DropNanProps),
         'diffraction_align': ('phaser.hooks.preprocessing:diffraction_align', DiffractionAlignProps),
-        # 'roi_crop': ('phaser.hooks.preprocessing:roi_crop', ROICropProps),
     }
 
 
