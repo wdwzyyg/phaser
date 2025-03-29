@@ -7,13 +7,13 @@ from matplotlib import pyplot
 from matplotlib.colors import Colormap, Normalize, LinearSegmentedColormap
 from matplotlib.transforms import Affine2DBase, Affine2D
 
-from .num import get_array_module, abs2, to_numpy
-from .image import remove_linear_ramp
+from .num import get_array_module, abs2, to_numpy, Sampling
+from .image import remove_linear_ramp, colorize_complex
 from .object import ObjectSampling
 
 
 if t.TYPE_CHECKING:
-    from ..state import ObjectState
+    from ..state import ObjectState, ProbeState
     from matplotlib.axes import Axes
     from matplotlib.figure import Figure
     from matplotlib.image import AxesImage
@@ -399,6 +399,53 @@ def _plot_object_data(
         ax.set_ylim(max[0], min[0])
 
     return img
+
+
+@t.overload
+def plot_probes(
+    data: 'ProbeState', sampling: None = None, *,
+    fig: t.Optional['Figure'] = None,
+):
+    ...
+
+@t.overload
+def plot_probes(
+    data: NDArray[numpy.complexfloating], sampling: Sampling, *,
+    fig: t.Optional['Figure'] = None,
+):
+    ...
+
+def plot_probes(
+    data: t.Union[NDArray[numpy.complexfloating], 'ProbeState'], sampling: t.Optional[Sampling] = None, *,
+    fig: t.Optional['Figure'] = None,
+):
+    if hasattr(data, 'sampling'):
+        sampling = t.cast(Sampling, getattr(data, 'sampling'))
+        data = t.cast(NDArray[numpy.complexfloating], getattr(data, 'data'))
+    elif sampling is None:
+       raise ValueError("'sampling' must be specified, or a 'ProbeState' passed") 
+    else:
+        data = t.cast(NDArray[numpy.complexfloating], data)
+
+    if fig is None:
+        fig = pyplot.figure()
+
+    n_probes = data.shape[0]
+
+    axs = fig.subplots(ncols=n_probes, sharex=True, sharey=True, squeeze=False,
+                       gridspec_kw={'wspace': 0.0})
+
+    if n_probes == 0:
+        return
+
+    axs[0, 0].set_xlabel(r"X [$\mathrm{\AA}$]")
+    axs[0, 0].set_ylabel(r"Y [$\mathrm{\AA}$]")
+
+    imgs = colorize_complex(data)
+    extent = sampling.mpl_real_extent()
+
+    for (ax, img) in zip(axs.flat, imgs):
+        ax.imshow(img, extent=extent)
 
 
 def plot_metrics(metrics: t.Dict[str, float]) -> 'Figure':

@@ -79,6 +79,7 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
 
         propagators = make_propagators(sim.state)
 
+        start_i = sim.state.iter.total_iter
         observer.init_solver(sim.state, engine_i)
 
         # runs rescaling
@@ -122,7 +123,7 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
                 error = float(to_numpy(xp.nanmean(xp.concatenate(group_errors))))
 
                 # TODO don't do this
-                sim.state.progress.iters = numpy.concatenate([sim.state.progress.iters, [i]])
+                sim.state.progress.iters = numpy.concatenate([sim.state.progress.iters, [i + start_i]])
                 sim.state.progress.detector_errors = numpy.concatenate([sim.state.progress.detector_errors, [error]])
 
             observer.update_iteration(sim.state, i, props.niter, error)

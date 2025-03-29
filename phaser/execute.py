@@ -195,17 +195,19 @@ def prepare_for_engine(patterns: Patterns, state: ReconsState, xp: t.Any, engine
 
         logging.info(f"Resampling probe and patterns to shape {new_sampling.shape}...")
         state.probe.data = state.probe.sampling.resample(state.probe.data, new_sampling)
-        # resample patterns as well
-        patterns.patterns = state.probe.sampling.resample(patterns.patterns, new_sampling)
-        patterns.pattern_mask = state.probe.sampling.resample(patterns.pattern_mask, new_sampling, order=0)
+        # also resample patterns
+        patterns.patterns = state.probe.sampling.resample_recip(patterns.patterns, new_sampling)
+        # and pattern mask
+        patterns.pattern_mask = state.probe.sampling.resample_recip(patterns.pattern_mask, new_sampling)
 
         state.probe.sampling = new_sampling
 
     if not numpy.allclose(state.probe.sampling.sampling, state.object.sampling.sampling):
         # resample object -> probe
-        logging.info(f"Resampling object to pixel size {list(state.probe.sampling.sampling)}...")
+        logging.info(f"Resampling object to pixel size {list(map(float, state.probe.sampling.sampling))}...")
         new_sampling = state.object.sampling.with_sampling(state.probe.sampling.sampling)
         state.object.data = state.object.sampling.resample(state.object.data, new_sampling)
+        state.object.sampling = new_sampling
 
     if isinstance(engine, GradientEnginePlan) and not xp_is_jax(xp):
         raise ValueError("The gradient descent engine requires the jax backend.")

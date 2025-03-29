@@ -10,8 +10,8 @@ raw_data:
   kv: 120.        # keV
 
 post_load:
- - type: crop_data
-   crop: [~, 30, ~, 30]
+ #- type: crop_data
+ #  crop: [~, 30, ~, 30]
  - type: poisson
    scale: 1.0e+6
 
@@ -36,7 +36,7 @@ engines:
    # how to output/save
  - type: 'conventional'
    probe_modes: 4
-   niter: 200
+   niter: 100
    grouping: 64
 
    noise_model:
@@ -63,7 +63,7 @@ engines:
       amplitude: 1.1
    iter_constraints: []
 
-   update_probe: {after: 1}
+   update_probe: {after: 5}
    update_positions: {after: 30}
 
    save: {every: 10}
@@ -73,4 +73,43 @@ engines:
       'probe', 'probe_recip', 'object_phase_sum', 'object_mag_sum'
      ]
 
-   #update_every_group: True
+ - type: 'conventional'
+   probe_modes: 4
+   niter: 100
+   grouping: 64
+
+   sim_shape: [256, 256]
+
+   noise_model:
+     type: 'anscombe'
+     eps: 0.1
+
+   solver:
+     type: 'lsqml'
+     beta_probe: 0.5
+     beta_object: 0.5
+     gamma: 1.0e-4
+
+     illum_reg_object: 1.0e-2
+     illum_reg_probe: 1.0e-2
+
+   position_solver:
+     type: momentum
+     momentum: 0.90
+     step_size: 8.0e-2
+     max_step_size: 0.2
+
+   group_constraints:
+    - type: clamp_object_amplitude
+      amplitude: 1.1
+   iter_constraints: []
+
+   update_probe: {after: 1}
+   update_positions: {after: 30}
+
+   save: {every: 10}
+   save_images: {every: 10}
+   save_options:
+     images: [
+      'probe', 'probe_recip', 'object_phase_sum', 'object_mag_sum'
+     ]

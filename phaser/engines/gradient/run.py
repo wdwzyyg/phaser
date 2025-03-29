@@ -202,6 +202,7 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
 
         propagators = make_propagators(state)
 
+        start_i = state.iter.total_iter
         observer.init_solver(state, engine_i)
 
         # runs rescaling
@@ -272,7 +273,7 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
             loss = float(numpy.mean(losses))
             observer.update_iteration(state, i, props.niter, loss)
 
-            state.progress.iters = numpy.concatenate([state.progress.iters, [i]])
+            state.progress.iters = numpy.concatenate([state.progress.iters, [i + start_i]])
             state.progress.detector_errors = numpy.concatenate([state.progress.detector_errors, [loss]])
 
             if save({'state': state, 'niter': props.niter}):

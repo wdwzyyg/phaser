@@ -699,6 +699,27 @@ class Sampling:
 
         return affine_transform(arr, matrix, offset, output_shape=tuple(new_samp.shape), order=order, mode=mode, cval=cval)
 
+    def resample_recip(
+        self, arr: NDArray[NumT], new_samp: 'Sampling', *,
+        rotation: float = 0.0,
+        order: int = 1,
+        mode: '_BoundaryMode' = 'grid-constant',
+        cval: t.Union[NumT, float] = 0.0,
+        fftshift: bool = True,
+    ) -> NDArray[NumT]:
+        xp = get_array_module(arr)
+        # reciprocal space sampling
+        old_samp = Sampling(self.shape, extent=tuple(self.k_max)) # type: ignore
+        new_samp = Sampling(new_samp.shape, extent=tuple(new_samp.k_max))  # type: ignore
+
+        if fftshift:
+            arr = xp.fft.fftshift(arr, axes=(-1, -2))
+
+        # and resample like it's in realspace
+        result = old_samp.resample(arr, new_samp, rotation=rotation, order=order, mode=mode, cval=cval)
+
+        return xp.fft.ifftshift(result, axes=(-1, -2)) if fftshift else result
+
 #_IndexingMode: t.TypeAlias = t.Literal['promise_in_bounds', 'clip', 'drop', 'fill']
 
 
