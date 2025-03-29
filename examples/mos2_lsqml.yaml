@@ -1,6 +1,6 @@
 ---
 name: "mos2_lsqml"
-backend: cupy
+backend: jax
 
 # raw data source
 raw_data:
@@ -26,7 +26,7 @@ init_object: 'random'
 
 init_scan:
   type: 'raster'
-  shape: [30, 30] # ny, nx
+  shape: [64, 64] # ny, nx
   step_size: 0.6  # angstrom
 
 # for each reconstruction engine
@@ -36,8 +36,8 @@ engines:
    # how to output/save
  - type: 'conventional'
    probe_modes: 4
-   niter: 100
-   grouping: 64
+   niter: 80
+   grouping: 256
 
    noise_model:
      type: 'anscombe'
@@ -75,7 +75,7 @@ engines:
 
  - type: 'conventional'
    probe_modes: 4
-   niter: 100
+   niter: 80
    grouping: 64
 
    sim_shape: [256, 256]

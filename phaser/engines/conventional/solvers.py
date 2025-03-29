@@ -100,7 +100,7 @@ class LSQMLSolver(ConventionalSolver):
 
             if update_positions:
                 assert group_pos_update is not None
-                pos_update[*group] = group_pos_update
+                pos_update = at(pos_update, tuple(group)).set(group_pos_update)
 
             observer.update_group(sim.state, self.engine_plan.send_every_group)
 
@@ -315,6 +315,7 @@ class EPIESolver(ConventionalSolver):
     ) -> t.Tuple[SimulationState, NDArray[numpy.floating], t.List[NDArray[numpy.floating]]]:
         xp = sim.xp
 
+        # TODO: ePIE position update
         pos_update = xp.zeros_like(sim.state.scan)
         iter_errors = []
 

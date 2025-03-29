@@ -35,10 +35,11 @@ engines:
  - type: 'gradient'
    probe_modes: 4
    niter: 100
-   grouping: 256
+   grouping: 64
 
    noise_model:
-     type: 'amplitude'
+     type: 'anscombe'
+     eps: 0.1
 
    solvers:
      object:
@@ -57,7 +58,9 @@ engines:
      #  cost: 5.0e+0
 
    iter_constraints: []
-   group_constraints: []
+   group_constraints:
+    - type: clamp_object_amplitude
+      amplitude: 1.1
 
    update_probe: {after: 5}
    #update_positions: {after: 30}

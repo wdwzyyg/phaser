@@ -81,15 +81,15 @@ def affine_transform(
     indices = jnp.indices(output_shape, dtype=float)
 
     matrix = jnp.array(matrix)
-    if matrix.shape == (input.ndim + 1, input.ndim + 1):
+    if matrix.shape == (n_axes + 1, n_axes + 1):
         # homogenous transform matrix
         coords = jnp.tensordot(
             matrix, jnp.stack((*indices, jnp.ones_like(indices[0])), axis=0), axes=1
         )[:-1]
-    elif matrix.shape == (input.ndim,):
+    elif matrix.shape == (n_axes,):
         coords = (indices.T * matrix + jnp.array(offset)).T
     else:
-        raise ValueError(f"Expected matrix of shape ({input.ndim + 1}, {input.ndim + 1}) or ({input.ndim},), instead got shape {matrix.shape}")
+        raise ValueError(f"Expected matrix of shape ({n_axes + 1}, {n_axes + 1}) or ({n_axes},), instead got shape {matrix.shape}")
 
     coords += jnp.finfo(coords.dtype).eps
 

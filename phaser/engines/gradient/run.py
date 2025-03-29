@@ -288,7 +288,7 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
 
 @partial(
     jit,
-    static_argnames=('vars', 'xp', 'dtype', 'noise_model', 'group_solvers', 'regularizers'),
+    static_argnames=('vars', 'xp', 'dtype', 'noise_model', 'group_solvers', 'group_constraints', 'regularizers'),
     donate_argnames=('state', 'iter_grads', 'solver_states'),
 )
 def run_group(

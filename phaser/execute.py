@@ -145,6 +145,9 @@ def initialize_reconstruction(plan: ReconsPlan, xp: t.Any, observer: Observer) -
     else:
         scan = plan.init_scan({'dtype': dtype, 'seed': seed, 'xp': xp})
 
+    if scan.shape[:-1] != data.patterns.shape[:-2]:
+        raise ValueError(f"Scan shape {scan.shape[:-1]} doesn't match patterns shape {data.patterns.shape[:-2]}!")
+
     # TODO: magic numbers
     obj_sampling = ObjectSampling.from_scan(scan, sampling.sampling, sampling.extent / 2. + 20. * sampling.sampling)
 
