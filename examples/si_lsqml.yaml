@@ -11,7 +11,7 @@ raw_data:
 
 post_load:
  - type: poisson
-   scale: 1.0e+6
+   scale: 1.0e+7
 
 # initialization
 
@@ -39,7 +39,7 @@ engines:
      total_thickness: 200
 
    niter: 500
-   grouping: 128
+   grouping: 64
 
    noise_model:
      type: 'anscombe'
@@ -60,6 +60,7 @@ engines:
      - type: layers
        sigma: 100.0
        weight: 0.4
+     - remove_phase_ramp
 
    update_probe: {after: 5}
 

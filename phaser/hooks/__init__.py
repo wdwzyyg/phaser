@@ -88,6 +88,7 @@ class RasterScanProps(Dataclass):
     shape: t.Tuple[int, int]  # ny, nx (total shape)
     step_size: float          # A
     rotation: float = 0.0     # degrees CCW
+    affine: t.Optional[t.Tuple[t.Tuple[float, float], t.Tuple[float, float]]] = None
 
 
 class ScanHook(Hook[ScanHookArgs, NDArray[numpy.floating]]):

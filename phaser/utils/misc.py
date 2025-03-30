@@ -219,9 +219,14 @@ def _register_dataclass(cls: type, static_fields: t.Sequence[str], drop_fields: 
     register_pytree_with_keys(cls, flatten_with_keys, unflatten, flatten)
 
 
+def unwrap(val: t.Optional[T]) -> T:
+    assert val is not None
+    return val
+
+
 __all__ = [
     'create_rng', 'create_rng_group',
     'create_sparse_groupings', 'create_compact_groupings',
     'mask_fraction_of_groups', 'FloatKey',
-    'jax_dataclass',
+    'jax_dataclass', 'unwrap',
 ]

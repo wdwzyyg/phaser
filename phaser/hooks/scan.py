@@ -8,7 +8,14 @@ from . import ScanHookArgs, RasterScanProps
 
 
 def raster_scan(args: ScanHookArgs, props: RasterScanProps) -> NDArray[numpy.floating]:
-   return make_raster_scan(
+    xp = cast_array_module(args['xp'])
+    scan = make_raster_scan(
         props.shape, props.step_size, props.rotation,
-        dtype=args['dtype'], xp=cast_array_module(args['xp']),
+        dtype=args['dtype'], xp=xp,
     )
+
+    if props.affine is not None:
+        affine = xp.array(props.affine, dtype=scan.dtype)[::-1, ::-1]
+        scan = scan @ affine
+
+    return scan

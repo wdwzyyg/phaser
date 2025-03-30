@@ -26,40 +26,43 @@ init_scan:
   type: 'raster'
   shape: [128, 128] # ny, nx
   step_size: 0.52955  # angstrom
+  affine: [[1.00187444, -0.03341090329], [0.0, 1.06022897]]
 
 post_init:
  - drop_nans
  - diffraction_align
 
 slices:
-  n: 20
+  n: 10
   total_thickness: 200
 
 engines:
  - type: 'conventional'
+   sim_shape: [256, 256]
    probe_modes: 4
    niter: 200
-   grouping: 256
+   grouping: 128
 
    noise_model:
-     type: 'anscombe'
-     eps: 0.8
+     type: 'amplitude'
+     eps: 0.5
 
    solver:
      type: 'lsqml'
-     beta_probe: 0.1
+     beta_probe: 0.2
      beta_object: 0.9
-     gamma: 1.0e-2
+     gamma: 1.0e-4
 
-     illum_reg_object: 50.0
+     illum_reg_object: 70.0
 
-   group_constraints:
+   group_constraints: []
+   iter_constraints:
      - type: limit_probe_support
        max_angle: 26.0
-   iter_constraints:
+     - remove_phase_ramp
      - type: layers
        sigma: 100.0
-       weight: 0.4
+       weight: 0.9
 
    update_probe: {after: 5}
    update_positions: {after: 10}

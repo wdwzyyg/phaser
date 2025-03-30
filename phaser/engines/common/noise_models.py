@@ -39,7 +39,7 @@ class AmplitudeNoiseModel(NoiseModel[None]):
 
         return ((
             2. * xp.sum(mask * (
-                xp.sqrt(patterns + self.offset) - xp.sqrt(model_intensity + self.offset)
+                xp.sqrt(patterns + self.offset) - xp.sqrt(model_intensity + self.offset) - self.eps
             )**2) / self.var).astype(exp_patterns.dtype),
             state
         )

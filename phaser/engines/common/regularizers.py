@@ -64,6 +64,25 @@ class LimitProbeSupport:
         return (sim, mask)
 
 
+class RemovePhaseRamp:
+    def __init__(self, args: None, props: t.Any):
+        ...
+
+    def init_state(self, sim: ReconsState) -> NDArray[numpy.bool_]:
+        xp = get_array_module(sim.object.data)
+        return sim.object.sampling.get_region_mask(xp=xp)
+
+    def apply_group(self, group: NDArray[numpy.integer], sim: ReconsState, state: NDArray[numpy.bool_]) -> t.Tuple[ReconsState, NDArray[numpy.bool_]]:
+        return self.apply_iter(sim, state)
+
+    def apply_iter(self, sim: ReconsState, state: NDArray[numpy.bool_]) -> t.Tuple[ReconsState, NDArray[numpy.bool_]]:
+        from phaser.utils.image import remove_linear_ramp
+        xp = get_array_module(sim.object.data)
+        phase = remove_linear_ramp(xp.angle(sim.object.data), state)
+        sim.object.data = t.cast(NDArray[numpy.complexfloating], xp.abs(sim.object.data) * xp.exp(1.j * phase))
+        return (sim, state)
+
+
 class RegularizeLayers:
     def __init__(self, args: None, props: RegularizeLayersProps):
         self.weight = props.weight
@@ -177,6 +196,7 @@ class ObjTotalVariation:
     ) -> t.Tuple[float, None]:
         xp = get_array_module(sim.object.data)
 
+        # anisotropic total variation. TODO: isotropic?
         cost = xp.add(*(
             xp.sum(xp.abs(xp.diff(sim.object.data, axis=ax)))
             for ax in (-1, -2)

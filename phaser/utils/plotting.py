@@ -301,7 +301,7 @@ def plot_object_phase(
 
     xp = get_array_module(data)
     mask = sampling.get_region_mask()
-    phase = xp.sum(xp.angle(data), axis=0)
+    phase = xp.mean(xp.angle(data), axis=0)
 
     if unwrap:
         phase = xp.unwrap(xp.unwrap(phase, axis=1), axis=0)

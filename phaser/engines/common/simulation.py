@@ -107,7 +107,7 @@ def make_propagators(state: ReconsState) -> t.Optional[NDArray[numpy.complexfloa
 
     unique_zs = set(map(FloatKey, delta_zs))
 
-    bwlim = numpy.min(state.probe.sampling.k_max) * 0.9 #* 2./3.
+    bwlim = numpy.min(state.probe.sampling.k_max) * 2./3.
 
     k2 = ky**2 + kx**2
     bwlim_mask = k2 <= bwlim**2

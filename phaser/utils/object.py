@@ -339,8 +339,18 @@ class ObjectSampling:
     def get_region_mask(self, xp: t.Any = None) -> NDArray[numpy.bool_]:
         xp2 = numpy if xp is None else cast_array_module(xp)
         mask = xp2.zeros(self.shape, dtype=numpy.bool_)
-        mask[*self.get_region_crop()] = 1
+        mask = at(mask, self.get_region_crop()).set(numpy.bool(1))  # type: ignore
         return mask
+
+    def get_region_center(self) -> NDArray[numpy.floating]:
+        region_max = self.region_max if self.region_max is not None else self.max
+        region_min = self.region_min if self.region_min is not None else self.min
+        return (region_max + region_min) / 2.0
+
+    def get_region_extent(self) -> NDArray[numpy.floating]:
+        region_max = self.region_max if self.region_max is not None else self.max
+        region_min = self.region_min if self.region_min is not None else self.min
+        return region_max - region_min
 
     @t.overload
     def grid(  # pyright: ignore[reportOverlappingOverload]

@@ -35,11 +35,11 @@ engines:
  - type: 'gradient'
    probe_modes: 4
    niter: 100
-   grouping: 64
+   grouping: 128
 
    noise_model:
      type: 'anscombe'
-     eps: 0.1
+     eps: 0.01
 
    solvers:
      object:
@@ -48,16 +48,17 @@ engines:
        nesterov: True
      probe:
        type: 'adam'
-       learning_rate: 5.0e-1
+       learning_rate: 1.0e-2
        nesterov: True
 
-   regularizers: []
+   regularizers:
      #- type: obj_recip_l1
      #  cost: 1.0e+2
-     #- type: obj_tv
-     #  cost: 5.0e+0
+     - type: obj_tv
+       cost: 1.0e+0
 
-   iter_constraints: []
+   iter_constraints:
+    - remove_phase_ramp
    group_constraints:
     - type: clamp_object_amplitude
       amplitude: 1.1

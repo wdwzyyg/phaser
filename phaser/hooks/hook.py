@@ -67,6 +67,8 @@ def _to_dict(val: t.Any) -> dict:
     import dataclasses
     import pane
 
+    if isinstance(val, dict):
+        return val
     if dataclasses.is_dataclass(val):
         return dataclasses.asdict(val)  # type: ignore
     if isinstance(val, pane.PaneBase):
