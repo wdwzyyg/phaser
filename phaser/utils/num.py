@@ -194,7 +194,7 @@ def is_jax(arr: t.Any) -> bool:
     except ImportError:
         return False
     return any(
-        isinstance(arr, jax.Array) for arr in jax.tree.leaves(arr)
+        isinstance(arr, jax.Array) for arr in jax.tree_util.tree_leaves(arr)
     )
 
 
@@ -728,36 +728,36 @@ class _AtImpl(t.Generic[DTypeT]):
         self.arr: NDArray[DTypeT] = arr
         self.idx: IndexLike = idx
 
-    def set(self, values: NDArray[DTypeT]) -> NDArray[DTypeT]:
+    def set(self, values: t.Union[NDArray[DTypeT], DTypeT]) -> NDArray[DTypeT]:
         self.arr[self.idx] = values
         return self.arr
 
-    def add(self, values: NDArray[DTypeT]) -> NDArray[DTypeT]:
+    def add(self, values: t.Union[NDArray[DTypeT], DTypeT]) -> NDArray[DTypeT]:
         self.arr[self.idx] += values  # type: ignore
         return self.arr
 
-    def subtract(self, values: NDArray[DTypeT]) -> NDArray[DTypeT]:
+    def subtract(self, values: t.Union[NDArray[DTypeT], DTypeT]) -> NDArray[DTypeT]:
         self.arr[self.idx] -= values  # type: ignore
         return self.arr
 
-    def multiply(self, values: NDArray[DTypeT]) -> NDArray[DTypeT]:
+    def multiply(self, values: t.Union[NDArray[DTypeT], DTypeT]) -> NDArray[DTypeT]:
         self.arr[self.idx] *= values  # type: ignore
         return self.arr
 
-    def divide(self, values: NDArray[DTypeT]) -> NDArray[DTypeT]:
+    def divide(self, values: t.Union[NDArray[DTypeT], DTypeT]) -> NDArray[DTypeT]:
         self.arr[self.idx] /= values  # type: ignore
         return self.arr
 
-    def power(self, values: NDArray[DTypeT]) -> NDArray[DTypeT]:
+    def power(self, values: t.Union[NDArray[DTypeT], DTypeT]) -> NDArray[DTypeT]:
         self.arr[self.idx] **= values  # type: ignore
         return self.arr
 
-    def min(self, values: NDArray[DTypeT]) -> NDArray[DTypeT]:
+    def min(self, values: t.Union[NDArray[DTypeT], DTypeT]) -> NDArray[DTypeT]:
         xp = get_array_module(self.arr, values)
         self.arr[self.idx] = xp.minimum(self.arr[self.idx], values)
         return self.arr
 
-    def max(self, values: NDArray[DTypeT]) -> NDArray[DTypeT]:
+    def max(self, values: t.Union[NDArray[DTypeT], DTypeT]) -> NDArray[DTypeT]:
         xp = get_array_module(self.arr, values)
         self.arr[self.idx] = xp.maximum(self.arr[self.idx], values)
         return self.arr

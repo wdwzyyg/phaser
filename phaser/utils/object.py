@@ -339,7 +339,7 @@ class ObjectSampling:
     def get_region_mask(self, xp: t.Any = None) -> NDArray[numpy.bool_]:
         xp2 = numpy if xp is None else cast_array_module(xp)
         mask = xp2.zeros(self.shape, dtype=numpy.bool_)
-        mask = at(mask, self.get_region_crop()).set(numpy.bool(1))  # type: ignore
+        mask = at(mask, self.get_region_crop()).set(numpy.bool_(1))  # type: ignore
         return mask
 
     def get_region_center(self) -> NDArray[numpy.floating]:

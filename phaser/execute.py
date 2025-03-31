@@ -190,6 +190,8 @@ def initialize_reconstruction(plan: ReconsPlan, xp: t.Any, observer: Observer) -
 
 
 def prepare_for_engine(patterns: Patterns, state: ReconsState, xp: t.Any, engine: EnginePlan) -> t.Tuple[Patterns, ReconsState]:
+    state = state.to_xp(xp)
+
     if engine.sim_shape is not None and engine.sim_shape != state.probe.data.shape[-2:]:
         if engine.resize_method == 'pad_crop':
             new_sampling = Sampling(engine.sim_shape, extent=tuple(state.probe.sampling.extent))

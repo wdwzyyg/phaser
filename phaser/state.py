@@ -69,6 +69,11 @@ class ProbeState():
         )
         return self.__class__(new_samp, new_data)
 
+    def to_xp(self, xp: t.Any) -> t.Self:
+        return self.__class__(
+            self.sampling, xp.array(self.data)
+        )
+
     def to_numpy(self) -> t.Self:
         return self.__class__(
             self.sampling, to_numpy(self.data)
@@ -90,6 +95,11 @@ class ObjectState():
     Slice thicknesses (in length units).
     Length < 2 for single slice, equal to the number of slices otherwise.
     """
+
+    def to_xp(self, xp: t.Any) -> t.Self:
+        return self.__class__(
+            self.sampling, xp.array(self.data), xp.array(self.thicknesses)
+        )
 
     def to_numpy(self) -> t.Self:
         return self.__class__(
@@ -153,6 +163,16 @@ class ReconsState:
     scan: NDArray[numpy.floating]
     """Scan coordinates (y, x), in length units. Shape (..., 2)"""
     progress: ProgressState
+
+    def to_xp(self, xp: t.Any) -> t.Self:
+        return self.__class__(
+            iter=self.iter,
+            probe=self.probe.to_xp(xp),
+            object=self.object.to_xp(xp),
+            scan=xp.array(self.scan),
+            progress=self.progress,
+            wavelength=self.wavelength,
+        )
 
     def to_numpy(self) -> t.Self:
         return self.__class__(

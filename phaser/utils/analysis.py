@@ -6,7 +6,7 @@ from numpy.typing import ArrayLike, NDArray
 import tifffile
 from matplotlib import pyplot
 
-from phaser.utils.num import fft2, ifft2, get_array_module
+from phaser.utils.num import fft2, ifft2, get_array_module, at
 from phaser.utils.object import ObjectSampling
 from phaser.utils.image import remove_linear_ramp, affine_transform
 from phaser.state import ObjectState
@@ -50,7 +50,7 @@ def _cross_correlate(x: NDArray[numpy.floating], y: NDArray[numpy.floating], max
 
     cross_corr = ifft2(fft2(x) * xp.conj(fft2(y))).real
     # limit shift to corner size
-    cross_corr[ky**2 + kx**2 > max_shift**2] = numpy.nan
+    cross_corr = at(cross_corr, ky**2 + kx**2 > max_shift**2).set(numpy.nan)  # type: ignore
 
     max_i = xp.nanargmax(cross_corr)
     y = ky.ravel()[max_i]
@@ -62,10 +62,10 @@ def align_object_to_ground_truth(
     object: ObjectState,
     ground_truth: NDArray[numpy.floating],
     ground_truth_sampling: ArrayLike,
-    rotation_angle: float = 0.0
+    rotation_angle: float = 0.0,
 ) -> NDArray[numpy.floating]:
     """
-    ground_truth: Ground truth phase (in radians/angstrom)
+    ground_truth: Ground truth phase (in radians, or radians/angstrom for multislice data)
     """
     xp = get_array_module(object.data, ground_truth)
     theta = rotation_angle * numpy.pi/180.
@@ -84,14 +84,17 @@ def align_object_to_ground_truth(
     if max_shift < 0:
         raise ValueError("Error: Ground truth extent smaller than object extent")
 
-    print(f"max_shift: {max_shift:.3f} px ({max_shift * ground_truth_samp.sampling[0]:.3f} angstrom)")
+    #print(f"max_shift: {max_shift:.3f} px ({max_shift * ground_truth_samp.sampling[0]:.3f} angstrom)")
 
-    # convert to radians/angstrom
-    object_phase = remove_linear_ramp(
-        xp.angle(object.data) / object.thicknesses[:, None, None],
-        object_roi
-    )
-    # and average
+    object_phase = xp.angle(object.data)
+    # normalize multislice objects to radians/angstrom
+    if len(object.thicknesses):
+        object_phase /= object.thicknesses[:, None, None]
+
+    # remove linear ramp
+    object_phase = remove_linear_ramp(object_phase, object_roi)
+    object_phase -= xp.nanquantile(object_phase[..., object_roi], 0.01, axis=-1)
+    # and get average
     object_mean = xp.mean(object_phase, axis=0)
 
     # upscale object to ground truth
