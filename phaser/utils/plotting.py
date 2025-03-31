@@ -265,6 +265,7 @@ def plot_object_phase(
     cmap: t.Optional[ColormapLike] = None, norm: t.Optional[NormLike] = None,
     vmin: t.Optional[float] = None, vmax: t.Optional[float] = None,
     zoom_roi: bool = True,
+    unwrap: bool = True, remove_ramp: bool = True,
     **imshow_kwargs: t.Any,
 ) -> 'AxesImage':
     ...
@@ -276,6 +277,7 @@ def plot_object_phase(
     cmap: t.Optional[ColormapLike] = None, norm: t.Optional[NormLike] = None,
     vmin: t.Optional[float] = None, vmax: t.Optional[float] = None,
     zoom_roi: bool = True,
+    unwrap: bool = True, remove_ramp: bool = True,
     **imshow_kwargs: t.Any,
 ) -> 'AxesImage':
     ...
@@ -287,8 +289,7 @@ def plot_object_phase(
     cmap: t.Optional[ColormapLike] = None, norm: t.Optional[NormLike] = None,
     vmin: t.Optional[float] = None, vmax: t.Optional[float] = None,
     zoom_roi: bool = True,
-    unwrap: bool = True,
-    remove_ramp: bool = True,
+    unwrap: bool = True, remove_ramp: bool = True,
     **imshow_kwargs: t.Any,
 ) -> 'AxesImage':
     if hasattr(data, 'sampling'):
