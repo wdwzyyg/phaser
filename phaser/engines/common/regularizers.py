@@ -7,7 +7,7 @@ from numpy.typing import NDArray
 
 from phaser.utils.num import (
     get_array_module, get_scipy_module,
-    jit, fft2, ifft2, xp_is_jax, to_real_dtype
+    jit, fft2, ifft2, abs2, xp_is_jax, to_real_dtype
 )
 from phaser.state import ReconsState
 from phaser.hooks.solver import (
@@ -187,6 +187,7 @@ class ObjRecipL1:
 class ObjTotalVariation:
     def __init__(self, args: None, props: CostRegularizerProps):
         self.cost = props.cost
+        self.eps: float = 1.0e-8  # TODO make parameter
 
     def init_state(self, sim: ReconsState) -> None:
         return None
@@ -196,12 +197,46 @@ class ObjTotalVariation:
     ) -> t.Tuple[float, None]:
         xp = get_array_module(sim.object.data)
 
-        # anisotropic total variation. TODO: isotropic?
-        cost = xp.add(*(
-            xp.sum(xp.abs(xp.diff(sim.object.data, axis=ax)))
-            for ax in (-1, -2)
-        ))
+        # isotropic total variation
+        g_y, g_x = img_grad(sim.object.data)
+        cost = xp.sum(xp.sqrt(abs2(g_y) + abs2(g_x) + self.eps))
+        # anisotropic total variation
+        #cost = (
+        #    xp.sum(xp.abs(xp.diff(sim.object.data, axis=-1))) +
+        #    xp.sum(xp.abs(xp.diff(sim.object.data, axis=-2)))
+        #)
         # scale cost by fraction of the total reconstruction in the group
+        # TODO also scale by # of pixels or similar?
         cost_scale = (group.shape[-1] / numpy.prod(sim.scan.shape[:-1])).astype(cost.dtype)
 
         return (cost * cost_scale * self.cost, state)
+
+
+class ObjTikhonov:
+    def __init__(self, args: None, props: CostRegularizerProps):
+        self.cost = props.cost
+
+    def init_state(self, sim: ReconsState) -> None:
+        return None
+
+    def calc_loss_group(
+        self, group: NDArray[numpy.integer], sim: ReconsState, state: None
+    ) -> t.Tuple[float, None]:
+        xp = get_array_module(sim.object.data)
+
+        cost = (
+            xp.sum(abs2(xp.diff(sim.object.data, axis=-1))) +
+            xp.sum(abs2(xp.diff(sim.object.data, axis=-2)))
+        )
+        # scale cost by fraction of the total reconstruction in the group
+        cost_scale = (group.shape[-1] / numpy.prod(sim.scan.shape[:-1])).astype(cost.dtype)
+
+        return (t.cast(float, cost * cost_scale * self.cost), state)
+
+
+def img_grad(img: numpy.ndarray) -> t.Tuple[numpy.ndarray, numpy.ndarray]:
+    xp = get_array_module(img)
+    return (
+        xp.diff(img, axis=-2, append=img[..., -1:, :]),
+        xp.diff(img, axis=-1, append=img[..., :, -1:]),
+    )

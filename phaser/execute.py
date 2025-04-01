@@ -226,7 +226,7 @@ def prepare_for_engine(patterns: Patterns, state: ReconsState, xp: t.Any, engine
         elif current_probe_modes == 1:
             from phaser.utils.optics import make_hermetian_modes
 
-            state.probe.data = make_hermetian_modes(state.probe.data[0], engine.probe_modes, powers=0.1)
+            state.probe.data = make_hermetian_modes(state.probe.data[0], engine.probe_modes, powers=0.2)
         else:
             raise NotImplementedError()
 

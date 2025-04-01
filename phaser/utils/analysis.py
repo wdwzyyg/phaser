@@ -50,7 +50,7 @@ def align_object_to_ground_truth(
     # remove linear ramp
     object_roi = object_sampling.get_region_mask(xp=xp)
     object_phase = remove_linear_ramp(object_phase, object_roi)
-    object_phase -= xp.nanquantile(object_phase[..., object_roi], 0.01, axis=-1)
+    object_phase -= xp.nanquantile(object_phase[..., object_roi], 0.01, axis=-1)[:, None, None]
     # and get average
     object_mean = xp.mean(object_phase, axis=0)
 
