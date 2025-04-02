@@ -1,50 +1,51 @@
 ---
-name: "si_grad"
+name: "srtio3_exp"
 backend: jax
 
 # raw data source
 raw_data:
   type: empad
-  path: "~/Downloads/si-final4/Si_110_Sn_300kV_conv25_defocus10_tds/Si_110_Sn_300kV_conv25_defocus10_tds_199.70_dstep0.8_x80_y80_4DSTEM.raw"
-  diff_step: 0.8  # mrad/px
+  path: "~/Downloads/20241123/20241123-sto-bicrystal/acq3-pristine/scan_x128_y128.raw"
+  diff_step: 0.55  # mrad/px
   kv: 300.        # keV
 
 post_load:
- - type: poisson
-   scale: 14.46e+6
+  - type: scale
+    scale: 0.0011534
 
 # initialization
 
 init_probe:
   type: 'focused'
   conv_angle: 25  # mrad
-  defocus: 100   # angstrom
+  defocus: 150   # angstrom
 
 init_object: 'random'
 
 init_scan:
   type: 'raster'
-  shape: [80, 80] # ny, nx
-  step_size: 0.3  # angstrom
+  shape: [128, 128] # ny, nx
+  step_size: 0.52955  # angstrom
+  affine: [[1.00187444, -0.03341090329], [0.0, 1.06022897]]
+
+post_init:
+ - drop_nans
+ - diffraction_align
 
 slices:
-  n: 15
+  n: 10
   total_thickness: 200
 
-# for each reconstruction engine
 engines:
-   # how to transition from previous state to current reconstruction state
-   # how to reconstruct
-   # how to output/save
  - type: 'gradient'
+   sim_shape: [192, 192]
    probe_modes: 4
-
-   niter: 500
-   grouping: 128
+   niter: 200
+   grouping: 100
 
    noise_model:
-     type: poisson
-     eps: 1.0e-3
+     type: 'poisson'
+     eps: 1.0e-2
 
    solvers:
      object:
@@ -53,11 +54,11 @@ engines:
        momentum: 0.99
      probe:
        type: 'sgd'
-       learning_rate: 1.0e-3
+       learning_rate: 4.0e-4
        momentum: 0.9
      scan:
        type: 'sgd'
-       learning_rate: 3.0e-1
+       learning_rate: 1.0e-1
        momentum: 0.99
 
    regularizers:
@@ -71,16 +72,16 @@ engines:
    group_constraints: []
    iter_constraints:
      - type: clamp_object_amplitude
-       amplitude: 1.2
+       amplitude: 1.5
      - type: layers
-       sigma: 50.0
-       weight: 0.9
+       sigma: 100.0
+       weight: 0.6
 
    update_probe: {after: 5}
    update_positions: {after: 10}
 
    save: {every: 10}
-   save_images: {every: 2}
+   save_images: {every: 5}
    save_options:
      images: [
       'probe', 'probe_recip', 'object_phase_sum', 'object_mag_sum',

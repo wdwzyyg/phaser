@@ -81,7 +81,20 @@ def create_rng_group(n: int, seed: object = None, entropy: object = None) -> t.T
     return tuple(map(Generator, map(PCG64, t.cast(SeedSequence, seq).spawn(n))))
 
 
-def create_sparse_groupings(shape: t.Union[int, t.Iterable[int], NDArray[numpy.floating]], grouping: int = 8, seed: t.Any = None) -> list[NDArray[numpy.int64]]:
+def shuffled(vals: t.Sequence[T], seed: t.Any = None, i: int = 0) -> t.Iterator[T]:
+    """
+    Return an iterator which gives `vals` in a random order.
+    """
+    idxs = numpy.arange(len(vals))
+    rng = create_rng(seed, f"shuffle_{i}")
+    rng.shuffle(idxs)
+
+    for idx in idxs:
+        yield vals[int(idx)]
+
+
+def create_sparse_groupings(shape: t.Union[int, t.Iterable[int], NDArray[numpy.floating]], grouping: int = 8,
+                            seed: t.Any = None, i: int = 0) -> list[NDArray[numpy.int64]]:
     """
     Randomly partition the indices of `shape` into groups of maximum size `grouping`.
 
@@ -97,12 +110,13 @@ def create_sparse_groupings(shape: t.Union[int, t.Iterable[int], NDArray[numpy.f
     idxs = numpy.indices(shape)  # type: ignore
     idxs = idxs.reshape(idxs.shape[0], -1).T
 
-    rng = create_rng(seed, 'groupings')
+    rng = create_rng(seed, f'groupings_{i}')
     rng.shuffle(idxs)
     return numpy.array_split(idxs.T, numpy.ceil(idxs.shape[0] / grouping).astype(numpy.int64), axis=-1)
 
 
-def create_compact_groupings(positions: NDArray[numpy.floating], grouping: int = 8, seed: t.Any = None) -> list[NDArray[numpy.int64]]:
+def create_compact_groupings(positions: NDArray[numpy.floating], grouping: int = 8,
+                             seed: t.Any = None, i: int = 0) -> list[NDArray[numpy.int64]]:
     """
     Partition the indices of `positions` into groups of maximum size `grouping`, such that each group is spatially compact.
 
@@ -113,7 +127,7 @@ def create_compact_groupings(positions: NDArray[numpy.floating], grouping: int =
     """
     from k_means_constrained import KMeansConstrained
 
-    rng = create_rng(seed, 'groupings')
+    rng = create_rng(seed, f'groupings_{i}')
     random_state = numpy.random.RandomState(rng.bit_generator)
 
     idxs = numpy.indices(positions.shape[:-1])

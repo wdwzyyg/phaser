@@ -40,6 +40,7 @@ class EnginePlan(Dataclass, kw_only=True):
     niter: int = 10
     grouping: t.Optional[int] = None
     compact: bool = False
+    shuffle_groups: t.Optional[FlagLike] = None
 
     update_probe: FlagLike = True
     update_object: FlagLike = True
@@ -111,6 +112,7 @@ class GradientEnginePlan(EnginePlan):
     regularizers: t.List[CostRegularizerHook]
     group_constraints: t.List[GroupConstraintHook]
     iter_constraints: t.List[IterConstraintHook]
+
 
 
 class SGDSolverPlan(Dataclass, kw_only=True):

@@ -7,7 +7,7 @@ import numpy
 from numpy.typing import NDArray
 
 from phaser.hooks.solver import NoiseModel
-from phaser.utils.misc import create_sparse_groupings, jax_dataclass
+from phaser.utils.misc import create_sparse_groupings, create_compact_groupings, shuffled, jax_dataclass
 from phaser.utils.num import (
     get_array_module, cast_array_module, jit,
     fft2, ifft2, abs2, check_finite, at
@@ -166,6 +166,7 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
     logger.info(f"Starting engine #{args['engine_i'] + 1}...")
 
     state = args['state']
+    seed = args['seed']
     patterns = args['data'].patterns
     pattern_mask = args['data'].pattern_mask
 
@@ -182,9 +183,10 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
         'object': process_flag(props.update_object),
         'scan': process_flag(props.update_positions),
     }
-
     save = process_flag(props.save)
     save_images = process_flag(props.save_images)
+    # shuffle_groups defaults to True for sparse groups, False for compact groups
+    shuffle_groups = process_flag(props.shuffle_groups or not props.compact)
 
     grouping = props.grouping or 64
 
@@ -198,7 +200,10 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
         group=grouping, niter=props.niter,
         noise_model=noise_model.name(),
     ) as out_dir:
-        groups = create_sparse_groupings(state.scan, grouping)
+        if props.compact:
+            groups = create_compact_groupings(state.scan, grouping, seed)
+        else:
+            groups = create_sparse_groupings(state.scan, grouping, seed)
 
         propagators = make_propagators(state)
 
@@ -227,16 +232,25 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
 
         #with jax.profiler.trace("/tmp/jax-trace", create_perfetto_link=True):
         for i in range(1, props.niter+1):
+            if shuffle_groups({'state': state, 'niter': props.niter}):
+                if props.compact:
+                    groups = create_compact_groupings(state.scan, grouping, seed, i=i)
+                else:
+                    groups = create_sparse_groupings(state.scan, grouping, seed, i=i)
+                group_iter = iter(groups)
+            else:
+                # shuffle order of groups (though not the groups themselves)
+                group_iter = shuffled(groups, seed=seed, i=i)
+
             losses = []
 
             iter_vars = all_vars & t.cast(t.Set[ReconsVar],
                 set(k for (k, flag) in flags.items() if flag({'state': state, 'niter': props.niter}))
             )
-
             # gradients for per-iteration solvers
             iter_grads = tree_zeros_like(extract_vars(state, iter_vars & _PER_ITER_VARS)[0])
 
-            for (group_i, group) in enumerate(groups):
+            for (group_i, group) in enumerate(group_iter):
                 (state, loss, iter_grads, solver_states) = run_group(
                     state, group=group, vars=iter_vars,
                     noise_model=noise_model,

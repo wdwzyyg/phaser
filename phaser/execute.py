@@ -88,6 +88,7 @@ def execute_plan(plan: ReconsPlan, observer: t.Optional[Observer] = None):
             'recons_name': plan.name,
             'engine_i': engine_i,
             'observer': observer,
+            'seed': None,
         })
 
     logging.info("Reconstruction finished!")

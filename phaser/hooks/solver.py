@@ -194,7 +194,7 @@ class ConventionalSolver(abc.ABC):
         self,
         sim: 'SimulationState',
         propagators: t.Optional[NDArray[numpy.complexfloating]],
-        groups: t.Sequence[NDArray[numpy.int_]], *,
+        groups: t.Iterator[NDArray[numpy.int_]], *,
         update_object: bool,
         update_probe: bool,
         update_positions: bool,

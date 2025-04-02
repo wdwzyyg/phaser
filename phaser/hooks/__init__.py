@@ -152,6 +152,7 @@ class EngineArgs(t.TypedDict):
     recons_name: str
     engine_i: int
     observer: 'Observer'
+    seed: t.Any
 
 
 class EngineHook(Hook[EngineArgs, 'ReconsState']):

@@ -3,14 +3,12 @@ from pathlib import Path
 import typing as t
 
 import numpy
-from numpy.typing import NDArray
 
-from phaser.utils.misc import create_compact_groupings, create_sparse_groupings, mask_fraction_of_groups
+from phaser.utils.misc import create_compact_groupings, create_sparse_groupings, mask_fraction_of_groups, shuffled
 from phaser.utils.num import cast_array_module, to_numpy, to_complex_dtype
 from phaser.utils.io import OutputDir
 from phaser.execute import Observer
 from phaser.hooks import EngineArgs
-from phaser.hooks.solver import GroupConstraint, IterConstraint
 from phaser.plan import ConventionalEnginePlan
 from phaser.state import ReconsState
 from phaser.types import process_flag, flag_any_true
@@ -26,6 +24,7 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
     observer: Observer = args.get('observer', [])
     recons_name = args['recons_name']
     engine_i = args['engine_i']
+    seed = args['seed']
 
     logger.info(f"Starting engine #{args['engine_i'] + 1}...")
 
@@ -39,6 +38,8 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
     calc_error = process_flag(props.calc_error)
     save = process_flag(props.save)
     save_images = process_flag(props.save_images)
+    # shuffle_groups defaults to True for sparse groups, False for compact groups
+    shuffle_groups = process_flag(props.shuffle_groups or not props.compact)
 
     grouping = props.grouping or 64
 
@@ -66,11 +67,10 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
         solver=solver.name(),
         noise_model=noise_model.name(),
     ) as out_dir:
-
         if props.compact:
-            groups = create_compact_groupings(sim.state.scan, grouping)
+            groups = create_compact_groupings(sim.state.scan, grouping, seed=seed)
         else:
-            groups = create_sparse_groupings(sim.state.scan, grouping)
+            groups = create_sparse_groupings(sim.state.scan, grouping, seed=seed)
 
         calc_error_mask = mask_fraction_of_groups(len(groups), props.calc_error_fraction)
 
@@ -88,10 +88,20 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
         observer.start_solver()
 
         for i in range(1, props.niter+1):
+            if shuffle_groups({'state': sim.state, 'niter': props.niter}):
+                if props.compact:
+                    groups = create_compact_groupings(sim.state.scan, grouping, seed, i=i)
+                else:
+                    groups = create_sparse_groupings(sim.state.scan, grouping, seed, i=i)
+                group_iter = iter(groups)
+            else:
+                # shuffle order of groups (though not the groups themselves)
+                group_iter = shuffled(groups, seed=seed, i=i)
+
             iter_update_positions = update_positions({'state': sim.state, 'niter': props.niter})
 
             sim, pos_update, group_errors = solver.run_iteration(
-                sim, propagators, groups,
+                sim, propagators, group_iter,
                 update_object=update_object({'state': sim.state, 'niter': props.niter}),
                 update_probe=update_probe({'state': sim.state, 'niter': props.niter}),
                 update_positions=iter_update_positions,
