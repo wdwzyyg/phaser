@@ -66,7 +66,7 @@ class AnscombeNoisePlan(AmplitudeNoisePlan, kw_only=True):
 
 
 class PoissonNoisePlan(AmplitudeNoisePlan, kw_only=True):
-    offset: float = 1.0
+    eps: float = 1.0
 
 
 NoiseModelHook.known['amplitude'] = ('phaser.engines.common.noise_models:AmplitudeNoiseModel', AmplitudeNoisePlan)
@@ -113,8 +113,10 @@ class GradientEnginePlan(EnginePlan):
     iter_constraints: t.List[IterConstraintHook]
 
 
-class FixedSolverPlan(Dataclass, kw_only=True):
+class SGDSolverPlan(Dataclass, kw_only=True):
     learning_rate: float
+    momentum: t.Optional[float] = None
+    nesterov: bool = True
 
 
 class AdamSolverPlan(Dataclass, kw_only=True):
@@ -128,8 +130,16 @@ class AdamSolverPlan(Dataclass, kw_only=True):
     nesterov: bool = False
 
 
+class PolyakSGDSolverPlan(Dataclass, kw_only=True):
+    max_learning_rate: float
+    f_min: float
+    scaling: float = 1.0
+    eps: float = 0.0
+
+
+GradientSolverHook.known['sgd'] = ('phaser.engines.gradient.solvers:SGDSolver', SGDSolverPlan)
 GradientSolverHook.known['adam'] = ('phaser.engines.gradient.solvers:AdamSolver', AdamSolverPlan)
-GradientSolverHook.known['fixed'] = ('phaser.engines.gradient.solvers:FixedSolver', FixedSolverPlan)
+GradientSolverHook.known['polyak_sgd'] = ('phaser.engines.gradient.solvers:PolyakSGDSolver', PolyakSGDSolverPlan)
 
 EngineHook.known['conventional'] = ('phaser.engines.conventional.run:run_engine', ConventionalEnginePlan)
 EngineHook.known['gradient'] = ('phaser.engines.gradient.run:run_engine', GradientEnginePlan)

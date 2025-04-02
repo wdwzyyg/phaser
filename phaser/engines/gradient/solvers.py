@@ -7,7 +7,7 @@ from numpy.typing import NDArray, ArrayLike
 from phaser.utils.num import as_array, abs2
 from phaser.hooks.solver import GradientSolver, GradientSolverArgs
 from phaser.types import ReconsVar
-from phaser.plan import GradientEnginePlan, AdamSolverPlan, FixedSolverPlan
+from phaser.plan import GradientEnginePlan, AdamSolverPlan, PolyakSGDSolverPlan, SGDSolverPlan
 from phaser.state import ReconsState
 from .run import extract_vars, apply_update
 
@@ -32,12 +32,21 @@ class OptaxSolver(GradientSolver[t.Any]):
         return (t.cast(t.Dict[ReconsVar, t.Any], updates), state)
 
 
-class FixedSolver(OptaxSolver):
-    def __init__(self, args: GradientSolverArgs, props: FixedSolverPlan):
-        super().__init__(
-            optax.scale_by_learning_rate(props.learning_rate, flip_sign=False),
-            args['params'], "fixed"
-        )
+class SGDSolver(OptaxSolver):
+    def __init__(self, args: GradientSolverArgs, props: SGDSolverPlan):
+        if props.momentum is not None:
+            super().__init__(
+                optax.chain(
+                    optax.trace(props.momentum, props.nesterov),
+                    optax.scale_by_learning_rate(props.learning_rate, flip_sign=False),
+                ),
+                args['params'], "sgd"
+            )
+        else:
+            super().__init__(
+                optax.scale_by_learning_rate(props.learning_rate, flip_sign=False),
+                args['params'], "sgd"
+            )
 
 
 class AdamSolver(OptaxSolver):
@@ -48,4 +57,18 @@ class AdamSolver(OptaxSolver):
                 optax.scale_by_learning_rate(props.learning_rate, flip_sign=False),
             ),
             args['params'], "adam"
+        )
+
+
+class PolyakSGDSolver(OptaxSolver):
+    def __init__(self, args: GradientSolverArgs, props: PolyakSGDSolverPlan):
+        super().__init__(
+            optax.chain(
+                optax.scale_by_learning_rate(props.scaling, flip_sign=False),
+                optax.scale_by_polyak(
+                    max_learning_rate=props.max_learning_rate, f_min=props.f_min,
+                    eps=props.eps, #variant='sps',
+                )
+            ),
+            args['params'], "polyak_sgd"
         )

@@ -45,13 +45,15 @@ engines:
 
    solvers:
      object:
-       type: 'sgd'
-       learning_rate: 1.0e+0
-       momentum: 0.99
+       type: 'polyak_sgd'
+       max_learning_rate: 1.0e+1
+       f_min: 1.0e+5
+       scaling: 1.0e-1
      probe:
-       type: 'sgd'
-       learning_rate: 1.0e-3
-       momentum: 0.99
+       type: 'polyak_sgd'
+       max_learning_rate: 1.0e-2
+       f_min: 1.0e+5
+       scaling: 1.0e+0
 
    regularizers:
      - type: obj_phase_l1
@@ -62,7 +64,7 @@ engines:
    iter_constraints: []
    group_constraints: []
 
-   update_probe: {after: 2}
+   update_probe: {after: 1}
    #update_positions: {after: 30}
 
    save: {every: 10}

@@ -161,6 +161,22 @@ class ObjLowPass:
         return (sim, state)
 
 
+class ObjPhaseL1:
+    def __init__(self, args: None, props: CostRegularizerProps):
+        self.cost = props.cost
+
+    def init_state(self, sim: ReconsState) -> None:
+        return None
+
+    def calc_loss_group(
+        self, group: NDArray[numpy.integer], sim: ReconsState, state: None
+    ) -> t.Tuple[float, None]:
+        xp = get_array_module(sim.object.data)
+
+        cost = xp.sum(xp.abs(xp.angle(sim.object.data)))
+        cost_scale = (group.shape[-1] / numpy.prod(sim.scan.shape[:-1])).astype(cost.dtype)
+        return (cost * cost_scale * self.cost, state)
+
 class ObjRecipL1:
     def __init__(self, args: None, props: CostRegularizerProps):
         self.cost = props.cost

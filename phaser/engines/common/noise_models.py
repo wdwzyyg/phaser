@@ -78,7 +78,7 @@ class PoissonNoiseModel(NoiseModel[None]):
         return "poisson"
 
     def __init__(self, args: None, props: PoissonNoisePlan):
-        self.offset: float = props.offset
+        self.eps: float = props.eps
 
     def init_state(self, sim: ReconsState) -> None:
         return None
@@ -92,14 +92,15 @@ class PoissonNoiseModel(NoiseModel[None]):
         state: None
     ) -> t.Tuple[float, None]:
         xp = get_array_module(model_wave, model_intensity, exp_patterns, mask)
-        patterns = xp.maximum(exp_patterns, 0.0) + self.offset
-        intensity = model_intensity + self.offset
+        patterns = xp.maximum(exp_patterns, 0.0)
+        #intensity - patterns * xp.log(intensity + self.offset)
 
-        loss = xp.sum(mask * xp.abs(
-            intensity + patterns * (xp.log(patterns) - xp.log(intensity) - 1.0)
+        loss = xp.sum(mask * (
+            #model_intensity - patterns * xp.log(model_intensity + self.eps)
+            model_intensity + patterns * (xp.log(patterns + self.eps) - xp.log(model_intensity + self.eps) - 1.0)
             #patterns - (model_intensity + self.offset) * xp.log(patterns)
         )).astype(exp_patterns.dtype)
-        return (loss, state)
+        return (t.cast(float, loss), state)
 
     def calc_wave_update(
         self,
