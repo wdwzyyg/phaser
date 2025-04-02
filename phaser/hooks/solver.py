@@ -167,6 +167,9 @@ class CostRegularizerHook(Hook[None, CostRegularizer]):
         'obj_tv': ('phaser.engines.common.regularizers:ObjTotalVariation', CostRegularizerProps),
         'obj_tikh': ('phaser.engines.common.regularizers:ObjTikhonov', CostRegularizerProps),
         'obj_tikhonov': ('phaser.engines.common.regularizers:ObjTikhonov', CostRegularizerProps),
+        'layers_tv': ('phaser.engines.common.regularizers:LayersTotalVariation', CostRegularizerProps),
+        'layers_tikh': ('phaser.engines.common.regularizers:LayersTikhonov', CostRegularizerProps),
+        'layers_tikhonov': ('phaser.engines.common.regularizers:LayersTikhonov', CostRegularizerProps),
     }
 
 

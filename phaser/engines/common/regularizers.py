@@ -250,6 +250,50 @@ class ObjTikhonov:
         return (t.cast(float, cost * cost_scale * self.cost), state)
 
 
+class LayersTotalVariation:
+    def __init__(self, args: None, props: CostRegularizerProps):
+        self.cost = props.cost
+
+    def init_state(self, sim: ReconsState) -> None:
+        return None
+
+    def calc_loss_group(
+        self, group: NDArray[numpy.integer], sim: ReconsState, state: None
+    ) -> t.Tuple[float, None]:
+        xp = get_array_module(sim.object.data)
+
+        if sim.object.data.shape[0] < 2:
+            return (0.0, state)
+
+        cost = xp.sum(xp.abs(xp.diff(sim.object.data, axis=0)))
+        # scale cost by fraction of the total reconstruction in the group
+        cost_scale = (group.shape[-1] / numpy.prod(sim.scan.shape[:-1])).astype(cost.dtype)
+
+        return (cost * cost_scale * self.cost, state)
+
+
+class LayersTikhonov:
+    def __init__(self, args: None, props: CostRegularizerProps):
+        self.cost = props.cost
+
+    def init_state(self, sim: ReconsState) -> None:
+        return None
+
+    def calc_loss_group(
+        self, group: NDArray[numpy.integer], sim: ReconsState, state: None
+    ) -> t.Tuple[float, None]:
+        xp = get_array_module(sim.object.data)
+
+        if sim.object.data.shape[0] < 2:
+            return (0.0, state)
+
+        cost = xp.sum(abs2(xp.diff(sim.object.data, axis=0)))
+        # scale cost by fraction of the total reconstruction in the group
+        cost_scale = (group.shape[-1] / numpy.prod(sim.scan.shape[:-1])).astype(cost.dtype)
+
+        return (cost * cost_scale * self.cost, state)
+
+
 def img_grad(img: numpy.ndarray) -> t.Tuple[numpy.ndarray, numpy.ndarray]:
     xp = get_array_module(img)
     return (
