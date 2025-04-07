@@ -311,6 +311,29 @@ class LayersTikhonov:
         return (cost * cost_scale * self.cost, state)
 
 
+class ProbePhaseTikhonov:
+    def __init__(self, args: None, props: CostRegularizerProps):
+        self.cost = props.cost
+
+    def init_state(self, sim: ReconsState) -> None:
+        return None
+
+    def calc_loss_group(
+        self, group: NDArray[numpy.integer], sim: ReconsState, state: None
+    ) -> t.Tuple[float, None]:
+        xp = get_array_module(sim.probe.data)
+
+        phase = xp.angle(fft2(sim.probe.data))
+
+        cost = (
+            xp.sum(abs2(xp.diff(phase, axis=-1))) +
+            xp.sum(abs2(xp.diff(phase, axis=-2)))
+        )
+        cost_scale = 1.0
+
+        return (cost * cost_scale * self.cost, state)
+
+
 def img_grad(img: numpy.ndarray) -> t.Tuple[numpy.ndarray, numpy.ndarray]:
     xp = get_array_module(img)
     return (
