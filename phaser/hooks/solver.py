@@ -162,6 +162,7 @@ class CostRegularizerProps(Dataclass):
 
 class CostRegularizerHook(Hook[None, CostRegularizer]):
     known = {
+        'obj_l1': ('phaser.engines.common.regularizers:ObjL1', CostRegularizerProps),
         'obj_phase_l1': ('phaser.engines.common.regularizers:ObjRecipL1', CostRegularizerProps),
         'obj_recip_l1': ('phaser.engines.common.regularizers:ObjRecipL1', CostRegularizerProps),
         'obj_tv': ('phaser.engines.common.regularizers:ObjTotalVariation', CostRegularizerProps),

@@ -11,7 +11,7 @@ from phaser.utils.num import (
 )
 from phaser.state import ReconsState
 from phaser.hooks.solver import (
-    GroupConstraint, #IterConstraint, CostRegularizer,
+    #GroupConstraint, IterConstraint, CostRegularizer,
     ClampObjectAmplitudeProps, LimitProbeSupportProps,
     RegularizeLayersProps, ObjLowPassProps, CostRegularizerProps
 )
@@ -159,6 +159,23 @@ class ObjLowPass:
         # TODO: should this be done in-place?
         sim.object.data = ifft2(state * fft2(sim.object.data))
         return (sim, state)
+
+
+class ObjL1:
+    def __init__(self, args: None, props: CostRegularizerProps):
+        self.cost = props.cost
+
+    def init_state(self, sim: ReconsState) -> None:
+        return None
+
+    def calc_loss_group(
+        self, group: NDArray[numpy.integer], sim: ReconsState, state: None
+    ) -> t.Tuple[float, None]:
+        xp = get_array_module(sim.object.data)
+
+        cost = xp.sum(xp.abs(sim.object.data - 1.0))
+        cost_scale = (group.shape[-1] / numpy.prod(sim.scan.shape[:-1])).astype(cost.dtype)
+        return (cost * cost_scale * self.cost, state)
 
 
 class ObjPhaseL1:

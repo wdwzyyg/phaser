@@ -104,6 +104,9 @@ def initialize_reconstruction(plan: ReconsPlan, xp: t.Any, observer: Observer) -
     seed = None
     dtype: type = numpy.float32 if plan.dtype == 'float32' else numpy.float64
     logging.info(f"dtype: {dtype} array backend: {xp.__name__}")
+    if xp_is_jax(xp):
+        import jax
+        logging.info(f"jax backend: {jax.default_backend()} devices: {jax.devices()}")
 
     raw_data = plan.raw_data(None)
 

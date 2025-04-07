@@ -43,7 +43,7 @@ def add_poisson_noise(raw_data: RawData, props: PoissonProps) -> RawData:
         logger.info(f"Adding poisson noise to raw patterns, after scaling by {props.scale:.2e}")
         raw_data['patterns'] *= props.scale
     else:
-        logger.info(f"Adding poisson noise to raw patterns")
+        logger.info("Adding poisson noise to raw patterns")
 
     rng = create_rng(raw_data['seed'], 'poisson_noise')
 
@@ -52,6 +52,8 @@ def add_poisson_noise(raw_data: RawData, props: PoissonProps) -> RawData:
 
     if props.gaussian is not None:
         patterns += rng.normal(scale=props.gaussian, size=patterns.shape)
+
+    logger.info(f"Mean pattern intensity: {numpy.nanmean(numpy.nansum(patterns, axis=(-1, -2)))}")
 
     raw_data['patterns'] = xp.array(patterns)
     return raw_data
