@@ -76,7 +76,7 @@ class WorkerObserver(Observer):
         super().update_group(state)
 
         # update if we haven't updated in a while
-        if force or (time.monotonic() - self.msg_time) > 10:
+        if force or (time.monotonic() - self.msg_time) > 30.0:
             self.send_update(state)
 
     def update_iteration(self, state: t.Union[ReconsState, PartialReconsState], i: int, n: int, error: t.Optional[float] = None):

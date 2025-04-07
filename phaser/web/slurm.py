@@ -2,6 +2,7 @@ import asyncio
 import logging
 import weakref
 import json
+import os
 import re
 import importlib.resources
 import typing as t
@@ -72,11 +73,12 @@ class SlurmManager:
 
         from .. import web
         with importlib.resources.path(web, 'slurm_worker.sh') as script_path:
-            slurm_args = "--qos=high --time=01:00:00 --partition=debug-gpu --cpus-per-task=20 --gres=gpu:volta:1"
+            slurm_args = "--qos=high --time=4:00:00 --partition=xeon-g6-volta --cpus-per-task=20 --gres=gpu:volta:1 --signal=SIGINT@120"
             #slurm_args = "--qos=high --time=01:00:00 --partition=debug-cpu --cpus-per-task=20"
-            proc = await asyncio.create_subprocess_shell(
-                f"sbatch --job-name={job_name} {slurm_args} \"{script_path.absolute()}\" \"{url}\"",
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            shell = os.environ.get('SHELL', '/bin/bash')
+            proc = await asyncio.create_subprocess_exec(
+                shell, "-c", f"sbatch --job-name={job_name} {slurm_args} \"{script_path.absolute()}\" \"{url}\"",
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
             )
             stdout, stderr = await proc.communicate()
 
@@ -165,7 +167,7 @@ class SlurmManager:
 
             if proc.returncode == 0:
                 self._slurm_exists = True
-                self.logger.info(f"Slurm found, version '{stdout.decode()}'")
+                self.logger.info(f"Slurm found, version '{stdout.decode().strip()}'")
             else:
                 self._slurm_exists = False
                 self.logger.warning(f"Slurm not found, stderr '{stderr.decode()}'")
