@@ -1,3 +1,4 @@
+import contextlib
 import logging
 from functools import partial
 from pathlib import Path
@@ -250,24 +251,32 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
             # gradients for per-iteration solvers
             iter_grads = tree_zeros_like(extract_vars(state, iter_vars & _PER_ITER_VARS)[0])
 
-            for (group_i, group) in enumerate(group_iter):
-                (state, loss, iter_grads, solver_states) = run_group(
-                    state, group=group, vars=iter_vars,
-                    noise_model=noise_model,
-                    group_solvers=group_solvers,
-                    group_constraints=group_constraints,
-                    regularizers=regularizers,
-                    iter_grads=iter_grads,
-                    solver_states=solver_states,
-                    props=propagators,
-                    patterns=patterns, pattern_mask=pattern_mask,
-                    probe_int=probe_int,
-                    xp=xp, dtype=dtype
-                )
+            # TODO: preload these?
+            #@partial(jax.profiler.annotate_function, name="load_group")
+            def load_group(group: NDArray[numpy.int_]) -> NDArray[numpy.floating]:
+                arr = xp.array(patterns[*group])
+                return arr.block_until_ready()  # type: ignore
 
-                losses.append(loss)
-                check_finite(state.object.data, state.probe.data, context=f"object or probe, group {group_i}")
-                observer.update_group(state, props.send_every_group)
+            with contextlib.nullcontext():
+                for (group_i, group) in enumerate(group_iter):
+                    (state, loss, iter_grads, solver_states) = run_group(
+                        state, group=group, vars=iter_vars,
+                        noise_model=noise_model,
+                        group_solvers=group_solvers,
+                        group_constraints=group_constraints,
+                        regularizers=regularizers,
+                        iter_grads=iter_grads,
+                        solver_states=solver_states,
+                        props=propagators,
+                        group_patterns=load_group(group),
+                        pattern_mask=pattern_mask,
+                        probe_int=probe_int,
+                        xp=xp, dtype=dtype
+                    )
+
+                    losses.append(loss)
+                    check_finite(state.object.data, state.probe.data, context=f"object or probe, group {group_i}")
+                    observer.update_group(state, props.send_every_group)
 
             # update per-iteration solvers
             for (sol_i, solver) in enumerate(iter_solvers):
@@ -316,7 +325,7 @@ def run_group(
     iter_grads: t.Dict[ReconsVar, t.Any],
     solver_states: SolverStates,
     props: t.Optional[NDArray[numpy.complexfloating]],
-    patterns: NDArray[numpy.floating],
+    group_patterns: NDArray[numpy.floating],
     pattern_mask: NDArray[numpy.floating],
     probe_int: t.Union[float, numpy.floating],
     xp: t.Any,
@@ -327,7 +336,7 @@ def run_group(
 
     ((loss, solver_states), grad) = jax.value_and_grad(run_model, has_aux=True)(
         *extract_vars(state, vars, group),
-        group=group, props=props, patterns=patterns, pattern_mask=pattern_mask,
+        group=group, props=props, group_patterns=group_patterns, pattern_mask=pattern_mask,
         noise_model=noise_model, regularizers=regularizers, solver_states=solver_states,
         xp=xp, dtype=dtype
     )
@@ -369,7 +378,7 @@ def run_model(
     sim: ReconsState,
     group: NDArray[numpy.integer],
     props: t.Optional[NDArray[numpy.complexfloating]],
-    patterns: NDArray[numpy.floating],
+    group_patterns: NDArray[numpy.floating],
     pattern_mask: NDArray[numpy.floating],
     noise_model: NoiseModel[t.Any],
     regularizers: t.Sequence[CostRegularizer[t.Any]],
@@ -395,7 +404,6 @@ def run_model(
 
     model_wave = fft2(slice_forwards(props, probes, sim_slice))
     model_intensity = xp.sum(abs2(model_wave), axis=1)
-    group_patterns = xp.array(patterns[*group])
 
     (loss, solver_states.noise_model_state) = noise_model.calc_loss(
         model_wave, model_intensity, group_patterns, pattern_mask, solver_states.noise_model_state
