@@ -110,7 +110,7 @@ def create_sparse_groupings(shape: t.Union[int, t.Iterable[int], NDArray[numpy.f
     idxs = numpy.indices(shape)  # type: ignore
     idxs = idxs.reshape(idxs.shape[0], -1).T
 
-    rng = create_rng(seed, f'groupings_{i}')
+    rng = create_rng(seed, f'groupings_{i}' if i != 0 else 'groupings')
     rng.shuffle(idxs)
     return numpy.array_split(idxs.T, numpy.ceil(idxs.shape[0] / grouping).astype(numpy.int64), axis=-1)
 
@@ -127,7 +127,7 @@ def create_compact_groupings(positions: NDArray[numpy.floating], grouping: int =
     """
     from k_means_constrained import KMeansConstrained
 
-    rng = create_rng(seed, f'groupings_{i}')
+    rng = create_rng(seed, f'groupings_{i}' if i != 0 else 'groupings')
     random_state = numpy.random.RandomState(rng.bit_generator)
 
     idxs = numpy.indices(positions.shape[:-1])
