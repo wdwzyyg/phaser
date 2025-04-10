@@ -34,6 +34,7 @@ class EnginePlan(Dataclass, kw_only=True):
     resize_method: t.Literal['pad_crop', 'resample'] = 'pad_crop'
 
     probe_modes: int = 1
+    bwlim_frac: t.Optional[float] = 2/3
 
     slices: t.Optional[Slices] = None
 

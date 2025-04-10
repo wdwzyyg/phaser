@@ -155,7 +155,7 @@ class SimulationState:
         return self
 
 
-def make_propagators(state: ReconsState) -> t.Optional[NDArray[numpy.complexfloating]]:
+def make_propagators(state: ReconsState, bwlim_frac: t.Optional[float] = 2/3) -> t.Optional[NDArray[numpy.complexfloating]]:
     xp = get_array_module(state.probe.data)
     dtype = to_real_dtype(state.probe.data.dtype)
     complex_dtype = to_complex_dtype(dtype)
@@ -169,11 +169,13 @@ def make_propagators(state: ReconsState) -> t.Optional[NDArray[numpy.complexfloa
 
     unique_zs = set(map(FloatKey, delta_zs))
 
-    bwlim = numpy.min(state.probe.sampling.k_max) * 2./3.
-
-    k2 = ky**2 + kx**2
-    bwlim_mask = k2 <= bwlim**2
-    logger.info(f"Bandwidth limit: {bwlim * state.wavelength * 1e3:6.2f} mrad")
+    if bwlim_frac is not None:
+        bwlim = numpy.min(state.probe.sampling.k_max) * bwlim_frac
+        k2 = ky**2 + kx**2
+        bwlim_mask = k2 <= bwlim**2
+        logger.info(f"Bandwidth limit: {bwlim * state.wavelength * 1e3:6.2f} mrad")
+    else:
+        bwlim_mask = xp.ones(ky.shape, dtype=numpy.bool_)
 
     props = {
         z: fresnel_propagator(ky, kx, state.wavelength, z).astype(complex_dtype) * bwlim_mask

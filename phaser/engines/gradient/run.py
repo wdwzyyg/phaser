@@ -201,7 +201,7 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
         group=groups.grouping, niter=props.niter,
         noise_model=noise_model.name(),
     ) as out_dir:
-        propagators = make_propagators(state)
+        propagators = make_propagators(state, props.bwlim_frac)
 
         start_i = state.iter.total_iter
         observer.init_solver(state, engine_i)

@@ -72,7 +72,7 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
         position_solver = None if props.position_solver is None else props.position_solver(None)
         position_solver_state = None if position_solver is None else position_solver.init_state(sim.state)
 
-        propagators = make_propagators(sim.state)
+        propagators = make_propagators(sim.state, props.bwlim_frac)
 
         start_i = sim.state.iter.total_iter
         observer.init_solver(sim.state, engine_i)
