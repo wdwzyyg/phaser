@@ -1,11 +1,15 @@
+import collections
 import logging
 import typing as t
 
 import numpy
 from numpy.typing import NDArray, DTypeLike
 
-from phaser.utils.num import get_array_module, to_real_dtype, to_complex_dtype, fft2, ifft2, is_jax, to_numpy
-from phaser.utils.misc import FloatKey, jax_dataclass
+from phaser.utils.num import (
+    get_array_module, to_real_dtype, to_complex_dtype,
+    fft2, ifft2, is_jax, to_numpy, block_until_ready,
+)
+from phaser.utils.misc import FloatKey, jax_dataclass, create_compact_groupings, create_sparse_groupings, shuffled
 from phaser.utils.optics import fresnel_propagator, fourier_shift_filter
 from phaser.state import ReconsState
 from phaser.hooks.solver import NoiseModel, GroupConstraint, IterConstraint, StateT
@@ -13,11 +17,73 @@ from phaser.hooks.solver import NoiseModel, GroupConstraint, IterConstraint, Sta
 logger = logging.getLogger(__name__)
 
 
+class GroupManager:
+    def __init__(
+        self,
+        scan: NDArray[numpy.floating],
+        grouping: t.Optional[int] = None,
+        compact: bool = False,
+        seed: t.Any = None,
+    ):
+        self.grouping = grouping or 64
+        self.compact = compact
+        self.seed = seed
+        self.groups: t.Optional[t.List[NDArray[numpy.int64]]] = None
+        self.n_groups: int = int(numpy.ceil(numpy.prod(scan.shape[:-1]) / self.grouping))
+
+    def _make(self, scan: NDArray[numpy.floating], i: int = 0) -> t.List[NDArray[numpy.int64]]:
+        if self.compact:
+            return create_compact_groupings(scan, self.grouping, seed=self.seed, i=i)
+        else:
+            return create_sparse_groupings(scan, self.grouping, seed=self.seed, i=i)
+
+    def iter(
+        self, scan: NDArray[numpy.floating],
+        i: int = 0, shuffle_groups: bool = False,
+    ) -> t.Iterator[NDArray[numpy.int64]]:
+        if shuffle_groups or self.groups is None:
+            self.groups = self._make(scan, i)
+            return iter(self.groups)
+        # shuffle order of groups (though not the groups themselves)
+        return shuffled(self.groups, seed=self.seed, i=i)
+
+    def __len__(self) -> int:
+        return self.n_groups
+
+
+def stream_patterns(
+    groups: t.Iterable[NDArray[numpy.int64]], patterns: NDArray[numpy.floating],
+    xp: t.Any, buf_n: int = 1
+) -> t.Iterator[t.Tuple[NDArray[numpy.int64], NDArray[numpy.floating]]]:
+    if buf_n == 0:
+        for group in groups:
+            group_patterns = xp.asarray(patterns[tuple(group)])
+            yield group, block_until_ready(group_patterns)
+        return
+
+    buf = collections.deque()
+    it = iter(groups)
+
+    for group in it:
+        buf.append((group, xp.asarray(patterns[tuple(group)])))
+        if len(buf) >= buf_n:
+            break
+
+    while len(buf) > 0:
+        (group, group_patterns) = buf.popleft()
+        yield group, block_until_ready(group_patterns)
+
+        # attempt to feed queue
+        try:
+            group = next(it)
+            buf.append((group, xp.asarray(patterns[tuple(group)])))
+        except StopIteration:
+            continue
+
+
 @jax_dataclass(init=False, static_fields=('xp', 'dtype', 'noise_model', 'group_constraints', 'iter_constraints'), drop_fields=('ky', 'kx'))
 class SimulationState:
     state: ReconsState
-    patterns: NDArray[numpy.floating]
-    pattern_mask: NDArray[numpy.floating]
 
     ky: NDArray[numpy.floating]
     kx: NDArray[numpy.floating]
@@ -40,8 +106,6 @@ class SimulationState:
         noise_model: NoiseModel[t.Any],
         group_constraints: t.Tuple[GroupConstraint[t.Any], ...],
         iter_constraints: t.Tuple[IterConstraint[t.Any], ...],
-        patterns: NDArray[numpy.floating],
-        pattern_mask: NDArray[numpy.floating],
         xp: t.Any,
         dtype: DTypeLike,
         noise_model_state: t.Optional[t.Any] = None,
@@ -52,8 +116,6 @@ class SimulationState:
         self.xp = xp
         self.dtype = dtype
         self.state = state
-        self.patterns = patterns
-        self.pattern_mask = xp.array(pattern_mask)
 
         self.noise_model = noise_model
         self.group_constraints = group_constraints
@@ -122,6 +184,7 @@ def make_propagators(state: ReconsState) -> t.Optional[NDArray[numpy.complexfloa
         [props[FloatKey(z)] for z in delta_zs],
         axis = 0
     )
+
 
 @t.overload
 def cutout_group(

@@ -41,6 +41,7 @@ class EnginePlan(Dataclass, kw_only=True):
     grouping: t.Optional[int] = None
     compact: bool = False
     shuffle_groups: t.Optional[FlagLike] = None
+    buffer_n_groups: int = 2
 
     update_probe: FlagLike = True
     update_object: FlagLike = True

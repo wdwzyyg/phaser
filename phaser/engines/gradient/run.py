@@ -22,7 +22,7 @@ from phaser.hooks.solver import GradientSolver, CostRegularizer, GroupConstraint
 from phaser.plan import GradientEnginePlan
 from phaser.types import process_flag, flag_any_true, ReconsVar
 from ..common.output import output_images, output_state
-from ..common.simulation import cutout_group, make_propagators, slice_forwards
+from ..common.simulation import GroupManager, stream_patterns, make_propagators, slice_forwards
 
 
 logger = logging.getLogger(__name__)
@@ -188,24 +188,19 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
     save_images = process_flag(props.save_images)
     # shuffle_groups defaults to True for sparse groups, False for compact groups
     shuffle_groups = process_flag(props.shuffle_groups or not props.compact)
-
-    grouping = props.grouping or 64
+    groups = GroupManager(state.scan, props.grouping, props.compact, seed)
 
     any_output = flag_any_true(save, props.niter) or flag_any_true(save_images, props.niter)
 
     # TODO: this really needs cleanup
 
+
     with OutputDir(
         props.save_options.out_dir, any_output,
         engine_i=engine_i, name=recons_name,
-        group=grouping, niter=props.niter,
+        group=groups.grouping, niter=props.niter,
         noise_model=noise_model.name(),
     ) as out_dir:
-        if props.compact:
-            groups = create_compact_groupings(state.scan, grouping, seed)
-        else:
-            groups = create_sparse_groupings(state.scan, grouping, seed)
-
         propagators = make_propagators(state)
 
         start_i = state.iter.total_iter
@@ -213,7 +208,7 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
 
         # runs rescaling
         rescale_factors = []
-        for (group_i, group) in enumerate(groups):
+        for (group_i, group) in enumerate(groups.iter(state.scan)):
             group_rescale_factors = dry_run(state, group, propagators, patterns, xp=xp, dtype=dtype)
             rescale_factors.append(group_rescale_factors)
 
@@ -233,16 +228,6 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
 
         #with jax.profiler.trace("/tmp/jax-trace", create_perfetto_link=True):
         for i in range(1, props.niter+1):
-            if shuffle_groups({'state': state, 'niter': props.niter}):
-                if props.compact:
-                    groups = create_compact_groupings(state.scan, grouping, seed, i=i)
-                else:
-                    groups = create_sparse_groupings(state.scan, grouping, seed, i=i)
-                group_iter = iter(groups)
-            else:
-                # shuffle order of groups (though not the groups themselves)
-                group_iter = shuffled(groups, seed=seed, i=i)
-
             losses = []
 
             iter_vars = all_vars & t.cast(t.Set[ReconsVar],
@@ -257,26 +242,28 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
                 arr = xp.array(patterns[*group])
                 return arr.block_until_ready()  # type: ignore
 
-            with contextlib.nullcontext():
-                for (group_i, group) in enumerate(group_iter):
-                    (state, loss, iter_grads, solver_states) = run_group(
-                        state, group=group, vars=iter_vars,
-                        noise_model=noise_model,
-                        group_solvers=group_solvers,
-                        group_constraints=group_constraints,
-                        regularizers=regularizers,
-                        iter_grads=iter_grads,
-                        solver_states=solver_states,
-                        props=propagators,
-                        group_patterns=load_group(group),
-                        pattern_mask=pattern_mask,
-                        probe_int=probe_int,
-                        xp=xp, dtype=dtype
-                    )
+            iter_shuffle_groups = shuffle_groups({'state': state, 'niter': props.niter})
 
-                    losses.append(loss)
-                    check_finite(state.object.data, state.probe.data, context=f"object or probe, group {group_i}")
-                    observer.update_group(state, props.send_every_group)
+            for (group_i, (group, group_patterns)) in enumerate(stream_patterns(groups.iter(state.scan, i, iter_shuffle_groups),
+                                                                                patterns, xp=xp, buf_n=props.buffer_n_groups)):
+                (state, loss, iter_grads, solver_states) = run_group(
+                    state, group=group, vars=iter_vars,
+                    noise_model=noise_model,
+                    group_solvers=group_solvers,
+                    group_constraints=group_constraints,
+                    regularizers=regularizers,
+                    iter_grads=iter_grads,
+                    solver_states=solver_states,
+                    props=propagators,
+                    group_patterns=group_patterns, #load_group(group),
+                    pattern_mask=pattern_mask,
+                    probe_int=probe_int,
+                    xp=xp, dtype=dtype
+                )
+
+                losses.append(loss)
+                check_finite(state.object.data, state.probe.data, context=f"object or probe, group {group_i}")
+                observer.update_group(state, props.send_every_group)
 
             # update per-iteration solvers
             for (sol_i, solver) in enumerate(iter_solvers):

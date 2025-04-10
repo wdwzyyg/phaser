@@ -13,7 +13,7 @@ from phaser.plan import ConventionalEnginePlan
 from phaser.state import ReconsState
 from phaser.types import process_flag, flag_any_true
 from ..common.output import output_images, output_state
-from ..common.simulation import SimulationState, make_propagators
+from ..common.simulation import SimulationState, make_propagators, GroupManager
 
 
 def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
@@ -41,37 +41,32 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
     # shuffle_groups defaults to True for sparse groups, False for compact groups
     shuffle_groups = process_flag(props.shuffle_groups or not props.compact)
 
-    grouping = props.grouping or 64
-
     sim = SimulationState(
         state=args['state'], noise_model=noise_model,
         group_constraints=group_constraints, iter_constraints=iter_constraints,
-        patterns=args['data'].patterns, pattern_mask=args['data'].pattern_mask,
         xp=xp, dtype=dtype
     )
-    assert sim.patterns.dtype == sim.dtype
-    assert sim.pattern_mask.dtype == sim.dtype
+    patterns = args['data'].patterns
+    pattern_mask = xp.array(args['data'].pattern_mask)
+
+    assert patterns.dtype == sim.dtype
+    assert pattern_mask.dtype == sim.dtype
     assert sim.state.object.data.dtype == to_complex_dtype(sim.dtype)
     assert sim.state.probe.data.dtype == to_complex_dtype(sim.dtype)
 
     solver = props.solver(props)
-
     sim = solver.init(sim)
+    groups = GroupManager(sim.state.scan, props.grouping, props.compact, seed=seed)
 
     any_output = flag_any_true(save, props.niter) or flag_any_true(save_images, props.niter)
 
     with OutputDir(
         props.save_options.out_dir, any_output,
         engine_i=engine_i, name=recons_name,
-        group=grouping, niter=props.niter,
+        group=groups.grouping, niter=props.niter,
         solver=solver.name(),
         noise_model=noise_model.name(),
     ) as out_dir:
-        if props.compact:
-            groups = create_compact_groupings(sim.state.scan, grouping, seed=seed)
-        else:
-            groups = create_sparse_groupings(sim.state.scan, grouping, seed=seed)
-
         calc_error_mask = mask_fraction_of_groups(len(groups), props.calc_error_fraction)
 
         position_solver = None if props.position_solver is None else props.position_solver(None)
@@ -83,25 +78,21 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
         observer.init_solver(sim.state, engine_i)
 
         # runs rescaling
-        sim = solver.presolve(sim, propagators, groups)
+        sim = solver.presolve(
+            sim, groups.iter(sim.state.scan),
+            patterns=patterns, pattern_mask=pattern_mask,
+            propagators=propagators
+        )
 
         observer.start_solver()
 
         for i in range(1, props.niter+1):
-            if shuffle_groups({'state': sim.state, 'niter': props.niter}):
-                if props.compact:
-                    groups = create_compact_groupings(sim.state.scan, grouping, seed, i=i)
-                else:
-                    groups = create_sparse_groupings(sim.state.scan, grouping, seed, i=i)
-                group_iter = iter(groups)
-            else:
-                # shuffle order of groups (though not the groups themselves)
-                group_iter = shuffled(groups, seed=seed, i=i)
-
             iter_update_positions = update_positions({'state': sim.state, 'niter': props.niter})
+            iter_shuffle_groups = shuffle_groups({'state': sim.state, 'niter': props.niter})
 
             sim, pos_update, group_errors = solver.run_iteration(
-                sim, propagators, group_iter,
+                sim, groups.iter(sim.state.scan, i, iter_shuffle_groups),
+                patterns=patterns, pattern_mask=pattern_mask, propagators=propagators,
                 update_object=update_object({'state': sim.state, 'niter': props.niter}),
                 update_probe=update_probe({'state': sim.state, 'niter': props.niter}),
                 update_positions=iter_update_positions,

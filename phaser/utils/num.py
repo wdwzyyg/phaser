@@ -214,6 +214,18 @@ def xp_is_jax(xp: t.Any) -> bool:
         return False
 
 
+def block_until_ready(arr: NDArray[DTypeT]) -> NDArray[DTypeT]:
+    if hasattr(arr, 'block_until_ready'):  # jax
+        return arr.block_until_ready()  # type: ignore
+
+    if is_cupy(arr):
+        import cupy  # pyright: ignore[reportMissingImports]
+        stream = cupy.cuda.get_current_stream()
+        stream.synchronize()
+
+    return arr
+
+
 class _JitKernel(t.Generic[P, T]):
     def __init__(
         self, f: t.Callable[P, T], *,

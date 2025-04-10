@@ -9,7 +9,9 @@ from phaser.utils.num import cast_array_module, at, abs2, fft2, ifft2, jit, chec
 from phaser.hooks.solver import GroupConstraint, ConventionalSolver
 from phaser.plan import ConventionalEnginePlan, LSQMLSolverPlan, EPIESolverPlan
 from phaser.execute import Observer
-from phaser.engines.common.simulation import SimulationState, cutout_group, slice_forwards, slice_backwards
+from phaser.engines.common.simulation import (
+    stream_patterns, SimulationState, cutout_group, slice_forwards, slice_backwards
+)
 
 
 class LSQMLSolver(ConventionalSolver):
@@ -33,15 +35,18 @@ class LSQMLSolver(ConventionalSolver):
     def presolve(
         self,
         sim: SimulationState,
+        groups: t.Iterator[NDArray[numpy.int_]], *,
+        patterns: NDArray[numpy.floating],
+        pattern_mask: NDArray[numpy.floating],
         propagators: t.Optional[NDArray[numpy.complexfloating]],
-        groups: t.Sequence[NDArray[numpy.int_]],
     ) -> SimulationState:
         rescale_factors = []
 
         # precompute obj_mag, probe_mag, and rescale probe intensity
-        for (group_i, group) in enumerate(groups):
+        for (group, group_patterns) in stream_patterns(groups, patterns, xp=sim.xp, buf_n=self.engine_plan.buffer_n_groups):
             (self.obj_mag, self.probe_mag, group_rescale_factors) = lsqml_dry_run(
-                sim, propagators, group, self.obj_mag, self.probe_mag
+                sim, group, group_patterns, props=propagators, pattern_mask=pattern_mask,
+                obj_mag=self.obj_mag, probe_mag=self.probe_mag
             )
 
             rescale_factors.append(to_numpy(group_rescale_factors))
@@ -59,8 +64,10 @@ class LSQMLSolver(ConventionalSolver):
     def run_iteration(
         self,
         sim: SimulationState,
-        propagators: t.Optional[NDArray[numpy.complexfloating]],
         groups: t.Iterator[NDArray[numpy.int_]], *,
+        patterns: NDArray[numpy.floating],
+        pattern_mask: NDArray[numpy.floating],
+        propagators: t.Optional[NDArray[numpy.complexfloating]],
         update_object: bool,
         update_probe: bool,
         update_positions: bool,
@@ -75,11 +82,12 @@ class LSQMLSolver(ConventionalSolver):
         pos_update = xp.zeros_like(sim.state.scan, dtype=sim.dtype)
         iter_errors = []
 
-        for (group_i, group) in enumerate(groups):
+        for (group_i, (group, group_patterns)) in enumerate(stream_patterns(groups, patterns, xp=xp,
+                                                                            buf_n=self.engine_plan.buffer_n_groups)):
             group_calc_error = calc_error and calc_error_mask[group_i]
 
             (sim, new_obj_mag, new_probe_mag, errors, group_pos_update) = lsqml_run(
-                sim, group, props=propagators,
+                sim, group, group_patterns, pattern_mask=pattern_mask, props=propagators,
                 obj_mag=self.obj_mag, probe_mag=self.probe_mag,
                 new_obj_mag=new_obj_mag, new_probe_mag=new_probe_mag,
                 beta_object=self.plan.beta_object,
@@ -117,8 +125,10 @@ class LSQMLSolver(ConventionalSolver):
 @partial(jit, donate_argnames=('obj_mag', 'probe_mag'))
 def lsqml_dry_run(
     sim: SimulationState,
-    props: t.Optional[NDArray[numpy.complexfloating]],
     group: NDArray[numpy.integer],
+    group_patterns: NDArray[numpy.floating], *,
+    pattern_mask: NDArray[numpy.floating],
+    props: t.Optional[NDArray[numpy.complexfloating]],
     obj_mag: NDArray[numpy.floating],
     probe_mag: NDArray[numpy.floating]
 ) -> t.Tuple[NDArray[numpy.floating], NDArray[numpy.floating], NDArray[numpy.floating]]:
@@ -144,7 +154,7 @@ def lsqml_dry_run(
     # modeled and experimental intensity
     # summed over incoherent modes and over the pattern
     model_intensity = xp.sum(abs2(fft2(psi)), axis=(1, -2, -1))
-    exp_intensity = xp.sum(xp.array(sim.patterns[*group]), axis=(-2, -1))
+    exp_intensity = xp.sum(group_patterns * pattern_mask, axis=(-2, -1))
 
     return (obj_mag, probe_mag, exp_intensity / model_intensity)
 
@@ -157,7 +167,9 @@ def lsqml_dry_run(
 )
 def lsqml_run(
     sim: SimulationState,
-    group: NDArray[numpy.integer], *,
+    group: NDArray[numpy.integer],
+    group_patterns: NDArray[numpy.floating], *,
+    pattern_mask: NDArray[numpy.floating],
     props: t.Optional[NDArray[numpy.complexfloating]],
     obj_mag: NDArray[numpy.floating],
     probe_mag: NDArray[numpy.floating],
@@ -210,11 +222,11 @@ def lsqml_run(
     # sum over incoherent modes
     model_intensity = xp.sum(abs2(model_wave), axis=1, keepdims=True)
     # experimental data
-    group_patterns = xp.array(sim.patterns[*group])[:, None]
+    # group_patterns = xp.array(sim.patterns[*group])[:, None]
 
-    errors = xp.sqrt(xp.nansum((model_intensity - group_patterns)**2, axis=(1, -1, -2))) if calc_error else None
+    errors = xp.sqrt(xp.nansum((model_intensity - group_patterns[:, None])**2, axis=(1, -1, -2))) if calc_error else None
 
-    (chi, sim.noise_model_state) = sim.noise_model.calc_wave_update(model_wave, model_intensity, group_patterns, sim.pattern_mask, sim.noise_model_state)
+    (chi, sim.noise_model_state) = sim.noise_model.calc_wave_update(model_wave, model_intensity, group_patterns[:, None], pattern_mask, sim.noise_model_state)
     chi = ifft2(chi)
 
     def update_slice(slice_i: int, prop: t.Optional[NDArray[numpy.complexfloating]], state):
@@ -284,12 +296,17 @@ class EPIESolver(ConventionalSolver):
     def presolve(
         self,
         sim: SimulationState,
+        groups: t.Iterator[NDArray[numpy.int_]], *,
+        patterns: NDArray[numpy.floating],
+        pattern_mask: NDArray[numpy.floating],
         propagators: t.Optional[NDArray[numpy.complexfloating]],
-        groups: t.Sequence[NDArray[numpy.int_]],
     ) -> SimulationState:
         rescale_factors = []
-        for (group_i, group) in enumerate(groups):
-            group_rescale_factors = epie_dry_run(sim, propagators, group)
+        for (group, group_patterns) in stream_patterns(groups, patterns, xp=sim.xp,
+                                                       buf_n=self.engine_plan.buffer_n_groups):
+            group_rescale_factors = epie_dry_run(
+                sim, group, group_patterns, pattern_mask=pattern_mask, props=propagators
+            )
             rescale_factors.append(to_numpy(group_rescale_factors))
 
         rescale_factors = numpy.concatenate(rescale_factors, axis=0)
@@ -304,8 +321,10 @@ class EPIESolver(ConventionalSolver):
     def run_iteration(
         self,
         sim: SimulationState,
-        propagators: t.Optional[NDArray[numpy.complexfloating]],
         groups: t.Iterator[NDArray[numpy.int_]], *,
+        patterns: NDArray[numpy.floating],
+        pattern_mask: NDArray[numpy.floating],
+        propagators: t.Optional[NDArray[numpy.complexfloating]],
         update_object: bool,
         update_probe: bool,
         update_positions: bool,
@@ -319,11 +338,14 @@ class EPIESolver(ConventionalSolver):
         pos_update = xp.zeros_like(sim.state.scan)
         iter_errors = []
 
-        for (group_i, group) in enumerate(groups):
+        for (group_i, (group, group_patterns)) in enumerate(stream_patterns(groups, patterns, xp=xp,
+                                                                            buf_n=self.engine_plan.buffer_n_groups)):
             group_calc_error = calc_error and calc_error_mask[group_i]
 
             (sim, errors) = epie_run(
-                sim, group, props=propagators,
+                sim, group, group_patterns,
+                pattern_mask=pattern_mask,
+                props=propagators,
                 beta_object=self.plan.beta_object,
                 beta_probe=self.plan.beta_probe,
                 update_object=update_object,
@@ -347,8 +369,10 @@ class EPIESolver(ConventionalSolver):
 @partial(jit)
 def epie_dry_run(
     sim: SimulationState,
-    props: t.Optional[NDArray[numpy.complexfloating]],
     group: NDArray[numpy.integer],
+    group_patterns: NDArray[numpy.floating], *,
+    pattern_mask: NDArray[numpy.floating],
+    props: t.Optional[NDArray[numpy.complexfloating]],
 ) -> NDArray[numpy.floating]:
     xp = cast_array_module(sim.xp)
     (psi, group_obj, group_scan) = cutout_group(sim.ky, sim.kx, sim.state, group)
@@ -364,7 +388,7 @@ def epie_dry_run(
     # modeled and experimental intensity
     # summed over incoherent modes and over the pattern
     model_intensity = xp.sum(abs2(fft2(psi)), axis=(1, -2, -1))
-    exp_intensity = xp.sum(xp.array(sim.patterns[*group]), axis=(-2, -1))
+    exp_intensity = xp.sum(group_patterns * pattern_mask, axis=(-2, -1))
 
     return exp_intensity / model_intensity
 
@@ -372,7 +396,9 @@ def epie_dry_run(
 @partial(jit, donate_argnames=('sim',), static_argnames=('update_object', 'update_probe', 'calc_error'))
 def epie_run(
     sim: SimulationState,
-    group: NDArray[numpy.integer], *,
+    group: NDArray[numpy.integer],
+    group_patterns: NDArray[numpy.floating], *,
+    pattern_mask: NDArray[numpy.floating],
     props: t.Optional[NDArray[numpy.complexfloating]],
     beta_object: float = 0.9,
     beta_probe: float = 0.9,
@@ -401,12 +427,11 @@ def epie_run(
     model_wave = fft2(psi[-1] * group_obj[:, -1, None])
     # sum over incoherent modes
     model_intensity = xp.sum(abs2(model_wave), axis=1, keepdims=True)
-    # experimental data
-    group_patterns = xp.array(sim.patterns[*group])[:, None]
 
-    errors = xp.sqrt(xp.nansum((model_intensity - group_patterns)**2, axis=(1, -1, -2))) if calc_error else None
-
-    (chi, sim.noise_model_state) = sim.noise_model.calc_wave_update(model_wave, model_intensity, group_patterns, sim.pattern_mask, sim.noise_model_state)
+    errors = xp.sqrt(xp.nansum((model_intensity - group_patterns[:, None])**2, axis=(1, -1, -2))) if calc_error else None
+    (chi, sim.noise_model_state) = sim.noise_model.calc_wave_update(
+        model_wave, model_intensity, group_patterns[:, None], pattern_mask, sim.noise_model_state
+    )
     chi = ifft2(chi)
 
     def update_slice(slice_i: int, prop: t.Optional[NDArray[numpy.complexfloating]], state):

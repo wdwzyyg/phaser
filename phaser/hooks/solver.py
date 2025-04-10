@@ -190,8 +190,10 @@ class ConventionalSolver(abc.ABC):
     def presolve(
         self,
         sim: 'SimulationState',
+        groups: t.Iterator[NDArray[numpy.int_]], *,
+        patterns: NDArray[numpy.floating],
+        pattern_mask: NDArray[numpy.floating],
         propagators: t.Optional[NDArray[numpy.complexfloating]],
-        groups: t.Sequence[NDArray[numpy.int_]],
     ) -> 'SimulationState':
         ...
 
@@ -199,8 +201,10 @@ class ConventionalSolver(abc.ABC):
     def run_iteration(
         self,
         sim: 'SimulationState',
-        propagators: t.Optional[NDArray[numpy.complexfloating]],
         groups: t.Iterator[NDArray[numpy.int_]], *,
+        patterns: NDArray[numpy.floating],
+        pattern_mask: NDArray[numpy.floating],
+        propagators: t.Optional[NDArray[numpy.complexfloating]],
         update_object: bool,
         update_probe: bool,
         update_positions: bool,

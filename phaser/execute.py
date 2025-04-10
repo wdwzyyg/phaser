@@ -65,7 +65,7 @@ class Observer:
         if self.solver_start_time is not None:
             finish_time = time.monotonic()
             delta = finish_time - self.solver_start_time
-            print(f"Total time: {self._format_hhmmss(delta)}")
+            logging.info(f"Total time: {self._format_hhmmss(delta)}")
 
 
 def execute_plan(plan: ReconsPlan, observer: t.Optional[Observer] = None):
