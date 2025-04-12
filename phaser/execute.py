@@ -227,12 +227,13 @@ def prepare_for_engine(patterns: Patterns, state: ReconsState, xp: t.Any, engine
         if engine.probe_modes < current_probe_modes:
             # TODO: redistribute intensity here
             state.probe.data = state.probe.data[:engine.probe_modes]
-        elif current_probe_modes == 1:
-            from phaser.utils.optics import make_hermetian_modes
-
-            state.probe.data = make_hermetian_modes(state.probe.data[0], engine.probe_modes, powers=0.2)
         else:
-            raise NotImplementedError()
+            from phaser.utils.optics import make_hermetian_modes
+            if current_probe_modes != 1:
+                logging.info("Summing probe modes (in real-space) before recreating with different # of modes")
+
+            base_mode = xp.sum(state.probe.data, axis=0)
+            state.probe.data = make_hermetian_modes(base_mode, engine.probe_modes, base_mode_power=engine.base_mode_power)
 
     if engine.slices is not None and (len(engine.slices.thicknesses) != len(state.object.thicknesses)
                                       or not numpy.allclose(engine.slices.thicknesses, state.object.thicknesses)):

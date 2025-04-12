@@ -2,6 +2,7 @@
 Probe/optics utilities
 """
 
+import logging
 import typing as t
 
 import numpy
@@ -50,20 +51,26 @@ def make_focused_probe(ky: NDArray[numpy.floating], kx: NDArray[numpy.floating],
     return ifft2(probe)
 
 
-def make_hermetian_modes(base_probe: NDArray[NumT], n_modes: int, powers: ArrayLike = 0.05) -> NDArray[NumT]:
+def make_hermetian_modes(
+    base_probe: NDArray[NumT], n_modes: int, base_mode_power: float = 0.7, rel_powers: ArrayLike = 1.0
+) -> NDArray[NumT]:
     """
     Create Hermitian-Gauss probe modes based on `base_probe`.
 
-    Creates `n_modes` modes. Additional probe modes are given intensities
-    according to `powers`, which may be a list.
+    Creates `n_modes` modes. The base mode will have power `base_mode_power`, while the
+    other modes will split the remaining power according to `rel_powers` (which may be a list).
     """
     xp = get_array_module(base_probe)
 
-    # TODO clean this up
-    powers = numpy.array(powers, dtype=to_real_dtype(base_probe.dtype)).ravel()
-    powers = numpy.pad(powers, (0, n_modes - len(powers) - 1), mode='edge')[:n_modes - 1]
-    base_power = 1. - numpy.sum(powers)
-    powers = numpy.concatenate(([base_power], powers))
+    if not (0.0 <= base_mode_power < 1.0):
+        raise ValueError(f"Invalid base_mode_power '{base_mode_power}'. Expected a value between 0 and 1")
+
+    # TODO: ensure intensity is preserved
+
+    rel_powers = numpy.array(rel_powers, dtype=to_real_dtype(base_probe.dtype)).ravel()
+    rel_powers = numpy.pad(rel_powers, (0, n_modes - rel_powers.size - 1), mode='edge')[:n_modes - 1]
+    powers = numpy.concatenate([[base_mode_power], (1.0 - base_mode_power) * rel_powers])
+    logging.debug(f"Hermetian mode powers: {powers.tolist()}")
 
     # we make modes like the following:
     #       0 1 2 3 4
@@ -82,55 +89,51 @@ def make_hermetian_modes(base_probe: NDArray[NumT], n_modes: int, powers: ArrayL
     xx = (i - diag_num*(diag_num+1)/2).astype(numpy.int_)
     yy = diag_num - xx
 
-    max_n = int(numpy.max(yy)) + 1
-
-    modes = hermetian_modes(base_probe, max_n, max_n)[yy, xx]
+    modes = hermetian_modes(base_probe, yy, xx)
     modes *= xp.array(numpy.sqrt(powers)[:, None, None], dtype=modes.dtype)
     return t.cast(NDArray[NumT], modes)
 
 
-def hermetian_modes(base_probe: NDArray[NumT], n_y: int, n_x: int) -> NDArray[NumT]:
+def hermetian_modes(base_probe: NDArray[NumT], y_orders: ArrayLike, x_orders: ArrayLike) -> NDArray[NumT]:
     """
-    Create a grid of Hermetian-Gauss modes, n_y in y direction and n_x in x direction.
+    Split `base_probe` into Hermite-Gaussian modes. y_orders and x_orders (broadcast together)
+    are the orders of modes to return.
 
-    Return a ndarray of shape `(n_y, n_x, *base_probe.shape)`. Each mode is orthogonal
-    and normalized in reciprocal space.
+    Return a ndarray of shape `(*y_orders.shape, *base_probe.shape)`.
+    Each mode is orthogonal and normalized.
     """
     xp = get_array_module(base_probe)
     real_dtype = to_real_dtype(base_probe.dtype)
+    y_orders, x_orders = numpy.broadcast_arrays(y_orders, x_orders)
 
     (yy, xx) = xp.indices(base_probe.shape, dtype=real_dtype)
-
     base_probe_mag = abs2(base_probe)
 
     (com_y, com_x) = (xp.sum(a * base_probe_mag) / xp.sum(base_probe_mag) for a in (yy, xx))
     yy -= com_y
     xx -= com_x
-    (var_y, var_x) = (xp.sum(a**2. * base_probe_mag) / xp.sum(base_probe_mag) for a in (yy, xx))
+    #(var_y, var_x) = (xp.sum(a**2. * base_probe_mag) / xp.sum(base_probe_mag) for a in (yy, xx))
 
-    modes = xp.empty((n_y * n_x, *base_probe.shape), dtype=base_probe.dtype)
+    modes = xp.empty((y_orders.size, *base_probe.shape), dtype=base_probe.dtype)
 
-    i = 0
-    for y_power in range(n_y):
-        for x_power in range(n_x):
-            mode = yy**y_power * xx**x_power * base_probe
-            #if y_power > 0 or x_power > 0:
-            #    mode = mode * xp.exp(-xx**2./(2 * var_x) - yy*2./(2 * var_y))
-            #    mode /= xp.sqrt(xp.sum(abs2(mode)))
+    for (i, (y_power, x_power)) in enumerate(zip(y_orders.flat, x_orders.flat)):
+        mode = yy**y_power * xx**x_power * base_probe
+        #if y_power > 0 or x_power > 0:
+        #    mode = mode * xp.exp(-xx**2./(2 * var_x) - yy*2./(2 * var_y))
+        #    mode /= xp.sqrt(xp.sum(abs2(mode)))
 
-            # orthogonalize to other modes
-            for prev_i in range(i):  # TODO do this in a smarter way
-                mode -= modes[prev_i] * xp.sum(modes[prev_i] * xp.conj(mode))
-            # renormalize
-            mode /= xp.sqrt(xp.sum(abs2(mode)))
+        # orthogonalize to other modes
+        for prev_i in range(i):  # TODO do this in a smarter way
+            mode -= modes[prev_i] * xp.sum(modes[prev_i] * xp.conj(mode))
+        # renormalize
+        mode /= xp.sqrt(xp.sum(abs2(mode)))
 
-            if is_jax(modes) and not t.TYPE_CHECKING:
-                modes = modes.at[i].set(mode)
-            else:
-                modes[i] = mode
-            i += 1
+        if is_jax(modes) and not t.TYPE_CHECKING:
+            modes = modes.at[i].set(mode)
+        else:
+            modes[i] = mode
 
-    return modes.reshape((n_y, n_x, *base_probe.shape))
+    return modes.reshape((*y_orders.shape, *base_probe.shape))
 
 
 @t.overload

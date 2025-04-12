@@ -34,6 +34,9 @@ class EnginePlan(Dataclass, kw_only=True):
     resize_method: t.Literal['pad_crop', 'resample'] = 'pad_crop'
 
     probe_modes: int = 1
+    base_mode_power: float = 0.7
+    """Intensity to assign to the base mode when creating incoherent probe modes."""
+
     bwlim_frac: t.Optional[float] = 2/3
 
     slices: t.Optional[Slices] = None
