@@ -18,6 +18,7 @@ if t.TYPE_CHECKING:
     from phaser.utils.image import _BoundaryMode
 
 
+Float: t.TypeAlias = t.Union[float, numpy.floating]
 NumT = t.TypeVar('NumT', bound=numpy.number)
 FloatT = t.TypeVar('FloatT', bound=numpy.floating)
 ComplexT = t.TypeVar('ComplexT', bound=numpy.complexfloating)

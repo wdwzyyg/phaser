@@ -11,9 +11,9 @@ from phaser.utils.num import (
 )
 from phaser.state import ReconsState
 from phaser.hooks.solver import (
-    #GroupConstraint, IterConstraint, CostRegularizer,
     ClampObjectAmplitudeProps, LimitProbeSupportProps,
-    RegularizeLayersProps, ObjLowPassProps, CostRegularizerProps
+    RegularizeLayersProps, ObjLowPassProps,
+    CostRegularizerProps, TVRegularizerProps
 )
 
 
@@ -163,7 +163,7 @@ class ObjLowPass:
 
 class ObjL1:
     def __init__(self, args: None, props: CostRegularizerProps):
-        self.cost = props.cost
+        self.cost: float = props.cost
 
     def init_state(self, sim: ReconsState) -> None:
         return None
@@ -178,9 +178,26 @@ class ObjL1:
         return (cost * cost_scale * self.cost, state)
 
 
+class ObjL2:
+    def __init__(self, args: None, props: CostRegularizerProps):
+        self.cost: float = props.cost
+
+    def init_state(self, sim: ReconsState) -> None:
+        return None
+
+    def calc_loss_group(
+        self, group: NDArray[numpy.integer], sim: ReconsState, state: None
+    ) -> t.Tuple[float, None]:
+        xp = get_array_module(sim.object.data)
+
+        cost = xp.sum(abs2(sim.object.data - 1.0))
+        cost_scale = (group.shape[-1] / numpy.prod(sim.scan.shape[:-1])).astype(cost.dtype)
+        return (cost * cost_scale * self.cost, state)
+
+
 class ObjPhaseL1:
     def __init__(self, args: None, props: CostRegularizerProps):
-        self.cost = props.cost
+        self.cost: float = props.cost
 
     def init_state(self, sim: ReconsState) -> None:
         return None
@@ -194,9 +211,10 @@ class ObjPhaseL1:
         cost_scale = (group.shape[-1] / numpy.prod(sim.scan.shape[:-1])).astype(cost.dtype)
         return (cost * cost_scale * self.cost, state)
 
+
 class ObjRecipL1:
     def __init__(self, args: None, props: CostRegularizerProps):
-        self.cost = props.cost
+        self.cost: float = props.cost
 
     def init_state(self, sim: ReconsState) -> None:
         return None
@@ -218,9 +236,9 @@ class ObjRecipL1:
 
 
 class ObjTotalVariation:
-    def __init__(self, args: None, props: CostRegularizerProps):
-        self.cost = props.cost
-        self.eps: float = 1.0e-8  # TODO make parameter
+    def __init__(self, args: None, props: TVRegularizerProps):
+        self.cost: float = props.cost
+        self.eps: float = props.eps
 
     def init_state(self, sim: ReconsState) -> None:
         return None
@@ -247,7 +265,7 @@ class ObjTotalVariation:
 
 class ObjTikhonov:
     def __init__(self, args: None, props: CostRegularizerProps):
-        self.cost = props.cost
+        self.cost: float = props.cost
 
     def init_state(self, sim: ReconsState) -> None:
         return None
@@ -269,7 +287,7 @@ class ObjTikhonov:
 
 class LayersTotalVariation:
     def __init__(self, args: None, props: CostRegularizerProps):
-        self.cost = props.cost
+        self.cost: float = props.cost
 
     def init_state(self, sim: ReconsState) -> None:
         return None
@@ -291,7 +309,7 @@ class LayersTotalVariation:
 
 class LayersTikhonov:
     def __init__(self, args: None, props: CostRegularizerProps):
-        self.cost = props.cost
+        self.cost: float = props.cost
 
     def init_state(self, sim: ReconsState) -> None:
         return None
@@ -313,7 +331,7 @@ class LayersTikhonov:
 
 class ProbePhaseTikhonov:
     def __init__(self, args: None, props: CostRegularizerProps):
-        self.cost = props.cost
+        self.cost: float = props.cost
 
     def init_state(self, sim: ReconsState) -> None:
         return None
@@ -325,7 +343,7 @@ class ProbePhaseTikhonov:
 
         phase = xp.angle(fft2(sim.probe.data))
 
-        cost = (
+        cost = t.cast(float, 
             xp.sum(abs2(xp.diff(phase, axis=-1))) +
             xp.sum(abs2(xp.diff(phase, axis=-2)))
         )

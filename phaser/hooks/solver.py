@@ -160,12 +160,18 @@ class CostRegularizerProps(Dataclass):
     cost: float
 
 
+class TVRegularizerProps(Dataclass):
+    cost: float
+    eps: float = 1.0e-8
+
+
 class CostRegularizerHook(Hook[None, CostRegularizer]):
     known = {
         'obj_l1': ('phaser.engines.common.regularizers:ObjL1', CostRegularizerProps),
-        'obj_phase_l1': ('phaser.engines.common.regularizers:ObjRecipL1', CostRegularizerProps),
+        'obj_l2': ('phaser.engines.common.regularizers:ObjL2', CostRegularizerProps),
+        'obj_phase_l1': ('phaser.engines.common.regularizers:ObjPhaseL1', CostRegularizerProps),
         'obj_recip_l1': ('phaser.engines.common.regularizers:ObjRecipL1', CostRegularizerProps),
-        'obj_tv': ('phaser.engines.common.regularizers:ObjTotalVariation', CostRegularizerProps),
+        'obj_tv': ('phaser.engines.common.regularizers:ObjTotalVariation', TVRegularizerProps),
         'obj_tikh': ('phaser.engines.common.regularizers:ObjTikhonov', CostRegularizerProps),
         'obj_tikhonov': ('phaser.engines.common.regularizers:ObjTikhonov', CostRegularizerProps),
         'layers_tv': ('phaser.engines.common.regularizers:LayersTotalVariation', CostRegularizerProps),
