@@ -2,7 +2,6 @@ import asyncio
 import json
 import typing as t
 
-import aiostream.stream
 from quart import Quart, render_template, request, Response, abort, websocket
 
 import pane
@@ -10,6 +9,7 @@ import pane
 from .types import JobID, ValidationError, WorkerID, WorkerMessage
 from .types import ManagerConnected, DashboardConnected, OkResponse
 from .server import server, Job, LocalWorker, ManualWorker, Shutdown, raise_on_shutdown
+from .util import merge_streams
 
 
 def serialize(obj: t.Any, ty: t.Any = None) -> bytes:
@@ -160,12 +160,11 @@ async def manager_websocket():
     )))
 
     async def send():
-        async with aiostream.stream.merge(
+        async for msg in merge_streams(
             server.workers.subscribe(),
             server.jobs.subscribe(),
-        ).stream() as stream:
-            async for msg in stream:
-                await websocket.send(serialize(msg))
+        ):
+            await websocket.send(serialize(msg))
 
     async def recv():
         while True:
