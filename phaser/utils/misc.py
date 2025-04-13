@@ -93,7 +93,7 @@ def shuffled(vals: t.Sequence[T], seed: t.Any = None, i: int = 0) -> t.Iterator[
         yield vals[int(idx)]
 
 
-def create_sparse_groupings(shape: t.Union[int, t.Iterable[int], NDArray[numpy.floating]], grouping: int = 8,
+def create_sparse_groupings(shape: t.Union[int, t.Iterable[int], NDArray[numpy.floating]], max_grouping: int = 8,
                             seed: t.Any = None, i: int = 0) -> list[NDArray[numpy.int64]]:
     """
     Randomly partition the indices of `shape` into groups of maximum size `grouping`.
@@ -112,37 +112,86 @@ def create_sparse_groupings(shape: t.Union[int, t.Iterable[int], NDArray[numpy.f
 
     rng = create_rng(seed, f'groupings_{i}' if i != 0 else 'groupings')
     rng.shuffle(idxs)
-    return numpy.array_split(idxs.T, numpy.ceil(idxs.shape[0] / grouping).astype(numpy.int64), axis=-1)
+    return numpy.array_split(idxs.T, numpy.ceil(idxs.shape[0] / max_grouping).astype(numpy.int64), axis=-1)
 
 
-def create_compact_groupings(positions: NDArray[numpy.floating], grouping: int = 8,
+def create_compact_groupings(positions: NDArray[numpy.floating], max_grouping: int = 8,
                              seed: t.Any = None, i: int = 0) -> list[NDArray[numpy.int64]]:
     """
-    Partition the indices of `positions` into groups of maximum size `grouping`, such that each group is spatially compact.
+    Partition the indices of `positions` into groups of maximum size `max_grouping`, such that each group is spatially compact.
 
-    Uses k-means clustering to ensure groups are spatially compact.
-
-    Returns a list of groups. Each group can be used to index an array `arr` of shape `shape`:
-    `arr[*group]`
+    Returns a list of groups. Each group can be used to index `positions`: `positions[*group]`
     """
-    from k_means_constrained import KMeansConstrained
+    from scipy.spatial import KDTree
+    from scipy.cluster.vq import kmeans2
 
-    rng = create_rng(seed, f'groupings_{i}' if i != 0 else 'groupings')
-    random_state = numpy.random.RandomState(rng.bit_generator)
-
+    pos_flat = positions.reshape(-1, 2)
     idxs = numpy.indices(positions.shape[:-1])
     idxs = idxs.reshape(idxs.shape[0], -1)
-    n_groups = numpy.ceil(idxs.shape[-1] / grouping).astype(numpy.int64)
 
-    kmeans = KMeansConstrained(n_groups, size_max=grouping, init='random', n_init=1, random_state=random_state)
-    labels = kmeans.fit_predict(positions.reshape(-1, positions.shape[-1]))
-    #_, labels = kmeans2(
-    #    positions.reshape(-1, positions.shape[-1]),
-    #    n_groups, iter=20, minit='points', missing='raise', seed=rng
-    #)
+    n_pos = pos_flat.shape[0]
+    n_groups = numpy.ceil(n_pos / max_grouping).astype(numpy.int64)
+    if n_groups == 1:
+        return [idxs]
+
+    # actual grouping
+    grouping = numpy.ceil(n_pos / n_groups).astype(numpy.int64)
+    #print(f"n_pos: {n_pos} n_groups: {n_groups} grouping: {grouping}")
+
+    # fist, we seed the group centroids using k-means clustering
+    rng = create_rng(seed, f'groupings_{i}' if i != 0 else 'groupings')
+    centroids, labels = kmeans2(pos_flat, n_groups, minit='++', missing='raise', seed=rng)
+
+    # then, we use a greedy algorithm to assign points to groups
+
+    # current group sizes
+    group_sizes = numpy.zeros(n_groups)
+    # position assignments
+    assignments = numpy.full(n_pos, -1)
+    # currently unassigned indices
+    unassigned = numpy.arange(n_pos)
+
+    tree = KDTree(centroids)
+
+    # we run two phases:
+    #   first, we assign positions into groups of exactly size k - 1
+    #   second, we assign the remaining points (less than n - k) into groups
+    for (max_group_size, n_assigned) in ((grouping - 1, (grouping - 1) * n_groups), (grouping, n_pos)):
+        n_neighbors = min(4, n_groups)
+
+        while True:
+            # compute distances to the unassigned points
+            # TODO this should probably exclude ineligible groups
+            distances, indices = tree.query(pos_flat[unassigned], n_neighbors)
+            # start by assigning the closest points
+            scan_idxs = numpy.argsort(distances[..., 0])
+            indices = indices[scan_idxs]
+            scan_idxs = unassigned[scan_idxs]
+
+            # loop through unassigned probe positions, assigning to the nearest possible group
+            for i, group_idxs in zip(scan_idxs, indices):
+                for group_idx in group_idxs:
+                    if group_sizes[group_idx] < max_group_size:
+                        assignments[i] = group_idx
+                        group_sizes[group_idx] += 1
+                        break
+
+            # check if we've assigned enough points
+            unassigned = numpy.where(assignments == -1)[0]
+            if n_pos - len(unassigned) >= n_assigned:
+                break
+
+            # we should always assign enough points after we've checked every group
+            assert n_neighbors < n_groups
+            n_neighbors = min(n_neighbors * 2, n_groups)
+
+    # check that our assignments are correct
+    group_sizes = numpy.bincount(assignments)
+    assert numpy.min(group_sizes) in (grouping - 1, grouping)
+    assert numpy.max(group_sizes) == grouping
 
     return [
-        idxs[..., labels == i]
+        idxs[..., assignments == i]
         for i in range(n_groups)
     ]
 

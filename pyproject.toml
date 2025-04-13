@@ -22,7 +22,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 
-requires-python = ">=3.10"
+requires-python = ">=3.11"  # mostly for unpack indexing arr[*group]. Can be bumped down by replacing with arr[tuple(group)]
 dependencies = [
     "numpy>=1.22,<2.3",  # tested on 1.26, 2.0
     "scipy>=1.7.0,<1.16", # tested on 1.11, 1.13
@@ -32,8 +32,7 @@ dependencies = [
     "click~=8.1.0",
     "rich~=12.0.0",
     "tifffile>=2023.8.25",
-    "k-means-constrained>=0.7.3",  # required for compact groupings
-    "py-pane==0.9.1",
+    "py-pane==0.10.0",
     "typing_extensions~=4.7",
 ]
 
@@ -70,7 +69,7 @@ docs = [
 
 [project.urls]
 Repository = "https://github.com/hexane360/phaser.git"
-Documentation = "https://hexane360.github.io/atomlib/"
+Documentation = "https://hexane360.github.io/phaser/"
 
 [project.scripts]
 phaser = "phaser.main:cli"
