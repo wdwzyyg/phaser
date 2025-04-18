@@ -4,6 +4,7 @@ import typing as t
 
 import numpy
 from numpy.typing import NDArray, DTypeLike
+from typing_extensions import Self
 
 from phaser.utils.num import (
     get_array_module, to_real_dtype, to_complex_dtype,
@@ -132,7 +133,7 @@ class SimulationState:
         self.start_iter = start_iter if start_iter is not None else self.state.iter.total_iter
         (self.ky, self.kx) = state.probe.sampling.recip_grid(dtype=dtype, xp=xp)
 
-    def apply_group_constraints(self, group: NDArray[numpy.integer]) -> t.Self:
+    def apply_group_constraints(self, group: NDArray[numpy.integer]) -> Self:
         def apply_reg(reg: GroupConstraint[t.Any], state: t.Any):
             (self.state, state) = reg.apply_group(group, self.state, state)
             return state
@@ -143,7 +144,7 @@ class SimulationState:
 
         return self
 
-    def apply_iter_constraints(self) -> t.Self:
+    def apply_iter_constraints(self) -> Self:
         def apply_reg(reg: IterConstraint[t.Any], state: t.Any):
             (self.state, state) = reg.apply_iter(self.state, state)
             return state

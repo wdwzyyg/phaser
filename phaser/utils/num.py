@@ -550,7 +550,7 @@ class Sampling:
     @t.overload
     def __init__(self,
                  shape: t.Tuple[int, int], *,
-                 extent: t.Tuple[float, float],
+                 extent: ArrayLike,
                  sampling: None = None):
         ...
 
@@ -558,7 +558,7 @@ class Sampling:
     def __init__(self,
                  shape: t.Tuple[int, int], *,
                  extent: None = None,
-                 sampling: t.Tuple[float, float]):
+                 sampling: ArrayLike):
         ...
 
     def __init__(self,

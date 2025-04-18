@@ -9,6 +9,7 @@ import pane
 from pane import field
 from pane.annotations import shape
 import pane.io
+from typing_extensions import Self
 
 from phaser.types import IsVersion
 
@@ -28,7 +29,7 @@ class EmpadMetadata(pane.PaneBase, frozen=False, kw_only=True, allow_extra=True)
     file_type: t.Literal['pyMultislicer_metadata', 'empad_metadata'] = 'empad_metadata'
 
     @classmethod
-    def from_json(cls, f: pane.io.FileOrPath) -> t.Self:
+    def from_json(cls, f: pane.io.FileOrPath) -> Self:
         path = _get_dir(f)
         self = pane.io.from_json(f, cls)
         object.__setattr__(self, 'path', path)

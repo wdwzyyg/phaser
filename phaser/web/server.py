@@ -14,6 +14,7 @@ import weakref
 import typing as t
 
 from quart import Quart, url_for, request
+from typing_extensions import Self
 
 from .types import (
     JobID, ValidationError, WorkerID,
@@ -249,7 +250,7 @@ class Job(Subscribable[JobMessage]):
         self.logs: t.List[LogRecord] = []
 
     @classmethod
-    async def from_path(cls, path: t.Union[str, Path]) -> t.List[t.Self]:
+    async def from_path(cls, path: t.Union[str, Path]) -> t.List[Self]:
         process = await asyncio.create_subprocess_exec(
             sys.executable, '-m', 'phaser', 'validate', '--json', str(path),
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
@@ -258,7 +259,7 @@ class Job(Subscribable[JobMessage]):
         return await cls._process_validate_result(stdout)
 
     @classmethod
-    async def from_yaml(cls, plan: t.Union[str, bytes]) -> t.List[t.Self]:
+    async def from_yaml(cls, plan: t.Union[str, bytes]) -> t.List[Self]:
         process = await asyncio.create_subprocess_exec(
             sys.executable, '-m', 'phaser', 'validate', '--json',
             stdin=asyncio.subprocess.PIPE,
@@ -271,7 +272,7 @@ class Job(Subscribable[JobMessage]):
         return await cls._process_validate_result(stdout)
 
     @classmethod
-    async def _process_validate_result(cls, stdout: bytes) -> t.List[t.Self]:
+    async def _process_validate_result(cls, stdout: bytes) -> t.List[Self]:
         import json
         result = json.loads(stdout)
         if result['result'] == 'error':

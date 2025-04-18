@@ -4,6 +4,7 @@ import typing as t
 
 import pane
 from pane.annotations import Tagged
+from typing_extensions import Self
 
 from phaser.types import Cancelled
 from .util import ReconsStateConverter
@@ -76,7 +77,7 @@ class JobState(pane.PaneBase):
     state: t.Dict[str, t.Any] = pane.field(converter=ReconsStateConverter(), default_factory=dict)
     worker_id: t.Optional[WorkerID] = None
 
-    def strip_state(self) -> t.Self:
+    def strip_state(self) -> Self:
         return type(self)(
             self.job_id, self.status, self.links
         )
@@ -190,7 +191,7 @@ class LogMessage(pane.PaneBase):
     msg: t.Literal['log'] = 'log'
 
     @classmethod
-    def from_logrecord(cls, job_id: t.Optional[JobID], record: logging.LogRecord) -> t.Self:
+    def from_logrecord(cls, job_id: t.Optional[JobID], record: logging.LogRecord) -> Self:
         timestamp = datetime.datetime.fromtimestamp(record.created)
         return cls(
             timestamp=timestamp,

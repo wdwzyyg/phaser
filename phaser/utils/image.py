@@ -145,7 +145,7 @@ def affine_transform(
         for idx in numpy.ndindex(input.shape[:-n_axes]):  # TODO: parallelize this on CUDA?
             scipy.ndimage.affine_transform(
                 input[tuple(idx)], xp.array(matrix), offset=offset,
-                output_shape=output_shape, output=output[*idx],
+                output_shape=output_shape, output=output[tuple(idx)],
                 order=order, mode=mode, cval=cval,
             )
 

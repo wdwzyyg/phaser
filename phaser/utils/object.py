@@ -10,6 +10,7 @@ import typing as t
 
 import numpy
 from numpy.typing import ArrayLike, DTypeLike, NDArray
+from typing_extensions import Self
 
 from .num import get_array_module, cast_array_module, to_real_dtype, as_numpy, at
 from .num import as_array, is_cupy, is_jax, NumT, ComplexT, DTypeT
@@ -97,7 +98,7 @@ def resample_slices(
         # TODO more options in this case?
         new_total_thick = numpy.sum(new_thicknesses)
 
-        slice_frac = xp.array((new_thicknesses / new_total_thick)[:, *repeat(None, obj.ndim - 1)])
+        slice_frac = xp.array((new_thicknesses / new_total_thick)[(slice(None), *repeat(None, obj.ndim - 1))])
         return xp.exp((xp.log(obj) * slice_frac).astype(obj.dtype))
 
     if obj.shape[0] != len(old_thicknesses):
@@ -235,7 +236,7 @@ class ObjectSampling:
         )
 
     @classmethod
-    def from_scan(cls: t.Type[t.Self], scan_positions: NDArray[numpy.floating], sampling: ArrayLike, pad: ArrayLike = 0) -> t.Self:
+    def from_scan(cls: t.Type[Self], scan_positions: NDArray[numpy.floating], sampling: ArrayLike, pad: ArrayLike = 0) -> Self:
         """Create an ObjectSampling around the given scan positions, padded by at least a radius `pad` in real-space."""
         sampling = as_numpy(sampling).astype(numpy.float64)
         pad = numpy.broadcast_to(pad, (2,)).astype(numpy.int_)
@@ -404,7 +405,7 @@ class ObjectSampling:
             order=order, mode=mode, cval=cval
         )
 
-    def with_sampling(self, sampling: ArrayLike) -> t.Self:
+    def with_sampling(self, sampling: ArrayLike) -> Self:
         sampling = numpy.broadcast_to(sampling, (2,))
         new_shape = numpy.ceil(self.sampling / sampling * self.shape).astype(int)
         growth = sampling * new_shape - self.sampling * self.shape
@@ -452,7 +453,7 @@ class ObjectCutout(t.Generic[DTypeT]):
         out = xp.empty(self.shape, dtype=self.obj.dtype)
         for idx in numpy.ndindex(self.pos.shape[:-1]):
             # todo make slices outside of loop
-            out[tuple(idx)] = self.obj[..., *self.sampling.slice_at_pos(self.pos[idx], self.cutout_shape)]
+            out[tuple(idx)] = self.obj[(Ellipsis, *self.sampling.slice_at_pos(self.pos[idx], self.cutout_shape))]
 
         return out
 
@@ -472,7 +473,7 @@ class ObjectCutout(t.Generic[DTypeT]):
 
         for idx in numpy.ndindex(self.pos.shape[:-1]):
             # todo make slices outside of loop
-            self.obj[..., *self.sampling.slice_at_pos(self.pos[idx], view.shape)] = view[idx]
+            self.obj[(Ellipsis, *self.sampling.slice_at_pos(self.pos[idx], view.shape))] = view[idx]
         return self
 
     def add(self, view: NDArray[DTypeT]) -> ObjectCutout[DTypeT]:
@@ -491,7 +492,7 @@ class ObjectCutout(t.Generic[DTypeT]):
 
         for idx in numpy.ndindex(self.pos.shape[:-1]):
             # todo make slices outside of loop
-            self.obj[..., *self.sampling.slice_at_pos(self.pos[idx], view.shape)] += view[idx]
+            self.obj[(Ellipsis, *self.sampling.slice_at_pos(self.pos[idx], view.shape))] += view[idx]
         return self
 
     def _with_obj(self, obj: NDArray[DTypeT]) -> ObjectCutout[DTypeT]:

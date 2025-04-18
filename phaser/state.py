@@ -2,6 +2,7 @@ import typing as t
 
 import numpy
 from numpy.typing import NDArray
+from typing_extensions import Self
 
 from phaser.utils.num import Sampling, to_numpy, get_array_module, Float
 from phaser.utils.misc import jax_dataclass
@@ -19,7 +20,7 @@ class Patterns():
     pattern_mask: NDArray[numpy.floating]
     """Mask indicating which portions of the diffraction patterns contain data."""
 
-    def to_numpy(self) -> t.Self:
+    def to_numpy(self) -> Self:
         return self.__class__(
             to_numpy(self.patterns), to_numpy(self.pattern_mask)
         )
@@ -34,12 +35,12 @@ class IterState():
     total_iter: int
     """Total iteration number. 1-indexed (0 means before any iterations)."""
 
-    def to_numpy(self) -> t.Self:
+    def to_numpy(self) -> Self:
         return self.__class__(
             int(self.engine_num), int(self.engine_iter), int(self.total_iter)
         )
 
-    def copy(self) -> t.Self:
+    def copy(self) -> Self:
         import copy
         return copy.deepcopy(self)
 
@@ -60,7 +61,7 @@ class ProbeState():
         rotation: float = 0.0,
         order: int = 1,
         mode: '_BoundaryMode' = 'grid-constant',
-    ) -> t.Self:
+    ) -> Self:
         new_data = self.sampling.resample(
             self.data, new_samp,
             rotation=rotation,
@@ -69,17 +70,17 @@ class ProbeState():
         )
         return self.__class__(new_samp, new_data)
 
-    def to_xp(self, xp: t.Any) -> t.Self:
+    def to_xp(self, xp: t.Any) -> Self:
         return self.__class__(
             self.sampling, xp.array(self.data)
         )
 
-    def to_numpy(self) -> t.Self:
+    def to_numpy(self) -> Self:
         return self.__class__(
             self.sampling, to_numpy(self.data)
         )
 
-    def copy(self) -> t.Self:
+    def copy(self) -> Self:
         import copy
         return copy.deepcopy(self)
 
@@ -96,12 +97,12 @@ class ObjectState():
     Length < 2 for single slice, equal to the number of slices otherwise.
     """
 
-    def to_xp(self, xp: t.Any) -> t.Self:
+    def to_xp(self, xp: t.Any) -> Self:
         return self.__class__(
             self.sampling, xp.array(self.data), xp.array(self.thicknesses)
         )
 
-    def to_numpy(self) -> t.Self:
+    def to_numpy(self) -> Self:
         return self.__class__(
             self.sampling, to_numpy(self.data), to_numpy(self.thicknesses)
         )
@@ -112,7 +113,7 @@ class ObjectState():
             return xp.array([0.], dtype=self.thicknesses.dtype)
         return xp.cumsum(self.thicknesses) - self.thicknesses
 
-    def copy(self) -> t.Self:
+    def copy(self) -> Self:
         import copy
         return copy.deepcopy(self)
 
@@ -124,12 +125,12 @@ class ProgressState:
     detector_errors: NDArray[numpy.floating]
     """Detector error measurements at those iterations"""
 
-    def to_numpy(self) -> t.Self:
+    def to_numpy(self) -> Self:
         return self.__class__(
             to_numpy(self.iters), to_numpy(self.detector_errors)
         )
 
-    def copy(self) -> t.Self:
+    def copy(self) -> Self:
         import copy
         return copy.deepcopy(self)
 
@@ -164,7 +165,7 @@ class ReconsState:
     """Scan coordinates (y, x), in length units. Shape (..., 2)"""
     progress: ProgressState
 
-    def to_xp(self, xp: t.Any) -> t.Self:
+    def to_xp(self, xp: t.Any) -> Self:
         return self.__class__(
             iter=self.iter,
             probe=self.probe.to_xp(xp),
@@ -174,7 +175,7 @@ class ReconsState:
             wavelength=self.wavelength,
         )
 
-    def to_numpy(self) -> t.Self:
+    def to_numpy(self) -> Self:
         return self.__class__(
             iter=self.iter.to_numpy(),
             probe=self.probe.to_numpy(),
@@ -184,7 +185,7 @@ class ReconsState:
             wavelength=float(self.wavelength),
         )
 
-    def copy(self) -> t.Self:
+    def copy(self) -> Self:
         import copy
         return copy.deepcopy(self)
 
@@ -209,7 +210,7 @@ class PartialReconsState:
     """Scan coordinates (y, x), in length units. Shape (..., 2)"""
     progress: t.Optional[ProgressState] = None
 
-    def to_numpy(self) -> t.Self:
+    def to_numpy(self) -> Self:
         return self.__class__(
             iter=self.iter.to_numpy() if self.iter is not None else None,
             probe=self.probe.to_numpy() if self.probe is not None else None,

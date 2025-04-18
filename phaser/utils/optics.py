@@ -9,26 +9,26 @@ import numpy
 from numpy.typing import NDArray, ArrayLike
 
 from .num import get_array_module, ifft2, abs2, NumT, ufunc_outer, is_jax, cast_array_module
-from .num import Sampling, to_complex_dtype, to_real_dtype, split_array, to_numpy
+from .num import Float, Sampling, to_complex_dtype, to_real_dtype, split_array, to_numpy
 
 
 @t.overload
-def make_focused_probe(ky: NDArray[numpy.float64], kx: NDArray[numpy.float64], wavelength: float,
-                       aperture: float, *, defocus: float = 0.) -> NDArray[numpy.complex128]:
+def make_focused_probe(ky: NDArray[numpy.float64], kx: NDArray[numpy.float64], wavelength: Float,
+                       aperture: Float, *, defocus: Float = 0.) -> NDArray[numpy.complex128]:
     ...
 
 @t.overload
-def make_focused_probe(ky: NDArray[numpy.float32], kx: NDArray[numpy.float32], wavelength: float,
-                       aperture: float, *, defocus: float = 0.) -> NDArray[numpy.complex64]:
+def make_focused_probe(ky: NDArray[numpy.float32], kx: NDArray[numpy.float32], wavelength: Float,
+                       aperture: Float, *, defocus: Float = 0.) -> NDArray[numpy.complex64]:
     ...
 
 @t.overload
-def make_focused_probe(ky: NDArray[numpy.floating], kx: NDArray[numpy.floating], wavelength: float,
-                       aperture: float, *, defocus: float = 0.) -> NDArray[numpy.complexfloating]:
+def make_focused_probe(ky: NDArray[numpy.floating], kx: NDArray[numpy.floating], wavelength: Float,
+                       aperture: Float, *, defocus: Float = 0.) -> NDArray[numpy.complexfloating]:
     ...
 
-def make_focused_probe(ky: NDArray[numpy.floating], kx: NDArray[numpy.floating], wavelength: float,
-                       aperture: float, *, defocus: float = 0.) -> NDArray[numpy.complexfloating]:
+def make_focused_probe(ky: NDArray[numpy.floating], kx: NDArray[numpy.floating], wavelength: Float,
+                       aperture: Float, *, defocus: Float = 0.) -> NDArray[numpy.complexfloating]:
     """
     Create a focused probe from a circular aperture of semi-angle `aperture` (in mrad).
 
@@ -171,24 +171,24 @@ def fourier_shift_filter(ky: NDArray[numpy.floating], kx: NDArray[numpy.floating
 
 
 @t.overload
-def fresnel_propagator(ky: NDArray[numpy.float64], kx: NDArray[numpy.float64], wavelength: float,
-                       delta_z: float, tilt: t.Tuple[float, float] = (0., 0.)) -> NDArray[numpy.complex128]:
+def fresnel_propagator(ky: NDArray[numpy.float64], kx: NDArray[numpy.float64], wavelength: Float,
+                       delta_z: Float, tilt: t.Tuple[float, float] = (0., 0.)) -> NDArray[numpy.complex128]:
     ...
 
 @t.overload
-def fresnel_propagator(ky: NDArray[numpy.float32], kx: NDArray[numpy.float32], wavelength: float,
-                       delta_z: float, tilt: t.Tuple[float, float] = (0., 0.)) -> NDArray[numpy.complex64]:
+def fresnel_propagator(ky: NDArray[numpy.float32], kx: NDArray[numpy.float32], wavelength: Float,
+                       delta_z: Float, tilt: t.Tuple[float, float] = (0., 0.)) -> NDArray[numpy.complex64]:
     ...
 
 
 @t.overload
-def fresnel_propagator(ky: NDArray[numpy.floating], kx: NDArray[numpy.floating], wavelength: float,
-                       delta_z: float, tilt: t.Tuple[float, float] = (0., 0.)) -> NDArray[numpy.complexfloating]:
+def fresnel_propagator(ky: NDArray[numpy.floating], kx: NDArray[numpy.floating], wavelength: Float,
+                       delta_z: Float, tilt: t.Tuple[float, float] = (0., 0.)) -> NDArray[numpy.complexfloating]:
     ...
 
 
-def fresnel_propagator(ky: NDArray[numpy.floating], kx: NDArray[numpy.floating], wavelength: float,
-                       delta_z: float, tilt: t.Tuple[float, float] = (0., 0.)) -> NDArray[numpy.complexfloating]:
+def fresnel_propagator(ky: NDArray[numpy.floating], kx: NDArray[numpy.floating], wavelength: Float,
+                       delta_z: Float, tilt: t.Tuple[float, float] = (0., 0.)) -> NDArray[numpy.complexfloating]:
     """
     Return a Fresnel diffraction filter in frequency space, for use in free-space propagation. Roughly taken from Kirkland [1].
 
@@ -212,8 +212,8 @@ def fresnel_propagator(ky: NDArray[numpy.floating], kx: NDArray[numpy.floating],
 
 
 
-def estimate_probe_radius(wavelength: float, aperture: float, defocus: float, *,
-                          threshold: t.Union[t.Literal['geom'], float] = 0.9, xp: t.Any = None) -> float:
+def estimate_probe_radius(wavelength: Float, aperture: Float, defocus: Float, *,
+                          threshold: t.Union[t.Literal['geom'], Float] = 0.9, xp: t.Any = None) -> float:
     """
     Estimate the radius of a probe created by a circular aperture of
     maximum semi-angle `aperture` (in mrad) defocused by `defocus` (in length units).
@@ -265,10 +265,10 @@ def estimate_probe_radius(wavelength: float, aperture: float, defocus: float, *,
 
 
 def calc_metrics(*,
-    wavelength: t.Optional[float] = None, voltage: t.Optional[float] = None,
-    conv_angle: float, defocus: float, scan_step: float, diff_step: float,
-    probe_radius: t.Optional[float] = None, xp: t.Any = None,
-    threshold: t.Union[t.Literal['geom'], float] = 0.9,
+    wavelength: t.Optional[Float] = None, voltage: t.Optional[Float] = None,
+    conv_angle: Float, defocus: Float, scan_step: Float, diff_step: Float,
+    probe_radius: t.Optional[Float] = None, xp: t.Any = None,
+    threshold: t.Union[t.Literal['geom'], Float] = 0.9,
 ) -> t.Dict[str, float]:
     """
     Calculate sampling metrics for the given parameters. Units are as follows:

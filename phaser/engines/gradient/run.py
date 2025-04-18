@@ -6,6 +6,7 @@ import typing as t
 
 import numpy
 from numpy.typing import NDArray
+from typing_extensions import Self
 
 from phaser.hooks.solver import NoiseModel
 from phaser.utils.misc import create_sparse_groupings, create_compact_groupings, shuffled, jax_dataclass
@@ -140,7 +141,7 @@ class SolverStates:
         group_solvers: t.Iterable[GradientSolver[t.Any]],
         regularizers: t.Iterable[CostRegularizer[t.Any]],
         group_constraints: t.Iterable[GroupConstraint[t.Any]],
-    ) -> t.Self:
+    ) -> Self:
         noise_model_state = noise_model.init_state(sim)
         group_solver_states = [solver.init_state(sim) for solver in group_solvers]
         regularizer_states = [reg.init_state(sim) for reg in regularizers]

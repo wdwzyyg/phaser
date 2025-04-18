@@ -7,6 +7,7 @@ from pane.converters import Converter, make_converter, ConverterHandlers, ErrorN
 from pane.annotations import ConvertAnnotation, Condition, adjective_condition
 from pane.errors import ParseInterrupt, WrongTypeError
 from pane.util import pluralize, list_phrase
+from typing_extensions import Self
 
 if t.TYPE_CHECKING:
     from phaser.hooks import FlagArgs
@@ -112,7 +113,7 @@ class Flag(Dataclass):
             and (i - self.after) % self.every == 0
         )
 
-    def resolve(self) -> t.Self:
+    def resolve(self) -> Self:
         return self
 
 
@@ -180,15 +181,15 @@ class _VersionConverter(Converter[t.Any]):
         if self.min is not None and self.max is not None:
             min_s = '.'.join(map(str, self.min))
             max_s = '.'.join(map(str, self.max))
-            return f"{pluralize("version", plural)} between {min_s} and {max_s}"
+            return f"{pluralize('version', plural)} between {min_s} and {max_s}"
         elif self.min is not None:
             min_s = '.'.join(map(str, self.min))
-            return f"{pluralize("version", plural)} at least {min_s}"
+            return f"{pluralize('version', plural)} at least {min_s}"
         elif self.max is not None:
             max_s = '.'.join(map(str, self.max))
-            return f"{pluralize("version", plural)} at most {max_s}"
+            return f"{pluralize('version', plural)} at most {max_s}"
         else:
-            return f"version {pluralize("string", plural)}"
+            return f"version {pluralize('string', plural)}"
 
     def into_data(self, val: t.Any) -> str:
         return str(val)
