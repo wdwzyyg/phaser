@@ -1,6 +1,7 @@
 
 from pathlib import Path
-import re
+import warnings
+import logging
 import typing as t
 
 import numpy
@@ -13,6 +14,8 @@ from .. import LoadEmpadProps, RawData
 
 
 def load_empad(args: None, props: LoadEmpadProps) -> RawData:
+    logger = logging.getLogger(__name__)
+
     path = Path(props.path).expanduser()
 
     if path.suffix.lower() == '.json':  # load as metadata
@@ -24,6 +27,8 @@ def load_empad(args: None, props: LoadEmpadProps) -> RawData:
         voltage = props.kv * 1e3 if props.kv is not None else meta.voltage
         diff_step = props.diff_step or meta.diff_step
         scan_shape = meta.scan_shape
+        adu = props.adu or meta.adu
+        needs_scale = not meta.is_simulated()
 
         probe_hook = {
             'type': 'focused',
@@ -44,6 +49,8 @@ def load_empad(args: None, props: LoadEmpadProps) -> RawData:
         diff_step = props.diff_step
         scan_shape = None
         probe_hook = scan_hook = None
+        adu = None
+        needs_scale = False
 
     if voltage is None:
         raise ValueError("'kv'/'voltage' must be specified by metadata or passed to 'raw_data'")
@@ -56,6 +63,13 @@ def load_empad(args: None, props: LoadEmpadProps) -> RawData:
         raise ValueError(f"Couldn't find raw data at path {path}")
 
     patterns = numpy.fft.ifftshift(load_4d(path, scan_shape, memmap=True), axes=(-1, -2))
+
+    if needs_scale:
+        if adu is None:
+            warnings.warn("ADU not supplied for experimental dataset. This is not recommended.")
+        else:
+            logger.info(f"Scaling patterns by ADU ({adu:.1f})")
+            patterns /= adu
 
     a = wavelength / (diff_step * 1e-3)  # recip. pixel size -> 1 / real space extent
     sampling = Sampling(patterns.shape[-2:], extent=(a, a))

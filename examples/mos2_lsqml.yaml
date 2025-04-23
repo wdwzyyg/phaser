@@ -68,7 +68,7 @@ engines:
 
    noise_model:
      type: 'anscombe'
-     eps: 0.1
+     eps: 1.0e-4
 
    solver:
      type: 'lsqml'

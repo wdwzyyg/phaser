@@ -33,6 +33,7 @@ class LoadEmpadProps(Dataclass):
     diff_step: t.Optional[float] = None
     kv: t.Optional[float] = None
     adu: t.Optional[float] = None
+    sim: t.Optional[bool] = None
 
 
 class RawDataHook(Hook[None, RawData]):

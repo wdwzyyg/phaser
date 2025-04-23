@@ -23,7 +23,8 @@ class BenchmarkObserver(Observer):
         self.iter_times: t.List[float] = []
         super().__init__()
 
-    def update_iteration(self, state: t.Union[ReconsState, PartialReconsState], i: int, n: int, error: t.Optional[float] = None):
+    def update_iteration(self, state: t.Union[ReconsState, PartialReconsState],
+                         i: int, n: int, error: t.Optional[float] = None):
         finish_time = time.monotonic()
 
         if self.iter_start_time is not None:

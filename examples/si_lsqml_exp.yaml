@@ -1,18 +1,15 @@
 ---
-name: "si_lsqml"
-backend: jax
+name: "si_lsqml_exp"
+backend: cupy
 
 # raw data source
 raw_data:
   type: empad
-  path: "~/Downloads/si-final4/Si_110_Sn_300kV_conv25_defocus10_tds/Si_110_Sn_300kV_conv25_defocus10_tds_199.70_dstep0.8.json"
-
-#init:
-#  state: "si_grad/iter200.h5"
+  path: "~/raw-ptycho/Si-20230920/acq10_20over/acq10_20over.json"
 
 post_load:
- - type: poisson
-   scale: 7.25e+5
+  - type: crop_data
+    crop: [0, 90, 0, 90]
 
 # for each reconstruction engine
 engines:
@@ -22,41 +19,45 @@ engines:
  - type: 'conventional'
    probe_modes: 4
    slices:
-     n: 20
+     n: 10
      total_thickness: 200
 
    niter: 500
    grouping: 128
+   bwlim_frac: 1.0
 
    noise_model:
      type: 'amplitude'
-     eps: 1.0e-2
+     eps: 1.0e+0
 
    solver:
      type: 'lsqml'
-     beta_probe: 0.9
-     beta_object: 0.9
-     gamma: 1.0e-2
+     beta_probe: 0.5
+     beta_object: 0.5
+     gamma: 1.0e+2
 
      illum_reg_object: 50.0
 
    position_solver:
      type: momentum
      momentum: 0.90
-     step_size: 8.0e-2
+     step_size: 5.0e-2
      max_step_size: 0.2
 
    group_constraints:
      - type: limit_probe_support
-       max_angle: 26.0
+       max_angle: 22.0
    iter_constraints:
      - type: layers
-       sigma: 40.0
-       weight: 0.8
+       sigma: 100.0
+       weight: 0.1
      - remove_phase_ramp
+     - type: clamp_object_amplitude
+       amplitude: 1.0
 
    update_probe: {after: 5}
    update_positions: {after: 5}
+   #send_every_group: True
 
    save: {every: 5}
    save_images: {every: 5}
