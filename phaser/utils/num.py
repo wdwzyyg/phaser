@@ -550,7 +550,7 @@ class Sampling:
     @t.overload
     def __init__(self,
                  shape: t.Tuple[int, int], *,
-                 extent: ArrayLike,
+                 extent: t.Union[ArrayLike, t.Tuple[Float, Float]],
                  sampling: None = None):
         ...
 
@@ -558,13 +558,13 @@ class Sampling:
     def __init__(self,
                  shape: t.Tuple[int, int], *,
                  extent: None = None,
-                 sampling: ArrayLike):
+                 sampling: t.Union[ArrayLike, t.Tuple[Float, Float]]):
         ...
 
     def __init__(self,
                  shape: ArrayLike, *,
-                 extent: t.Optional[ArrayLike] = None,
-                 sampling: t.Optional[ArrayLike] = None):
+                 extent: t.Union[ArrayLike, t.Tuple[Float, Float], None] = None,
+                 sampling: t.Union[ArrayLike, t.Tuple[Float, Float], None] = None):
         try:
             object.__setattr__(self, 'shape', numpy.broadcast_to(as_numpy(shape).astype(numpy.int_), (2,)))
         except ValueError as e:
@@ -572,13 +572,17 @@ class Sampling:
 
         if extent is not None:
             try:
-                object.__setattr__(self, 'extent', numpy.broadcast_to(as_numpy(extent).astype(numpy.float64), (2,)))
+                object.__setattr__(self, 'extent', numpy.broadcast_to(
+                    as_numpy(t.cast(ArrayLike, extent)).astype(numpy.float64), (2,)
+                ))
             except ValueError as e:
                 raise ValueError(f"Expected an extent (b, a), instead got: {extent}") from e
             object.__setattr__(self, 'sampling', self.extent / self.shape)
         elif sampling is not None:
             try:
-                object.__setattr__(self, 'sampling', numpy.broadcast_to(as_numpy(sampling).astype(numpy.float64), (2,)))
+                object.__setattr__(self, 'sampling', numpy.broadcast_to(
+                    as_numpy(t.cast(ArrayLike, sampling)).astype(numpy.float64), (2,)
+                ))
             except ValueError as e:
                 raise ValueError(f"Expected a sampling (s_y, s_x), instead got: {sampling}") from e
             object.__setattr__(self, 'extent', self.sampling * self.shape)

@@ -4,11 +4,11 @@ import re
 import typing as t
 
 import numpy
-from numpy.typing import NDArray
 import pane
-from pane import field
-from pane.annotations import shape
 import pane.io
+from numpy.typing import NDArray
+from pane.annotations import shape
+from pane.convert import IntoConverterHandlers
 from typing_extensions import Self
 
 from phaser.types import IsVersion
@@ -29,9 +29,10 @@ class EmpadMetadata(pane.PaneBase, frozen=False, kw_only=True, allow_extra=True)
     file_type: t.Literal['pyMultislicer_metadata', 'empad_metadata'] = 'empad_metadata'
 
     @classmethod
-    def from_json(cls, f: pane.io.FileOrPath) -> Self:
+    def from_json(cls, f: pane.io.FileOrPath, *,
+                  custom: t.Optional[IntoConverterHandlers] = None) -> Self:
         path = _get_dir(f)
-        self = pane.io.from_json(f, cls)
+        self = pane.io.from_json(f, cls, custom=custom)
         object.__setattr__(self, 'path', path)
         return self
 
@@ -50,7 +51,7 @@ class EmpadMetadata(pane.PaneBase, frozen=False, kw_only=True, allow_extra=True)
     orig_path: t.Optional[Path] = None
     """Original path to experimental folder."""
 
-    path: t.Optional[Path] = field(init=False, exclude=True)
+    path: t.Optional[Path] = pane.field(init=False, exclude=True)
     """Current path to experimental folder (based on metadata loading)"""
 
     author: t.Optional[str] = None

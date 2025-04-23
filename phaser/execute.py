@@ -253,6 +253,10 @@ def initialize_reconstruction(
 
 
 def prepare_for_engine(patterns: Patterns, state: ReconsState, xp: t.Any, engine: EnginePlan) -> t.Tuple[Patterns, ReconsState]:
+    # TODO: more graceful
+    if isinstance(engine, GradientEnginePlan) and not xp_is_jax(xp):
+        raise ValueError("The gradient descent engine requires the jax backend.")
+
     state = state.to_xp(xp)
 
     if engine.sim_shape is not None and engine.sim_shape != state.probe.data.shape[-2:]:
@@ -276,9 +280,6 @@ def prepare_for_engine(patterns: Patterns, state: ReconsState, xp: t.Any, engine
         new_sampling = state.object.sampling.with_sampling(state.probe.sampling.sampling)
         state.object.data = state.object.sampling.resample(state.object.data, new_sampling)
         state.object.sampling = new_sampling
-
-    if isinstance(engine, GradientEnginePlan) and not xp_is_jax(xp):
-        raise ValueError("The gradient descent engine requires the jax backend.")
 
     current_probe_modes = state.probe.data.shape[0]
     if engine.probe_modes != current_probe_modes:

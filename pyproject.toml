@@ -87,3 +87,12 @@ markers = [
     "expected_filename: Filename to load expected result from",
 ]
 
+[tool.pyright]
+typeCheckingMode = "standard"
+exclude = [
+    "tests", "notebooks/", "examples", ".github",
+    "build", "venv", ".venv",
+    "**/node_modules", "**/__pycache__"
+]
+
+reportIncompatibleMethodOverride = "information"

@@ -6,7 +6,7 @@ from numpy.typing import NDArray
 
 from phaser.hooks.solver import NoiseModel
 from phaser.plan import AmplitudeNoisePlan, AnscombeNoisePlan, PoissonNoisePlan
-from phaser.utils.num import get_array_module
+from phaser.utils.num import get_array_module, Float
 from phaser.state import ReconsState
 
 
@@ -33,7 +33,7 @@ class AmplitudeNoiseModel(NoiseModel[None]):
         exp_patterns: NDArray[numpy.floating],
         mask: NDArray[numpy.floating], 
         state: None
-    ) -> t.Tuple[float, None]:
+    ) -> t.Tuple[Float, None]:
         xp = get_array_module(model_wave, model_intensity, exp_patterns, mask)
         patterns = xp.maximum(exp_patterns, 0.0)
 
@@ -90,7 +90,7 @@ class PoissonNoiseModel(NoiseModel[None]):
         exp_patterns: NDArray[numpy.floating],
         mask: NDArray[numpy.floating], 
         state: None
-    ) -> t.Tuple[float, None]:
+    ) -> t.Tuple[Float, None]:
         xp = get_array_module(model_wave, model_intensity, exp_patterns, mask)
         patterns = xp.maximum(exp_patterns, 0.0)
         #intensity - patterns * xp.log(intensity + self.offset)
@@ -100,7 +100,7 @@ class PoissonNoiseModel(NoiseModel[None]):
             model_intensity + patterns * (xp.log(patterns + self.eps) - xp.log(model_intensity + self.eps) - 1.0)
             #patterns - (model_intensity + self.offset) * xp.log(patterns)
         )).astype(exp_patterns.dtype)
-        return (t.cast(float, loss), state)
+        return (loss, state)
 
     def calc_wave_update(
         self,

@@ -211,7 +211,6 @@ def fresnel_propagator(ky: NDArray[numpy.floating], kx: NDArray[numpy.floating],
         .astype(to_complex_dtype(k2.dtype))
 
 
-
 def estimate_probe_radius(wavelength: Float, aperture: Float, defocus: Float, *,
                           threshold: t.Union[t.Literal['geom'], Float] = 0.9, xp: t.Any = None) -> float:
     """
@@ -226,7 +225,7 @@ def estimate_probe_radius(wavelength: Float, aperture: Float, defocus: Float, *,
     aperture *= 1e-3  # mrad -> rad
 
     if threshold == 'geom':
-        return defocus * aperture
+        return float(defocus * aperture)
 
     rel_defocus = numpy.abs(defocus) / wavelength
 
@@ -265,10 +264,10 @@ def estimate_probe_radius(wavelength: Float, aperture: Float, defocus: Float, *,
 
 
 def calc_metrics(*,
-    wavelength: t.Optional[Float] = None, voltage: t.Optional[Float] = None,
-    conv_angle: Float, defocus: Float, scan_step: Float, diff_step: Float,
-    probe_radius: t.Optional[Float] = None, xp: t.Any = None,
-    threshold: t.Union[t.Literal['geom'], Float] = 0.9,
+    wavelength: t.Optional[float] = None, voltage: t.Optional[float] = None,
+    conv_angle: float, defocus: float, scan_step: float, diff_step: float,
+    probe_radius: t.Optional[float] = None, xp: t.Any = None,
+    threshold: t.Union[t.Literal['geom'], float] = 0.9,
 ) -> t.Dict[str, float]:
     """
     Calculate sampling metrics for the given parameters. Units are as follows:

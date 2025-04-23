@@ -181,6 +181,8 @@ class _VersionConverter(Converter[t.Any]):
         if self.min is not None and self.max is not None:
             min_s = '.'.join(map(str, self.min))
             max_s = '.'.join(map(str, self.max))
+            if self.min == self.max:
+                return f"{pluralize('version', plural)} {min_s}"
             return f"{pluralize('version', plural)} between {min_s} and {max_s}"
         elif self.min is not None:
             min_s = '.'.join(map(str, self.min))
@@ -199,6 +201,7 @@ class _VersionConverter(Converter[t.Any]):
         def to_int(seg: t.Union[int, str]) -> int:
             if isinstance(seg, int):
                 return seg
+            seg = seg.strip()
             if not seg.isdigit():
                 raise ValueError()
             return int(seg)
@@ -206,9 +209,12 @@ class _VersionConverter(Converter[t.Any]):
         return tuple(map(to_int, val.split('.') if isinstance(val, str) else val))
 
     def check_version(self, val: t.Tuple[int, ...]):
-        if self.min is not None and val < self.min:
+        if self.min == self.max:
+            if self.min is not None and val != self.min:
+                raise ValueError(f"Version {'.'.join(map(str, val))} is not supported version {'.'.join(map(str, self.min))}")
+        elif self.min is not None and val < self.min:
             raise ValueError(f"Version {'.'.join(map(str, val))} less than minimum supported version {'.'.join(map(str, self.min))}")
-        if self.max is not None and val > self.max:
+        elif self.max is not None and val > self.max:
             raise ValueError(f"Version {'.'.join(map(str, val))} greater than maximum supported version {'.'.join(map(str, self.max))}")
 
     def try_convert(self, val: t.Any) -> str:

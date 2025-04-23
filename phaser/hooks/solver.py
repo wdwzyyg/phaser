@@ -5,6 +5,7 @@ import numpy
 from numpy.typing import NDArray
 
 from phaser.types import Dataclass, ReconsVar
+from phaser.utils.num import Float
 from . import Hook
 
 StateT = t.TypeVar('StateT')
@@ -33,7 +34,7 @@ class NoiseModel(HasState[StateT], t.Protocol[StateT]):
         exp_patterns: NDArray[numpy.floating],
         mask: NDArray[numpy.floating], 
         state: StateT,
-    ) -> t.Tuple[float, StateT]:
+    ) -> t.Tuple[Float, StateT]:
         """
         Return the calculated loss, summed across the detector and averaged across the scan.
 
@@ -230,7 +231,7 @@ class ConventionalSolverHook(Hook['ConventionalEnginePlan', ConventionalSolver])
 
 class GradientSolver(HasState[StateT], t.Protocol[StateT]):
     name: str
-    params: t.AbstractSet[ReconsVar]
+    params: t.FrozenSet[ReconsVar]
 
     def init_state(self, sim: 'ReconsState') -> StateT:
         ...

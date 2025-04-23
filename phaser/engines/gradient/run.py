@@ -12,7 +12,7 @@ from phaser.hooks.solver import NoiseModel
 from phaser.utils.misc import create_sparse_groupings, create_compact_groupings, shuffled, jax_dataclass
 from phaser.utils.num import (
     get_array_module, cast_array_module, jit,
-    fft2, ifft2, abs2, check_finite, at
+    fft2, ifft2, abs2, check_finite, at, Float
 )
 from phaser.utils.optics import fourier_shift_filter
 from phaser.utils.io import OutputDir
@@ -266,6 +266,8 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
                 check_finite(state.object.data, state.probe.data, context=f"object or probe, group {group_i}")
                 observer.update_group(state, props.send_every_group)
 
+            loss = float(numpy.mean(losses))
+
             # update per-iteration solvers
             for (sol_i, solver) in enumerate(iter_solvers):
                 solver_grads = filter_vars(iter_grads, solver.params)
@@ -281,7 +283,6 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
                     state, iter_constraint_states[reg_i]
                 )
 
-            loss = float(numpy.mean(losses))
             observer.update_iteration(state, i, props.niter, loss)
 
             state.progress.iters = numpy.concatenate([state.progress.iters, [i + start_i]])
@@ -373,7 +374,7 @@ def run_model(
     solver_states: SolverStates,
     xp: t.Any,
     dtype: t.Type[numpy.floating],
-) -> t.Tuple[float, SolverStates]:
+) -> t.Tuple[Float, SolverStates]:
     # apply vars to simulation
     sim = insert_vars(vars, sim, group)
     group_scan = sim.scan

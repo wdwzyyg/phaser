@@ -7,6 +7,9 @@ raw_data:
   type: empad
   path: "~/Downloads/si-final4/Si_110_Sn_300kV_conv25_defocus10_tds/Si_110_Sn_300kV_conv25_defocus10_tds_199.70_dstep0.8.json"
 
+init:
+  state: "si_grad/iter200.h5"
+
 post_load:
  - type: poisson
    scale: 1.0e+7

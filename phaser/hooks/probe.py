@@ -8,6 +8,11 @@ from . import ProbeHookArgs, FocusedProbeProps
 def focused_probe(args: ProbeHookArgs, props: FocusedProbeProps) -> ProbeState:
     logger = logging.getLogger(__name__)
 
+    if props.conv_angle is None:
+        raise ValueError("Probe 'conv_angle' must be specified by metadata or manually")
+    if props.defocus is None:
+        raise ValueError("Probe 'defocus' must be specified by metadata or manually")
+
     logger.info(f"Making probe, conv_angle {props.conv_angle} mrad, defocus {props.defocus} A")
 
     sampling = args['sampling']

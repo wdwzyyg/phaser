@@ -24,9 +24,10 @@ post_load: []
 wavelength: 0.0251
 
 # How to initialize probe, object, and probe positions
-init_probe: ~
-init_object: ~
-init_scan: ~
+init:
+  probe: ~
+  object: ~
+  scan: ~
 
 # (optional) For multislice reconstructions, specify initial slices to use
 slices:
