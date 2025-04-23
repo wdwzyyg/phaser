@@ -188,7 +188,7 @@ def run_worker(url: str, quiet: bool = False):
         if action == 'reload':
             logger.info("Worker reloading", extra={'local': True})
             # instead of sending disconnect message, signal here
-            sys.exit(128 + signal.SIGHUP)
+            sys.exit(128 + getattr(signal, 'SIGHUP', 1))
 
         # disconnect message
         logger.info("Worker shutting down normally", extra={'local': True})

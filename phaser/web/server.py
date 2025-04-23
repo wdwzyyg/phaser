@@ -151,7 +151,7 @@ class LocalWorker(Worker):
             self.process.join()
 
             sig = t.cast(int, self.process.exitcode) - 128
-            if sig == signal.SIGHUP:
+            if sig == getattr(signal, 'SIGHUP', 1):
                 # restart process
                 self._start()
                 continue

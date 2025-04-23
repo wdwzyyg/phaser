@@ -1,6 +1,7 @@
 import asyncio
 import json
 import typing as t
+import sys
 
 from quart import Quart, render_template, request, Response, abort, websocket
 
@@ -56,6 +57,8 @@ async def start_worker(worker_type: str):
     elif worker_type == 'local':
         worker = LocalWorker(worker_id, server.get_worker_url(worker_id))
     elif worker_type == 'slurm':
+        if sys.platform not in ('linux', 'darwin'):
+            abort(Response(f"Slurm not supported on platform '{sys.platform}'", 400))
         try:
             await server.slurm_manager.check_slurm_exists()
         except RuntimeError as e:
