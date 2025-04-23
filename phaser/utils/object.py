@@ -469,7 +469,7 @@ class ObjectCutout(t.Generic[DTypeT]):
         if is_cupy(self.obj):
             try:
                 from ._cuda_kernels import get_cutouts
-                return get_cutouts(self.obj, self._start_idxs, self.cutout_shape)  # type: ignore
+                return get_cutouts(self.obj, self._start_idxs, self.cutout_shape, numpy.bool(1).astype(self.obj.dtype))  # type: ignore
             except (ImportError, NotImplementedError):
                 pass
 

@@ -14,9 +14,7 @@ import numpy
 # x is the fast axis (warp axis)
 
 # TODO:
-#   much more thorough testing
-#   support >2d objects (just add wrapper around?)
-#   optimize block size
+#   optimize block size, optimize warps?
 
 def set_cutouts(obj: cupy.ndarray, cutouts: cupy.ndarray, start_idxs: cupy.ndarray):
     assert obj.ndim >= 2
@@ -44,12 +42,13 @@ def set_cutouts(obj: cupy.ndarray, cutouts: cupy.ndarray, start_idxs: cupy.ndarr
 
     start_idxs = cupy.ascontiguousarray(start_idxs.astype(cupy.uint64))
 
-    args = (obj, cupy.ascontiguousarray(cutouts), start_idxs, n_cutouts, n_objects, *obj.shape[-2:], *cutouts.shape[-2:])
+    default = numpy.bool(0).astype(obj.dtype)
+    args = (obj, cupy.ascontiguousarray(cutouts), start_idxs, n_cutouts, n_objects, *obj.shape[-2:], *cutouts.shape[-2:], default)
     kernel(grid, block, args)
     return cutouts
 
 
-def get_cutouts(obj: cupy.ndarray, start_idxs: cupy.ndarray, cutout_shape: t.Tuple[int, int]) -> cupy.ndarray:
+def get_cutouts(obj: cupy.ndarray, start_idxs: cupy.ndarray, cutout_shape: t.Tuple[int, int], default: cupy.generic) -> cupy.ndarray:
     assert obj.ndim >= 2
 
     kernel = _get_cutout_kernel(obj.dtype, 'get')
@@ -71,7 +70,7 @@ def get_cutouts(obj: cupy.ndarray, start_idxs: cupy.ndarray, cutout_shape: t.Tup
 
     start_idxs = cupy.ascontiguousarray(start_idxs.astype(cupy.uint64))
 
-    args = (cupy.ascontiguousarray(obj), cutouts, start_idxs, n_cutouts, n_objects, *obj.shape[-2:], *cutouts.shape[-2:])
+    args = (cupy.ascontiguousarray(obj), cutouts, start_idxs, n_cutouts, n_objects, *obj.shape[-2:], *cutouts.shape[-2:], default)
     kernel(grid, block, args)
     return cutouts
 
@@ -102,7 +101,8 @@ def add_cutouts(obj: cupy.ndarray, cutouts: cupy.ndarray, start_idxs: cupy.ndarr
 
     start_idxs = cupy.ascontiguousarray(start_idxs.astype(cupy.uint64))
 
-    args = (obj, cupy.ascontiguousarray(cutouts), start_idxs, n_cutouts, n_objects, *obj.shape[-2:], *cutouts.shape[-2:])
+    default = numpy.bool(0).astype(obj.dtype)
+    args = (obj, cupy.ascontiguousarray(cutouts), start_idxs, n_cutouts, n_objects, *obj.shape[-2:], *cutouts.shape[-2:], default)
     kernel(grid, block, args)
     return cutouts
 
@@ -175,7 +175,7 @@ __device__ inline void atomicAdd(complex<U> *address, complex<U> val) {{
 
 extern "C" __global__
 void {kernel_name}({const_s[0]}T *obj, {const_s[1]}T *cutouts, const long long *start_idxs, long long n_cutouts, long long n_objects,
-                         long long obj_shape_y, long long obj_shape_x, long long cutout_shape_y, long long cutout_shape_x) {{
+                         long long obj_shape_y, long long obj_shape_x, long long cutout_shape_y, long long cutout_shape_x, T default_value) {{
     size_t          j = blockIdx.x * blockDim.x + threadIdx.x;
     size_t          i = blockIdx.y * blockDim.y + threadIdx.y;
     size_t cutout_num = blockIdx.z * blockDim.z + threadIdx.z;
@@ -183,18 +183,27 @@ void {kernel_name}({const_s[0]}T *obj, {const_s[1]}T *cutouts, const long long *
     size_t     object_num = cutout_num % n_objects;
     size_t pos_cutout_num = cutout_num / n_objects;
 
+    
+
     // check if our thread is outside the requested cutout
     if (pos_cutout_num >= n_cutouts || object_num >= n_objects || i >= cutout_shape_y || j >= cutout_shape_x) {{
         return;
     }}
 
-    // offset to get object location, check that it's in bounds
+    // compute cutout index
+    size_t cutout_idx = cutout_shape_y * cutout_shape_x * cutout_num + cutout_shape_x * i + j;
+
+    // offset to get object location
     long long obj_i = i + start_idxs[2*pos_cutout_num];
     long long obj_j = j + start_idxs[2*pos_cutout_num + 1];
-    assert(obj_i >= 0 && obj_i < obj_shape_y && obj_j >= 0 && obj_j < obj_shape_x);
 
-    // compute cutout and object indices
-    size_t cutout_idx = cutout_shape_y * cutout_shape_x * cutout_num + cutout_shape_x * i + j;
+    // check that it's in bounds, get default value if not
+    if (obj_i < 0 || obj_i >= obj_shape_y || obj_j < 0 || obj_j >= obj_shape_x) {{
+        {'cutouts[cutout_idx] = default_value;' if op == 'get' else ''}
+        return;
+    }}
+
+    // compute object index
     size_t obj_idx = obj_shape_y * obj_shape_x * object_num + obj_shape_x * obj_i + obj_j;
     // and perform our operation
     {op}
