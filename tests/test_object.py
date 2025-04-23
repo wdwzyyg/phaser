@@ -71,10 +71,36 @@ def test_object_from_scan():
     assert_array_almost_equal(samp.max, [6.2, 12.0])
     assert_array_almost_equal(samp.shape, (27, 31))
 
-    assert_array_almost_equal(samp.region_min, [-4.8, -1.])  # type: ignore
-    assert_array_almost_equal(samp.region_max, [4.19, 9.9])  # type: ignore
+    assert samp.region_min is not None
+    assert_array_almost_equal(samp.region_min, [-4.8, -1.])
+    assert samp.region_max is not None
+    assert_array_almost_equal(samp.region_max, [4.19, 9.9])
 
     assert samp.get_region_crop() == (slice(4, 22), slice(4, 26))
+
+
+def test_object_expand_to_scan():
+    samp = ObjectSampling(
+        shape=(10, 10),
+        sampling=(10.0, 20.0),
+        corner=(-5.0, -10.0),
+        region_min=None,
+        region_max=(20.0, 500.0),
+    )
+    scan = numpy.array([
+        [5.0, -10.0],
+        [75.0, 50.0],
+    ])
+
+    new_samp = samp.expand_to_scan(scan, pad=15.0)
+
+    assert_array_equal(new_samp.shape, [12, 11])
+    assert_array_equal(new_samp.sampling, samp.sampling)
+    assert_array_almost_equal(new_samp.min, [-15.0, -30.0])
+    assert_array_almost_equal(new_samp.max, [95.0, 170.0])
+    assert new_samp.region_min is None
+    assert new_samp.region_max is not None
+    assert_array_almost_equal(new_samp.region_max, [75.0, 500.0])
 
 
 def test_object_slicing():

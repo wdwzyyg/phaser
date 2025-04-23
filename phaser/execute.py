@@ -207,8 +207,10 @@ def initialize_reconstruction(
     if scan.shape[:-1] != data.patterns.shape[:-2]:
         raise ValueError(f"Scan shape {scan.shape[:-1]} doesn't match patterns shape {data.patterns.shape[:-2]}!")
 
-    # TODO: magic numbers
-    obj_sampling = ObjectSampling.from_scan(scan, sampling.sampling, sampling.extent / 2. + 20. * sampling.sampling)
+    obj_pad_px: float = plan.engines[0].obj_pad_px if len(plan.engines) > 0 else 5.0  # type: ignore
+    obj_sampling = ObjectSampling.from_scan(
+        scan, sampling.sampling, sampling.extent / 2. + obj_pad_px * sampling.sampling
+    )
 
     if init_state.object is not None and plan.init.object is None:
         logging.info("Re-using object from initial state...")
@@ -274,12 +276,24 @@ def prepare_for_engine(patterns: Patterns, state: ReconsState, xp: t.Any, engine
 
         state.probe.sampling = new_sampling
 
+    obj_sampling = state.object.sampling
+
     if not numpy.allclose(state.probe.sampling.sampling, state.object.sampling.sampling):
         # resample object -> probe
         logging.info(f"Resampling object to pixel size {list(map(float, state.probe.sampling.sampling))}...")
-        new_sampling = state.object.sampling.with_sampling(state.probe.sampling.sampling)
-        state.object.data = state.object.sampling.resample(state.object.data, new_sampling)
-        state.object.sampling = new_sampling
+        obj_sampling = obj_sampling.with_sampling(state.probe.sampling.sampling)
+
+    obj_sampling_pad = obj_sampling.expand_to_scan(
+        state.scan, state.probe.sampling.extent / 2. + engine.obj_pad_px * state.probe.sampling.sampling
+    )
+
+    if obj_sampling_pad != obj_sampling:
+        logging.info(f"Padding object to shape {obj_sampling_pad.shape}")
+        obj_sampling = obj_sampling_pad
+
+    if obj_sampling != state.object.sampling:
+        state.object.data = state.object.sampling.resample(state.object.data, obj_sampling)
+        state.object.sampling = obj_sampling
 
     current_probe_modes = state.probe.data.shape[0]
     if engine.probe_modes != current_probe_modes:

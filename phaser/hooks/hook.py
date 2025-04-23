@@ -54,8 +54,13 @@ class Hook(t.Generic[T, U], abc.ABC):
     def __call__(self, args: T) -> U:
         return self.resolve()(args, props=self.props if self.props is not None else {})
 
-    def __getitem__(self, key: t.Any) -> t.Any:
-        return (self.props or {})[key]
+    def __getattr__(self, key: t.Any) -> t.Any:
+        if isinstance(self.props, dict):
+            try:
+                return self.props[key]
+            except KeyError:
+                raise AttributeError(name=key, obj=self.props)
+        return getattr(self.props, key)
 
     def __repr__(self) -> str:
         if self.props is not None:

@@ -239,15 +239,39 @@ class ObjectSampling:
     def from_scan(cls: t.Type[Self], scan_positions: NDArray[numpy.floating], sampling: ArrayLike, pad: ArrayLike = 0) -> Self:
         """Create an ObjectSampling around the given scan positions, padded by at least a radius `pad` in real-space."""
         sampling = as_numpy(sampling).astype(numpy.float64)
-        pad = numpy.broadcast_to(pad, (2,)).astype(numpy.int_)
+        pad = numpy.broadcast_to(pad, (2,)).astype(numpy.float64)
+        xp = get_array_module(scan_positions)
 
-        y_min, y_max = float(numpy.nanmin(scan_positions[..., 0])), float(numpy.nanmax(scan_positions[..., 0]))
-        x_min, x_max = float(numpy.nanmin(scan_positions[..., 1])), float(numpy.nanmax(scan_positions[..., 1]))
+        y_min, y_max = float(xp.nanmin(scan_positions[..., 0])), float(xp.nanmax(scan_positions[..., 0]))
+        x_min, x_max = float(xp.nanmin(scan_positions[..., 1])), float(xp.nanmax(scan_positions[..., 1]))
 
         n_y = numpy.ceil((2.*pad[0] + y_max - y_min) / sampling[0]).astype(numpy.int_) + 1
         n_x = numpy.ceil((2.*pad[1] + x_max - x_min) / sampling[1]).astype(numpy.int_) + 1
 
         return cls((n_y, n_x), sampling, (y_min - pad[0], x_min - pad[1]), (y_min, x_min), (y_max, x_max))
+
+    def expand_to_scan(self, scan_positions: NDArray[numpy.floating], pad: ArrayLike = 0.) -> Self:
+        pad = numpy.broadcast_to(pad, (2,)).astype(numpy.float64)
+        xp = get_array_module(scan_positions)
+
+        scan_min = numpy.array(tuple(float(xp.nanmin(scan_positions[..., i])) for i in range(2)))
+        scan_max = numpy.array(tuple(float(xp.nanmax(scan_positions[..., i])) for i in range(2)))
+
+        pad_min = numpy.ceil(numpy.maximum(0, self.min - scan_min + pad) / self.sampling).astype(numpy.int_)
+        pad_max = numpy.ceil(numpy.maximum(0, scan_max - self.max + pad) / self.sampling).astype(numpy.int_)
+
+        if numpy.all(pad_min == 0) and numpy.all(pad_max == 0):
+            return self
+
+        region_min = numpy.minimum(self.region_min, scan_min) if self.region_min is not None else None
+        region_max = numpy.maximum(self.region_max, scan_max) if self.region_max is not None else None
+
+        return self.__class__(
+            t.cast(t.Tuple[int, int], tuple(self.shape + pad_min + pad_max)),
+            self.sampling,
+            self.corner - pad_min * self.sampling,
+            region_min, region_max
+        )
 
     def _pos_to_object_idx(self, pos: ArrayLike, cutout_shape: t.Tuple[int, ...]) -> NDArray[numpy.float64]:
         """Return starting index for the cutout closest to centered around `pos` (`(y, x)`)"""

@@ -47,6 +47,7 @@ class EnginePlan(Dataclass, kw_only=True):
     """Intensity to assign to the base mode when creating incoherent probe modes."""
 
     bwlim_frac: t.Optional[float] = 2/3
+    obj_pad_px: float = 5.0
 
     slices: t.Optional[Slices] = None
 
