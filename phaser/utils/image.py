@@ -106,6 +106,47 @@ def scale_to_integral_type(
 _BoundaryMode: t.TypeAlias = t.Literal['constant', 'nearest', 'mirror', 'reflect', 'wrap', 'grid-mirror', 'grid-wrap', 'grid-constant']
 
 
+def to_affine_matrix(arr: ArrayLike, ndim: int = 2) -> NDArray[numpy.floating]:
+    arr = numpy.asarray(arr)
+
+    if arr.shape == (ndim, ndim):
+        arr = numpy.block([[arr, numpy.zeros((ndim, 1))], [numpy.zeros((1, ndim)), 1.]])
+    elif arr.shape == (ndim,):
+        arr = numpy.diag([*arr, 1.])
+    elif arr.shape == (ndim+1,):
+        arr = numpy.diag(arr)
+    elif arr.shape != (ndim+1, ndim+1):
+        raise ValueError(f"Expected an affine matrix of shape ({ndim}, {ndim}), ({ndim+1}, {ndim+1}),"
+                         f" ({ndim+1},), or ({ndim},), instead got shape: {arr.shape}")
+
+    assert arr.shape == (ndim+1, ndim+1)
+    return arr.astype(numpy.floating)
+
+
+def scale_matrix(scale: ArrayLike) -> NDArray[numpy.floating]:
+    scale = numpy.asarray(scale)
+    assert scale.ndim == 1
+    return numpy.diag([*scale, 1.0]).astype(numpy.floating)
+
+
+def translation_matrix(vec: ArrayLike) -> NDArray[numpy.floating]:
+    vec = numpy.asarray(vec)
+    assert vec.ndim == 1
+    a = numpy.eye(vec.size + 1, dtype=vec.dtype)
+    a[:vec.size, vec.size] = vec
+    return a.astype(numpy.floating)
+
+
+def rotation_matrix(theta: float) -> NDArray[numpy.floating]:
+    t = theta * numpy.pi/180.
+
+    return numpy.array([
+        [numpy.cos(t), numpy.sin(t), 0.,],
+        [-numpy.sin(t), numpy.cos(t), 0.],
+        [0., 0., 1.],
+    ])
+
+
 def affine_transform(
     input: NDArray[NumT],
     matrix: ArrayLike,
@@ -154,5 +195,6 @@ def affine_transform(
 
 __all__ = [
     'remove_linear_ramp', 'colorize_complex', 'scale_to_integral_type',
-    'affine_transform',
+    'affine_transform', 'to_affine_matrix',
+    'scale_matrix', 'rotation_matrix', 'translation_matrix',
 ]

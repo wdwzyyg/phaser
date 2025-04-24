@@ -528,7 +528,7 @@ class Sampling:
     """Sample spacing (s_y, s_x)"""
 
     def __eq__(self, other: t.Any) -> bool:
-        if type(self) != type(other):
+        if type(self) is not type(other):
             return False
         xp = get_array_module(self.sampling, other.sampling)
         return (
@@ -694,20 +694,13 @@ class Sampling:
         mode: '_BoundaryMode' = 'grid-constant',
         cval: t.Union[NumT, float] = 0.0,
     ) -> NDArray[NumT]:
-        from .image import affine_transform
+        from .image import affine_transform, rotation_matrix
 
         if arr.shape[-2:] != tuple(self.shape):
             raise ValueError("Image dimension don't match sampling dimensions")
 
         if rotation != 0.0:
-            t = rotation * numpy.pi/180.
-
-            rot = numpy.array([
-                [numpy.cos(t), numpy.sin(t), 0.,],
-                [-numpy.sin(t), numpy.cos(t), 0.],
-                [0., 0., 1.],
-            ])
-            matrix = self._real_to_coord(True) @ rot @ new_samp._coord_to_real(True)
+            matrix = self._real_to_coord(True) @ rotation_matrix(rotation) @ new_samp._coord_to_real(True)
 
             return affine_transform(arr, matrix, output_shape=tuple(new_samp.shape), order=order, mode=mode, cval=cval)
 

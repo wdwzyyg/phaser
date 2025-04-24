@@ -415,11 +415,32 @@ class ObjectSampling:
         self, arr: NDArray[NumT], new_samp: 'ObjectSampling', *,
         order: int = 1, mode: '_BoundaryMode' = 'grid-constant',
         cval: t.Union[NumT, float] = 1.0,
+        rotation: t.Optional[float] = None,
+        affine: t.Optional[ArrayLike] = None,
     ) -> NDArray[NumT]:
-        from .image import affine_transform
+        from .image import affine_transform, to_affine_matrix, translation_matrix, scale_matrix, rotation_matrix
 
         if arr.shape[-2:] != tuple(self.shape):
             raise ValueError("Image dimension don't match sampling dimensions")
+
+        if rotation is not None:
+            if affine is not None:
+                raise ValueError("`rotation` and `affine` cannot both be specified.")
+            if rotation != 0.0:
+                center = self.get_region_center()
+                affine = translation_matrix(center) @ rotation_matrix(rotation) @ translation_matrix(-center)
+
+        if affine is not None:
+            matrix = numpy.linalg.inv(
+                scale_matrix(1/new_samp.sampling) @ translation_matrix(-new_samp.corner) @
+                to_affine_matrix(affine) @
+                translation_matrix(self.corner) @ scale_matrix(self.sampling)
+            )
+
+            return affine_transform(
+                arr, matrix, output_shape=tuple(new_samp.shape),
+                order=order, mode=mode, cval=cval
+            )
 
         matrix = new_samp.sampling / self.sampling
         offset = (new_samp.corner - self.corner) / self.sampling
