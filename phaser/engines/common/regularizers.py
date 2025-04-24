@@ -352,6 +352,49 @@ class ProbePhaseTikhonov:
         return (cost * cost_scale * self.cost, state)
 
 
+class ProbeRecipTikhonov:
+    def __init__(self, args: None, props: CostRegularizerProps):
+        self.cost: float = props.cost
+
+    def init_state(self, sim: ReconsState) -> None:
+        return None
+
+    def calc_loss_group(
+        self, group: NDArray[numpy.integer], sim: ReconsState, state: None
+    ) -> t.Tuple[float, None]:
+        xp = get_array_module(sim.probe.data)
+        probe_recip = xp.fft.fftshift(fft2(sim.probe.data), axes=(-1, -2))
+
+        cost = t.cast(float, 
+            xp.sum(abs2(xp.diff(probe_recip, axis=-1))) +
+            xp.sum(abs2(xp.diff(probe_recip, axis=-2)))
+        )
+        cost_scale = 1.0
+
+        return (cost * cost_scale * self.cost, state)
+
+
+class ProbeRecipTotalVariation:
+    def __init__(self, args: None, props: TVRegularizerProps):
+        self.cost: float = props.cost
+        self.eps: float = props.eps
+
+    def init_state(self, sim: ReconsState) -> None:
+        return None
+
+    def calc_loss_group(
+        self, group: NDArray[numpy.integer], sim: ReconsState, state: None
+    ) -> t.Tuple[float, None]:
+        xp = get_array_module(sim.probe.data)
+        probe_recip = xp.fft.fftshift(fft2(sim.probe.data), axes=(-1, -2))
+
+        g_y, g_x = img_grad(probe_recip)
+        cost = xp.sum(xp.sqrt(abs2(g_y) + abs2(g_x) + self.eps))
+        cost_scale = 1.0
+
+        return (cost * cost_scale * self.cost, state)
+
+
 def img_grad(img: numpy.ndarray) -> t.Tuple[numpy.ndarray, numpy.ndarray]:
     xp = get_array_module(img)
     return (
