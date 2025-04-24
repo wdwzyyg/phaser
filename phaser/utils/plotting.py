@@ -7,9 +7,14 @@ from matplotlib import pyplot
 from matplotlib.colors import Colormap, Normalize, LinearSegmentedColormap
 from matplotlib.transforms import Affine2DBase, Affine2D
 
-from .num import get_array_module, abs2, to_numpy, Sampling
+from .num import (
+    get_array_module, abs2, fft2, ifft2,
+    to_numpy, Sampling, to_real_dtype
+)
+from .optics import fourier_shift_filter
 from .image import remove_linear_ramp, colorize_complex
 from .object import ObjectSampling
+from .misc import create_sparse_groupings
 
 
 if t.TYPE_CHECKING:
@@ -447,6 +452,52 @@ def plot_probes(
 
     for (ax, img) in zip(axs.flat, imgs):
         ax.imshow(img, extent=extent)
+
+
+def plot_probe_overlap(
+    data: 'ProbeState', scan: NDArray[numpy.floating],
+    ax: t.Optional['Axes'] = None,
+    cmap: t.Optional[ColormapLike] = None, norm: t.Optional[NormLike] = None,
+    vmin: t.Optional[float] = None, vmax: t.Optional[float] = None,
+    subpx: bool = False, grouping: int = 16,
+    **imshow_kwargs: t.Any,
+) -> 'AxesImage':
+    xp = get_array_module(data.data, scan)
+    dtype = to_real_dtype(data.data.dtype)
+
+    probes = data.data
+    #if normalize_probe:
+    #    probes = probes / xp.sqrt(xp.sum(abs2(probes)))
+
+    if ax is None:
+        fig, ax = pyplot.subplots()
+        ax = t.cast('Axes', ax)
+
+    pad = data.sampling.extent / 2. + data.sampling.sampling
+    obj_samp = ObjectSampling.from_scan(scan, data.sampling.sampling, pad)
+
+    obj = xp.zeros(obj_samp.shape, dtype=dtype)
+    ky, kx = data.sampling.recip_grid(xp=xp, dtype=dtype)
+
+    sum_probe = xp.sum(abs2(probes), axis=0)
+
+    for group in create_sparse_groupings(scan, grouping):
+        group_scan = scan[tuple(group)]
+        if subpx:
+            group_subpx_filters = fourier_shift_filter(
+                ky, kx, obj_samp.get_subpx_shifts(group_scan, probes.shape[-2:])
+            )[:, None, ...]
+            shifted_probes = ifft2(fft2(probes) * group_subpx_filters)
+            obj = obj_samp.cutout(obj, group_scan, ky.shape).add(
+                xp.sum(abs2(shifted_probes), axis=1)
+            ).obj
+        else:
+            obj = obj_samp.cutout(obj, group_scan, ky.shape).add(
+                xp.broadcast_to(sum_probe, (group_scan.shape[0], *sum_probe.shape))
+            ).obj
+
+    img = ax.imshow(to_numpy(obj), cmap=cmap, norm=norm, vmin=vmin or 0., vmax=vmax, **imshow_kwargs)
+    return img
 
 
 def plot_metrics(metrics: t.Dict[str, float]) -> 'Figure':
