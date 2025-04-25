@@ -1,11 +1,9 @@
-from __future__ import annotations
-
-import abc
 from pathlib import Path
 import typing as t
 
 import numpy
 from numpy.typing import NDArray, DTypeLike
+import pane.annotations as annotations
 
 from ..types import Dataclass, Slices
 from .hook import Hook
@@ -90,7 +88,7 @@ class RasterScanProps(Dataclass):
     shape: t.Optional[t.Tuple[int, int]] = None  # ny, nx (total shape)
     step_size: t.Union[None, float, t.Tuple[float, float]] = None  # A
     rotation: t.Optional[float] = None     # degrees CCW
-    affine: t.Optional[t.Tuple[t.Tuple[float, float], t.Tuple[float, float]]] = None
+    affine: t.Optional[t.Annotated[NDArray[numpy.floating], annotations.shape((2, 2))]] = None
 
 
 class ScanHook(Hook[ScanHookArgs, NDArray[numpy.floating]]):
