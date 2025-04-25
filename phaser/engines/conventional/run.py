@@ -4,7 +4,7 @@ import typing as t
 
 import numpy
 
-from phaser.utils.misc import create_compact_groupings, create_sparse_groupings, mask_fraction_of_groups, shuffled
+from phaser.utils.misc import mask_fraction_of_groups
 from phaser.utils.num import cast_array_module, to_numpy, to_complex_dtype
 from phaser.utils.io import OutputDir
 from phaser.execute import Observer

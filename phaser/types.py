@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from functools import lru_cache
 import typing as t
 
 import numpy
@@ -10,8 +11,7 @@ from pane.util import pluralize, list_phrase
 from typing_extensions import Self
 
 if t.TYPE_CHECKING:
-    from phaser.hooks import FlagArgs
-    from phaser.plan import FlagLike
+    from phaser.hooks.schedule import FlagArgs, FlagLike, ScheduleLike
 
 T = t.TypeVar('T')
 
@@ -150,11 +150,18 @@ class _ConstFlag:
         return self.val
 
 
+@lru_cache
 def process_flag(flag: 'FlagLike') -> t.Callable[['FlagArgs'], bool]:
     if isinstance(flag, bool):
         return _ConstFlag(flag)
-    else:
-        return flag.resolve()
+    return flag
+
+
+@lru_cache
+def process_schedule(schedule: 'ScheduleLike') -> t.Callable[['FlagArgs'], float]:
+    if isinstance(schedule, (int, float)):
+        return lambda _: schedule
+    return schedule
 
 
 def flag_any_true(flag: t.Callable[['FlagArgs'], bool], niter: int) -> bool:

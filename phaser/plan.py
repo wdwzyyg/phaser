@@ -1,15 +1,11 @@
-from __future__ import annotations
-
 from pathlib import Path
 import typing as t
 
 from .types import Dataclass, Slices, BackendName, Flag, ReconsVars, IsVersion, EmptyDict
-from .hooks import RawDataHook, ProbeHook, ObjectHook, ScanHook, EngineHook, FlagHook, PostInitHook, PostLoadHook
+from .hooks import RawDataHook, ProbeHook, ObjectHook, ScanHook, EngineHook, PostInitHook, PostLoadHook
 from .hooks.solver import NoiseModelHook, ConventionalSolverHook, PositionSolverHook, GradientSolverHook
-from .hooks.solver import IterConstraintHook, GroupConstraintHook, CostRegularizerHook
-
-
-FlagLike: t.TypeAlias = t.Union[bool, Flag, FlagHook]
+from .hooks.schedule import FlagLike, ScheduleLike
+from .hooks.regularization import IterConstraintHook, GroupConstraintHook, CostRegularizerHook
 
 
 SaveType: t.TypeAlias = t.Literal[
@@ -93,18 +89,18 @@ NoiseModelHook.known['poisson'] = ('phaser.engines.common.noise_models:PoissonNo
 class LSQMLSolverPlan(Dataclass, kw_only=True):
     stochastic: bool = True
 
-    beta_object: float = 1.0
-    beta_probe: float = 1.0
+    beta_object: ScheduleLike = 1.0
+    beta_probe: ScheduleLike = 1.0
 
-    illum_reg_object: float = 1e-2
-    illum_reg_probe: float = 1e-2
+    illum_reg_object: ScheduleLike = 1e-2
+    illum_reg_probe: ScheduleLike = 1e-2
 
-    gamma: float = 1e-4
+    gamma: ScheduleLike = 1e-4
 
 
 class EPIESolverPlan(Dataclass, kw_only=True):
-    beta_object: float = 1.0
-    beta_probe: float = 1.0
+    beta_object: ScheduleLike = 1.0
+    beta_probe: ScheduleLike = 1.0
 
 
 ConventionalSolverHook.known['lsqml'] = ('phaser.engines.conventional.solvers:LSQMLSolver', LSQMLSolverPlan)

@@ -6,7 +6,8 @@ import numpy
 from numpy.typing import NDArray
 
 from phaser.utils.num import cast_array_module, at, abs2, fft2, ifft2, jit, check_finite, to_complex_dtype, to_numpy
-from phaser.hooks.solver import GroupConstraint, ConventionalSolver
+from phaser.hooks.solver import ConventionalSolver
+from phaser.types import process_schedule
 from phaser.plan import ConventionalEnginePlan, LSQMLSolverPlan, EPIESolverPlan
 from phaser.execute import Observer
 from phaser.engines.common.simulation import (
@@ -77,6 +78,12 @@ class LSQMLSolver(ConventionalSolver):
     ) -> t.Tuple[SimulationState, NDArray[numpy.floating], t.List[NDArray[numpy.floating]]]:
         xp = sim.xp
 
+        beta_object = process_schedule(self.plan.beta_object)({'state': sim.state, 'niter': self.engine_plan.niter})
+        beta_probe = process_schedule(self.plan.beta_probe)({'state': sim.state, 'niter': self.engine_plan.niter})
+        illum_reg_object = process_schedule(self.plan.illum_reg_object)({'state': sim.state, 'niter': self.engine_plan.niter})
+        illum_reg_probe = process_schedule(self.plan.illum_reg_probe)({'state': sim.state, 'niter': self.engine_plan.niter})
+        gamma = process_schedule(self.plan.gamma)({'state': sim.state, 'niter': self.engine_plan.niter})
+
         new_obj_mag = xp.zeros_like(self.obj_mag)
         new_probe_mag = xp.zeros_like(self.probe_mag)
         pos_update = xp.zeros_like(sim.state.scan, dtype=sim.dtype)
@@ -90,15 +97,14 @@ class LSQMLSolver(ConventionalSolver):
                 sim, group, group_patterns, pattern_mask=pattern_mask, props=propagators,
                 obj_mag=self.obj_mag, probe_mag=self.probe_mag,
                 new_obj_mag=new_obj_mag, new_probe_mag=new_probe_mag,
-                beta_object=self.plan.beta_object,
-                beta_probe=self.plan.beta_probe,
+                beta_object=beta_object, beta_probe=beta_probe,
                 update_object=update_object,
                 update_probe=update_probe,
                 update_position=update_positions,
                 calc_error=group_calc_error,
-                illum_reg_object=self.plan.illum_reg_object,
-                illum_reg_probe=self.plan.illum_reg_probe,
-                gamma=self.plan.gamma,
+                illum_reg_object=illum_reg_object,
+                illum_reg_probe=illum_reg_probe,
+                gamma=gamma,
             )
             check_finite(sim.state.object.data, sim.state.probe.data, context=f"object or probe, group {group_i}")
             assert sim.state.object.data.dtype == to_complex_dtype(sim.dtype)
@@ -338,6 +344,9 @@ class EPIESolver(ConventionalSolver):
         pos_update = xp.zeros_like(sim.state.scan)
         iter_errors = []
 
+        beta_object = process_schedule(self.plan.beta_object)({'state': sim.state, 'niter': self.engine_plan.niter})
+        beta_probe = process_schedule(self.plan.beta_probe)({'state': sim.state, 'niter': self.engine_plan.niter})
+
         for (group_i, (group, group_patterns)) in enumerate(stream_patterns(groups, patterns, xp=xp,
                                                                             buf_n=self.engine_plan.buffer_n_groups)):
             group_calc_error = calc_error and calc_error_mask[group_i]
@@ -346,8 +355,8 @@ class EPIESolver(ConventionalSolver):
                 sim, group, group_patterns,
                 pattern_mask=pattern_mask,
                 props=propagators,
-                beta_object=self.plan.beta_object,
-                beta_probe=self.plan.beta_probe,
+                beta_object=beta_object,
+                beta_probe=beta_probe,
                 update_object=update_object,
                 update_probe=update_probe,
             )

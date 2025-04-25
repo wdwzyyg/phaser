@@ -156,12 +156,3 @@ class EngineArgs(t.TypedDict):
 
 class EngineHook(Hook[EngineArgs, 'ReconsState']):
     known = {}  # filled in by plan.py
-
-
-class FlagArgs(t.TypedDict):
-    state: 'ReconsState'
-    niter: int
-
-
-class FlagHook(Hook[FlagArgs, bool]):
-    known = {}

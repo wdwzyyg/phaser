@@ -19,7 +19,8 @@ from phaser.utils.io import OutputDir
 from phaser.execute import Observer
 from phaser.state import ReconsState
 from phaser.hooks import EngineArgs
-from phaser.hooks.solver import GradientSolver, CostRegularizer, GroupConstraint, IterConstraint
+from phaser.hooks.solver import GradientSolver
+from phaser.hooks.regularization import CostRegularizer, GroupConstraint
 from phaser.plan import GradientEnginePlan
 from phaser.types import process_flag, flag_any_true, ReconsVar
 from ..common.output import output_images, output_state

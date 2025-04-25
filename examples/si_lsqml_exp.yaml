@@ -37,8 +37,10 @@ engines:
 
    solver:
      type: 'lsqml'
-     beta_probe: 0.9
-     beta_object: 1.0
+     beta_probe: 1.0
+     beta_object:
+       type: expr
+       expr: '1.0 - np.exp(-i / 3)'
      gamma: 0.1
 
      illum_reg_object: 50.0
