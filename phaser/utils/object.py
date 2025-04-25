@@ -226,7 +226,7 @@ class ObjectSampling:
         object.__setattr__(self, 'corner', corner)
 
     def __eq__(self, other: t.Any) -> bool:
-        if type(self) != type(other):
+        if type(self) is not type(other):
             return False
         xp = get_array_module(self.sampling, other.sampling)
         return (
@@ -242,13 +242,11 @@ class ObjectSampling:
         pad = numpy.broadcast_to(pad, (2,)).astype(numpy.float64)
         xp = get_array_module(scan_positions)
 
-        y_min, y_max = float(xp.nanmin(scan_positions[..., 0])), float(xp.nanmax(scan_positions[..., 0]))
-        x_min, x_max = float(xp.nanmin(scan_positions[..., 1])), float(xp.nanmax(scan_positions[..., 1]))
+        scan_min = numpy.array(tuple(float(xp.nanmin(scan_positions[..., i])) for i in range(2)))
+        scan_max = numpy.array(tuple(float(xp.nanmax(scan_positions[..., i])) for i in range(2)))
+        n = numpy.ceil((2.*pad + scan_max - scan_min) / sampling).astype(numpy.int_) + 1
 
-        n_y = numpy.ceil((2.*pad[0] + y_max - y_min) / sampling[0]).astype(numpy.int_) + 1
-        n_x = numpy.ceil((2.*pad[1] + x_max - x_min) / sampling[1]).astype(numpy.int_) + 1
-
-        return cls((n_y, n_x), sampling, (y_min - pad[0], x_min - pad[1]), (y_min, x_min), (y_max, x_max))
+        return cls((n[0], n[1]), sampling, scan_min - pad, scan_min, scan_max)
 
     def expand_to_scan(self, scan_positions: NDArray[numpy.floating], pad: ArrayLike = 0.) -> Self:
         pad = numpy.broadcast_to(pad, (2,)).astype(numpy.float64)
