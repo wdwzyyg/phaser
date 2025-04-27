@@ -3,8 +3,8 @@ import typing as t
 
 import numpy
 import pane
-from pane.converters import Converter, make_converter, ConverterHandlers, ErrorNode, LiteralConverter
-from pane.annotations import ConvertAnnotation, Condition, adjective_condition
+from pane.converters import Converter, make_converter, ConverterHandlers, ErrorNode
+from pane.annotations import ConvertAnnotation
 from pane.errors import ParseInterrupt, WrongTypeError
 from pane.util import pluralize, list_phrase
 from typing_extensions import Self
@@ -12,6 +12,31 @@ from typing_extensions import Self
 if t.TYPE_CHECKING:
     from phaser.hooks import FlagArgs
     from phaser.plan import FlagLike
+
+T = t.TypeVar('T')
+
+@t.overload
+def cast_length(val: t.Iterable[T], n: t.Literal[5]) -> t.Tuple[T, T, T, T, T]:
+    ...
+
+@t.overload
+def cast_length(val: t.Iterable[T], n: t.Literal[4]) -> t.Tuple[T, T, T, T]:
+    ...
+
+@t.overload
+def cast_length(val: t.Iterable[T], n: t.Literal[3]) -> t.Tuple[T, T, T]:
+    ...
+
+@t.overload
+def cast_length(val: t.Iterable[T], n: t.Literal[2]) -> t.Tuple[T, T]:
+    ...
+
+@t.overload
+def cast_length(val: t.Iterable[T], n: t.Literal[1]) -> t.Tuple[T]:
+    ...
+
+def cast_length(val: t.Iterable[T], n: int) -> t.Tuple[T, ...]:
+    return tuple(val)
 
 
 class _EmptyDictAnnotation(ConvertAnnotation, Converter[t.Dict[t.NoReturn, t.NoReturn]]):
@@ -232,7 +257,7 @@ class _VersionConverter(Converter[t.Any]):
         except ParseInterrupt:
             return WrongTypeError(self.expected(), val)
         try:
-            version = self.parse_version(val)
+            version = self.parse_version(s)
         except ValueError:
             return WrongTypeError(self.expected(), val, info='Invalid version string')
         try:
