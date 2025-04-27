@@ -3,10 +3,141 @@ import typing as t
 import numpy
 from numpy.typing import ArrayLike, NDArray
 
-from phaser.utils.num import fft2, ifft2, Sampling, get_array_module, at, to_numpy
+from phaser.utils.num import fft2, ifft2, abs2, Sampling, get_array_module, at, to_numpy, NumT
 from phaser.utils.object import ObjectSampling
 from phaser.utils.image import remove_linear_ramp, translation_matrix, rotation_matrix
 from phaser.state import ObjectState
+from phaser.types import cast_length
+
+
+def split_image(img: NDArray[NumT]) -> t.Tuple[NDArray[NumT], NDArray[NumT], NDArray[NumT], NDArray[NumT]]:
+    """
+    Split image into 4 subimages (upper left, upper right, lower left, lower right).
+    """
+    shape = img.shape[-2:]
+    # crop image divisible by two
+    shape = tuple(s - s%2 for s in shape)
+    img = img[..., *(slice(0, s) for s in shape)]
+
+    return cast_length((
+        img[..., slice(row_start, shape[0], 2), slice(col_start, shape[1], 2)]
+        for row_start in (0, 1)
+        for col_start in (0, 1)
+    ), 4)
+
+
+def fourier_correlate(img1: NDArray[NumT], img2: NDArray[NumT]) -> NDArray[numpy.complex128]:
+    assert img1.shape == img2.shape
+    from skimage.filters import window
+
+    xp = get_array_module(img1, img2)
+
+    win = xp.array(window('hann', img1.shape))
+    img1_fft = numpy.fft.fftshift(fft2(img1.astype(numpy.float64) * win), axes=(-2, -1))
+    img2_fft = xp.conj(numpy.fft.fftshift(fft2(img2.astype(numpy.float64) * win), axes=(-2, -1)))
+    fft1_mag = abs2(img1_fft)
+    fft2_mag = abs2(img2_fft)
+
+    with xp.errstate(invalid='ignore'):
+        corr = img1_fft * img2_fft / xp.sqrt(fft1_mag * fft2_mag)
+    return xp.nan_to_num(corr, nan=1.)
+
+
+def _calc_r_binning(
+    shape: t.Tuple[int, ...], r_spacing: float = 1.0,
+    xp: t.Any = None
+) -> NDArray[numpy.int64]:
+    if xp is None or t.TYPE_CHECKING:
+        xp = numpy
+
+    c_y, c_x = tuple(int(s//2) for s in shape[-2:])
+    y, x = xp.indices(shape[-2:])
+    r = xp.sqrt((y - c_y)**2 + (x - c_x)**2)
+    return xp.floor(r / r_spacing).astype(numpy.int64).ravel()
+
+
+def contrast_transfer(
+    img1: NDArray[NumT], img2: NDArray[NumT], *,
+    inscribed: bool = True, r_spacing: float = 1.0
+) -> t.Tuple[NDArray[numpy.float64], NDArray[numpy.float64], NDArray[numpy.float64]]:
+    assert img1.shape == img2.shape
+    from skimage.filters import window
+
+    xp = get_array_module(img1, img2)
+
+    win = xp.array(window('hann', img1.shape), dtype=numpy.float64)
+    img1_fft = xp.fft.fftshift(fft2(img1.astype(numpy.float64) * win), axes=(-2, -1))
+    img2_fft = xp.conj(xp.fft.fftshift(fft2(img2.astype(numpy.float64) * win), axes=(-2, -1)))
+    fft1_mag = abs2(img1_fft)
+    fft2_mag = abs2(img2_fft)
+
+    r_i = _calc_r_binning(img1.shape, r_spacing, xp=xp)
+    mag1_count = xp.bincount(r_i, fft1_mag.ravel())
+    mag2_count = xp.bincount(r_i, fft2_mag.ravel())
+
+    with numpy.errstate(invalid='ignore', divide='ignore'):
+        vals = to_numpy(xp.sqrt(mag1_count / mag2_count))
+    vals = numpy.nan_to_num(vals, nan=1.)
+
+    rs = numpy.linspace(0., len(vals) * r_spacing, len(vals), endpoint=False, dtype=numpy.float64)
+    freq = rs / numpy.sqrt(numpy.prod(img1.shape[-2:]))
+
+    if inscribed:
+        # crop to inner radii
+        n_r = int(numpy.floor(min(img1.shape[-2:]) / (2.*r_spacing)))
+        return (vals[:n_r], rs[:n_r], freq[:n_r])
+    return (vals, rs, freq)
+
+
+def fourier_ring_correlate(
+    img1: NDArray[NumT], img2: NDArray[NumT], *,
+    inscribed: bool = True, r_spacing: float = 1.0
+) -> t.Tuple[NDArray[numpy.float64], NDArray[numpy.float64], NDArray[numpy.float64]]:
+    assert img1.shape == img2.shape
+    from skimage.filters import window
+
+    xp = get_array_module(img1, img2)
+
+    win = xp.array(window('hann', img1.shape), dtype=numpy.float64)
+    img1_fft = xp.fft.fftshift(fft2(img1.astype(numpy.float64) * win), axes=(-2, -1))
+    img2_fft = xp.conj(xp.fft.fftshift(fft2(img2.astype(numpy.float64) * win), axes=(-2, -1)))
+    fft1_mag = abs2(img1_fft)
+    fft2_mag = abs2(img2_fft)
+
+    r_i = _calc_r_binning(img1.shape, r_spacing, xp=xp)
+    # sum real and imaginary separately
+    real_count = xp.bincount(r_i, (img1_fft * xp.conj(img2_fft)).real.ravel())
+    mag1_count = xp.bincount(r_i, fft1_mag.ravel())
+    mag2_count = xp.bincount(r_i, fft2_mag.ravel())
+
+    with numpy.errstate(invalid='ignore', divide='ignore'):
+        vals = to_numpy(xp.abs(real_count) / xp.sqrt(mag1_count * mag2_count))
+    vals = numpy.nan_to_num(vals, posinf=0., nan=1.)
+
+    #vals = numpy.bincount(r_i.ravel(), corr.ravel()) / numpy.bincount(r_i.ravel())
+    rs = numpy.linspace(0., len(vals) * r_spacing, len(vals), endpoint=False, dtype=numpy.float64)
+    freq = rs / numpy.sqrt(numpy.prod(img1.shape[-2:]))
+
+    if inscribed:
+        # crop to inner radii
+        n_r = int(numpy.floor(min(img1.shape[-2:]) / (2.*r_spacing)))
+        return (vals[:n_r], rs[:n_r], freq[:n_r])
+    return (vals, rs, freq)
+
+
+def frc_intersect_threshold(frc: NDArray[numpy.floating], freq: NDArray[numpy.floating], threshold: float) -> t.Tuple[float, float]:
+    diff = frc - threshold
+    lastdiff = numpy.roll(diff, shift=1)
+    # find negative zero crossing
+    try:
+        i = numpy.nonzero((diff[1:] < 0) & (lastdiff[1:] > 0))[0][0]
+    except IndexError:
+        raise ValueError("No crossing found when evaluating FRC resolution")
+
+    m = (diff[i+1] - diff[i]) / (freq[i+1] - freq[i])
+    m_f = (frc[i+1] - frc[i]) / (freq[i+1] - freq[i])
+    x_d = diff[i]/m
+    return (float(freq[i] - x_d), float(frc[i] - x_d * m_f))
 
 
 def _cross_correlate(x: NDArray[numpy.floating], y: NDArray[numpy.floating], max_shift: float) -> t.Tuple[float, float]:
@@ -16,7 +147,7 @@ def _cross_correlate(x: NDArray[numpy.floating], y: NDArray[numpy.floating], max
     yy, xx = samp.real_grid(xp=xp)
 
     cross_corr = ifft2(fft2(x) * xp.conj(fft2(y))).real
-    # limit shift to corner size
+    # limit maximum shift
     cross_corr = at(cross_corr, yy**2 + xx**2 > max_shift**2).set(numpy.nan)  # type: ignore
 
     max_i = xp.nanargmax(cross_corr)
