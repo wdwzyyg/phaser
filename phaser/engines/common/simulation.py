@@ -13,7 +13,8 @@ from phaser.utils.num import (
 from phaser.utils.misc import FloatKey, jax_dataclass, create_compact_groupings, create_sparse_groupings, shuffled
 from phaser.utils.optics import fresnel_propagator, fourier_shift_filter
 from phaser.state import ReconsState
-from phaser.hooks.solver import NoiseModel, GroupConstraint, IterConstraint, StateT
+from phaser.hooks.solver import NoiseModel
+from phaser.hooks.regularization import GroupConstraint, IterConstraint, StateT
 
 logger = logging.getLogger(__name__)
 

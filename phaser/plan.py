@@ -126,13 +126,13 @@ class GradientEnginePlan(EnginePlan):
 
 
 class SGDSolverPlan(Dataclass, kw_only=True):
-    learning_rate: float
-    momentum: t.Optional[float] = None
+    learning_rate: ScheduleLike
+    momentum: t.Optional[ScheduleLike] = None
     nesterov: bool = True
 
 
 class AdamSolverPlan(Dataclass, kw_only=True):
-    learning_rate: float
+    learning_rate: ScheduleLike
 
     b1: float = 0.9
     b2: float = 0.999
@@ -143,9 +143,9 @@ class AdamSolverPlan(Dataclass, kw_only=True):
 
 
 class PolyakSGDSolverPlan(Dataclass, kw_only=True):
-    max_learning_rate: float
+    max_learning_rate: ScheduleLike
     f_min: float
-    scaling: float = 1.0
+    scaling: ScheduleLike = 1.0
     eps: float = 0.0
 
 

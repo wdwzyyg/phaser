@@ -232,19 +232,25 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
         for i in range(1, props.niter+1):
             losses = []
 
+            # mask vars we're updating this iteration
             iter_vars = all_vars & t.cast(t.Set[ReconsVar],
                 set(k for (k, flag) in flags.items() if flag({'state': state, 'niter': props.niter}))
             )
             # gradients for per-iteration solvers
             iter_grads = tree_zeros_like(extract_vars(state, iter_vars & _PER_ITER_VARS)[0])
-
-            # TODO: preload these?
-            #@partial(jax.profiler.annotate_function, name="load_group")
-            def load_group(group: NDArray[numpy.int_]) -> NDArray[numpy.floating]:
-                arr = xp.array(patterns[tuple(group)])
-                return arr.block_until_ready()  # type: ignore
-
+            # whether to shuffle groups this iteration
             iter_shuffle_groups = shuffle_groups({'state': state, 'niter': props.niter})
+
+            # update schedules for this iteration
+            # this needs to be done outside the JIT context, which makes this kinda hacky
+            solver_states.group_solver_states = [
+                solver.update_for_iter(state, solver_state, props.niter)
+                for (solver, solver_state) in zip(group_solvers, solver_states.group_solver_states)
+            ]
+            iter_solver_states = [
+                solver.update_for_iter(state, solver_state, props.niter)
+                for (solver, solver_state) in zip(iter_solvers, iter_solver_states)
+            ]
 
             for (group_i, (group, group_patterns)) in enumerate(stream_patterns(groups.iter(state.scan, i, iter_shuffle_groups),
                                                                                 patterns, xp=xp, buf_n=props.buffer_n_groups)):

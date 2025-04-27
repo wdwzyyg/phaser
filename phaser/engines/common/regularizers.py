@@ -10,7 +10,7 @@ from phaser.utils.num import (
     jit, fft2, ifft2, abs2, xp_is_jax, to_real_dtype
 )
 from phaser.state import ReconsState
-from phaser.hooks.solver import (
+from phaser.hooks.regularization import (
     ClampObjectAmplitudeProps, LimitProbeSupportProps,
     RegularizeLayersProps, ObjLowPassProps,
     CostRegularizerProps, TVRegularizerProps
