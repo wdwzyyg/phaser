@@ -180,6 +180,9 @@ class CostRegularizerHook(Hook[None, CostRegularizer]):
         'layers_tikhonov': ('phaser.engines.common.regularizers:LayersTikhonov', CostRegularizerProps),
         'probe_phase_tikh': ('phaser.engines.common.regularizers:ProbePhaseTikhonov', CostRegularizerProps),
         'probe_phase_tikhonov': ('phaser.engines.common.regularizers:ProbePhaseTikhonov', CostRegularizerProps),
+        'probe_recip_tv': ('phaser.engines.common.regularizers:ProbeRecipTotalVariation', TVRegularizerProps),
+        'probe_recip_tikh': ('phaser.engines.common.regularizers:ProbeRecipTikhonov', CostRegularizerProps),
+        'probe_recip_tikhonov': ('phaser.engines.common.regularizers:ProbeRecipTikhonov', CostRegularizerProps),
     }
 
 
