@@ -204,8 +204,7 @@ def initialize_reconstruction(
         scan = pane.from_data(raw_data['scan_hook'], ScanHook)(  # type: ignore
             {'dtype': dtype, 'seed': seed, 'xp': xp}
         )
-    if scan.shape[:-1] != data.patterns.shape[:-2]:
-        raise ValueError(f"Scan shape {scan.shape[:-1]} doesn't match patterns shape {data.patterns.shape[:-2]}!")
+    
 
     obj_pad_px: float = plan.engines[0].obj_pad_px if len(plan.engines) > 0 else 5.0  # type: ignore
     obj_sampling = ObjectSampling.from_scan(
@@ -242,6 +241,16 @@ def initialize_reconstruction(
         })
 
     # perform some checks on preprocessed data
+
+    if state.scan.shape[:-1] != data.patterns.shape[:-2]:
+        n_pos = int(numpy.prod(state.scan.shape[:-1]))
+        n_pat = int(numpy.prod(data.patterns.shape[:-2]))
+        if n_pos != n_pat:
+            raise ValueError(f"# of scan positions {n_pos} doesn't match # of patterns {n_pat}")
+
+        # reshape patterns to match scan
+        data.patterns = data.patterns.reshape((*state.scan.shape[:-1], *data.patterns.shape[-2:]))
+
     avg_pattern_intensity = float(numpy.nanmean(numpy.nansum(data.patterns, axis=(-1, -2))))
 
     if avg_pattern_intensity < 5.0:
