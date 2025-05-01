@@ -6,7 +6,7 @@ import numpy
 from numpy.typing import NDArray
 
 from phaser.utils.num import (
-    get_array_module, get_scipy_module,
+    get_array_module, get_scipy_module, Float,
     jit, fft2, ifft2, abs2, xp_is_jax, to_real_dtype
 )
 from phaser.state import ReconsState
@@ -170,7 +170,7 @@ class ObjL1:
 
     def calc_loss_group(
         self, group: NDArray[numpy.integer], sim: ReconsState, state: None
-    ) -> t.Tuple[float, None]:
+    ) -> t.Tuple[Float, None]:
         xp = get_array_module(sim.object.data)
 
         cost = xp.sum(xp.abs(sim.object.data - 1.0))
@@ -180,14 +180,14 @@ class ObjL1:
 
 class ObjL2:
     def __init__(self, args: None, props: CostRegularizerProps):
-        self.cost: float = props.cost
+        self.cost: Float = props.cost
 
     def init_state(self, sim: ReconsState) -> None:
         return None
 
     def calc_loss_group(
         self, group: NDArray[numpy.integer], sim: ReconsState, state: None
-    ) -> t.Tuple[float, None]:
+    ) -> t.Tuple[Float, None]:
         xp = get_array_module(sim.object.data)
 
         cost = xp.sum(abs2(sim.object.data - 1.0))
@@ -204,7 +204,7 @@ class ObjPhaseL1:
 
     def calc_loss_group(
         self, group: NDArray[numpy.integer], sim: ReconsState, state: None
-    ) -> t.Tuple[float, None]:
+    ) -> t.Tuple[Float, None]:
         xp = get_array_module(sim.object.data)
 
         cost = xp.sum(xp.abs(xp.angle(sim.object.data)))
@@ -221,7 +221,7 @@ class ObjRecipL1:
 
     def calc_loss_group(
         self, group: NDArray[numpy.integer], sim: ReconsState, state: None
-    ) -> t.Tuple[float, None]:
+    ) -> t.Tuple[Float, None]:
         xp = get_array_module(sim.object.data)
 
         # l1 norm of diff. pattern amplitude
@@ -245,7 +245,7 @@ class ObjTotalVariation:
 
     def calc_loss_group(
         self, group: NDArray[numpy.integer], sim: ReconsState, state: None
-    ) -> t.Tuple[float, None]:
+    ) -> t.Tuple[Float, None]:
         xp = get_array_module(sim.object.data)
 
         # isotropic total variation
@@ -272,7 +272,7 @@ class ObjTikhonov:
 
     def calc_loss_group(
         self, group: NDArray[numpy.integer], sim: ReconsState, state: None
-    ) -> t.Tuple[float, None]:
+    ) -> t.Tuple[Float, None]:
         xp = get_array_module(sim.object.data)
 
         cost = (
@@ -282,7 +282,7 @@ class ObjTikhonov:
         # scale cost by fraction of the total reconstruction in the group
         cost_scale = (group.shape[-1] / numpy.prod(sim.scan.shape[:-1])).astype(cost.dtype)
 
-        return (t.cast(float, cost * cost_scale * self.cost), state)
+        return (cost * cost_scale * self.cost, state)
 
 
 class LayersTotalVariation:
@@ -294,7 +294,7 @@ class LayersTotalVariation:
 
     def calc_loss_group(
         self, group: NDArray[numpy.integer], sim: ReconsState, state: None
-    ) -> t.Tuple[float, None]:
+    ) -> t.Tuple[Float, None]:
         xp = get_array_module(sim.object.data)
 
         if sim.object.data.shape[0] < 2:
@@ -316,7 +316,7 @@ class LayersTikhonov:
 
     def calc_loss_group(
         self, group: NDArray[numpy.integer], sim: ReconsState, state: None
-    ) -> t.Tuple[float, None]:
+    ) -> t.Tuple[Float, None]:
         xp = get_array_module(sim.object.data)
 
         if sim.object.data.shape[0] < 2:
@@ -338,12 +338,12 @@ class ProbePhaseTikhonov:
 
     def calc_loss_group(
         self, group: NDArray[numpy.integer], sim: ReconsState, state: None
-    ) -> t.Tuple[float, None]:
+    ) -> t.Tuple[Float, None]:
         xp = get_array_module(sim.probe.data)
 
         phase = xp.angle(fft2(sim.probe.data))
 
-        cost = t.cast(float, 
+        cost = (
             xp.sum(abs2(xp.diff(phase, axis=-1))) +
             xp.sum(abs2(xp.diff(phase, axis=-2)))
         )
@@ -361,11 +361,11 @@ class ProbeRecipTikhonov:
 
     def calc_loss_group(
         self, group: NDArray[numpy.integer], sim: ReconsState, state: None
-    ) -> t.Tuple[float, None]:
+    ) -> t.Tuple[Float, None]:
         xp = get_array_module(sim.probe.data)
         probe_recip = xp.fft.fftshift(fft2(sim.probe.data), axes=(-1, -2))
 
-        cost = t.cast(float, 
+        cost = (
             xp.sum(abs2(xp.diff(probe_recip, axis=-1))) +
             xp.sum(abs2(xp.diff(probe_recip, axis=-2)))
         )
@@ -384,7 +384,7 @@ class ProbeRecipTotalVariation:
 
     def calc_loss_group(
         self, group: NDArray[numpy.integer], sim: ReconsState, state: None
-    ) -> t.Tuple[float, None]:
+    ) -> t.Tuple[Float, None]:
         xp = get_array_module(sim.probe.data)
         probe_recip = xp.fft.fftshift(fft2(sim.probe.data), axes=(-1, -2))
 
