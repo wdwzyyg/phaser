@@ -5,7 +5,8 @@ import typing as t
 import numpy
 from numpy.typing import NDArray
 
-from phaser.utils.num import get_array_module, cast_array_module, to_numpy, fft2, ifft2, at
+from phaser.types import cast_length
+from phaser.utils.num import get_array_module, cast_array_module, to_numpy, fft2, ifft2, at, Sampling
 from phaser.utils.misc import create_rng, create_sparse_groupings
 from phaser.utils.optics import fourier_shift_filter
 from phaser.utils.image import affine_transform
@@ -107,14 +108,13 @@ def diffraction_align(args: PostInitArgs, props: t.Any = None) -> t.Tuple[Patter
 
     mean_pattern = sum_pattern / math.prod(patterns.patterns.shape[:-2])
 
-    ky, kx = state.probe.sampling.recip_grid(dtype=patterns.patterns.dtype, xp=xp)
-    #yy, xx = state.probe.sampling.real_grid(dtype=patterns.patterns.dtype, xp=xp)
+    ky, kx = Sampling(
+        cast_length(mean_pattern.shape, 2), extent=(1.0, 1.0)
+    ).recip_grid(dtype=patterns.patterns.dtype, xp=xp)
 
     shift = xp.array([
         xp.nansum(ky * mean_pattern), xp.nansum(kx * mean_pattern)
     ]) / xp.nansum(mean_pattern)
-    # 1/A -> px
-    shift *= xp.array(state.probe.sampling.extent)
 
     logging.info(f"Shifting diffraction patterns by ({shift[1]}, {shift[0]}) px")
 
