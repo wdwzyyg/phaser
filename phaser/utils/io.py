@@ -37,6 +37,16 @@ _DTYPE_CATEGORIES: t.Dict[t.Type[numpy.generic], t.Type[numpy.generic]] = {
     numpy.unsignedinteger: numpy.unsignedinteger,
 }
 
+_CATEGORY_MIN_DTYPE: t.Dict[t.Type[numpy.generic], t.Type[numpy.generic]] = {
+    numpy.bool_: numpy.bool_,
+    numpy.inexact: numpy.float32,
+    numpy.floating: numpy.float32,
+    numpy.complexfloating: numpy.complex64,
+    numpy.integer: numpy.uint8,
+    numpy.unsignedinteger: numpy.uint8,
+    numpy.signedinteger: numpy.int8,
+}
+
 
 class OutputDir(contextlib.AbstractContextManager[Path]):
     def __init__(self, fmt_str: str, any_output: bool, **kwargs: t.Any):
@@ -259,7 +269,9 @@ def _hdf5_read_dataset(group: h5py.Group, path: str, dtype: t.Type[DTypeT]) -> t
         raise ValueError(f"While reading '{group.file.filename}':\n"
                          f"Expected a dataset of dtype '{dtype_category}' at path '{group.name}{path}', instead found {dataset.dtype}.")
 
-    return dataset[()].astype(numpy.promote_types(dataset.dtype, dtype))
+    # ensure promotion is correct. eg dtype = numpy.floating promotes with numpy.float32
+    out_dtype = numpy.promote_types(dataset.dtype, _CATEGORY_MIN_DTYPE.get(dtype, dtype))
+    return dataset[()].astype(out_dtype)
 
 
 def _hdf5_read_dataset_shape(group: h5py.Group, path: str, dtype: t.Type[DTypeT], shape: t.Tuple[int, ...]) -> NDArray[DTypeT]:
