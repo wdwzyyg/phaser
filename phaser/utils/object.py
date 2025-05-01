@@ -235,26 +235,28 @@ class ObjectSampling:
             xp.array_equal(self.corner, other.corner)
         )
 
+    @staticmethod
+    def _scan_extent(scan_positions: NDArray[numpy.floating]) -> t.Tuple[NDArray[numpy.float64], NDArray[numpy.float64]]:
+        xp = get_array_module(scan_positions)
+        scan_min = numpy.array(tuple(float(xp.nanmin(scan_positions[..., i])) for i in range(2)))
+        scan_max = numpy.array(tuple(float(xp.nanmax(scan_positions[..., i])) for i in range(2)))
+        return (scan_min, scan_max)
+
     @classmethod
     def from_scan(cls: t.Type[Self], scan_positions: NDArray[numpy.floating], sampling: ArrayLike, pad: ArrayLike = 0) -> Self:
         """Create an ObjectSampling around the given scan positions, padded by at least a radius `pad` in real-space."""
         sampling = as_numpy(sampling).astype(numpy.float64)
         pad = numpy.broadcast_to(pad, (2,)).astype(numpy.float64)
-        xp = get_array_module(scan_positions)
 
-        scan_min = numpy.array(tuple(float(xp.nanmin(scan_positions[..., i])) for i in range(2)))
-        scan_max = numpy.array(tuple(float(xp.nanmax(scan_positions[..., i])) for i in range(2)))
+        (scan_min, scan_max) = cls._scan_extent(scan_positions)
         n = numpy.ceil((2.*pad + scan_max - scan_min) / sampling).astype(numpy.int_) + 1
 
         return cls((n[0], n[1]), sampling, scan_min - pad, scan_min, scan_max)
 
     def expand_to_scan(self, scan_positions: NDArray[numpy.floating], pad: ArrayLike = 0.) -> Self:
         pad = numpy.broadcast_to(pad, (2,)).astype(numpy.float64)
-        xp = get_array_module(scan_positions)
 
-        scan_min = numpy.array(tuple(float(xp.nanmin(scan_positions[..., i])) for i in range(2)))
-        scan_max = numpy.array(tuple(float(xp.nanmax(scan_positions[..., i])) for i in range(2)))
-
+        (scan_min, scan_max) = self._scan_extent(scan_positions)
         pad_min = numpy.ceil(numpy.maximum(0, self.min - scan_min + pad) / self.sampling).astype(numpy.int_)
         pad_max = numpy.ceil(numpy.maximum(0, scan_max - self.max + pad) / self.sampling).astype(numpy.int_)
 
@@ -270,6 +272,20 @@ class ObjectSampling:
             self.corner - pad_min * self.sampling,
             region_min, region_max
         )
+
+    def check_scan(self, scan_positions: NDArray[numpy.floating], pad: ArrayLike = 0.):
+        xp = get_array_module(scan_positions)
+
+        pad = numpy.broadcast_to(pad, (2,)).astype(numpy.float64)
+        obj_min = self.corner - pad
+        obj_max = self.corner + self.extent + pad
+
+        outside: NDArray[numpy.bool_] = (
+            (scan_positions[..., 0] < obj_min[0]) | (scan_positions[..., 0] > obj_max[0]) |
+            (scan_positions[..., 1] < obj_min[1]) | (scan_positions[..., 1] > obj_max[1])
+        )
+        if (n_outside := int(xp.sum(outside))):
+            raise ValueError(f"{n_outside}/{outside.size} probe positions completely outside object")
 
     def _pos_to_object_idx(self, pos: ArrayLike, cutout_shape: t.Tuple[int, ...]) -> NDArray[numpy.float64]:
         """Return starting index for the cutout closest to centered around `pos` (`(y, x)`)"""

@@ -290,6 +290,10 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
                     state, iter_constraint_states[reg_i]
                 )
 
+            if 'positions' in iter_vars:
+                # check positions are at least overlapping object
+                state.object.sampling.check_scan(state.scan, state.probe.sampling.extent / 2.)
+
             observer.update_iteration(state, i, props.niter, loss)
 
             state.progress.iters = numpy.concatenate([state.progress.iters, [i + start_i]])

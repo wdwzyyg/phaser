@@ -119,6 +119,9 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
                 sim.state.scan += pos_update
                 assert sim.state.scan.dtype == sim.dtype
 
+                # check positions are at least overlapping object
+                sim.state.object.sampling.check_scan(sim.state.scan, sim.state.probe.sampling.extent / 2.)
+
             error = None
             if group_errors is not None:
                 error = float(to_numpy(xp.nanmean(xp.concatenate(group_errors))))
