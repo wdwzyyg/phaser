@@ -159,13 +159,14 @@ def affine_transform(
     if mode in ('constant', 'wrap'):
         # these modes aren't supported by jax
         raise ValueError(f"Resampling mode '{mode}' not supported (try 'grid-constant' or 'grid-wrap' instead)")
-    if order > 1:
-        raise ValueError(f"Interpolation order {order} not supported (currently only support order=0, 1)")
+    
 
     xp = get_array_module(input, matrix, offset)
     scipy = get_scipy_module(input, matrix, offset)
 
     if is_jax(input):
+        if order > 1:
+            raise ValueError(f"Interpolation order {order} not supported (jax currently only supports order=0, 1)")
         from ._jax_kernels import affine_transform, jax
         return t.cast(NDArray[NumT], affine_transform(
             t.cast(jax.Array, input), matrix, offset,
