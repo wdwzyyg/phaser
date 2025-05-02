@@ -186,6 +186,8 @@ def initialize_reconstruction(
     data = Patterns(raw_data['patterns'], raw_data['mask'])
     sampling = raw_data['sampling']
     wavelength = t.cast(float, raw_data['wavelength'])
+    probe_hook = raw_data['probe_hook']
+    scan_hook = raw_data['scan_hook']
     del raw_data
 
     if init_state.probe is not None and plan.init.probe is None:
@@ -201,7 +203,7 @@ def initialize_reconstruction(
 
     else:
         logging.info("Initializing probe...")
-        probe = pane.from_data(raw_data['probe_hook'], ProbeHook)(  # type: ignore
+        probe = pane.from_data(probe_hook, ProbeHook)(  # type: ignore
             {'sampling': sampling, 'wavelength': wavelength, 'dtype': dtype, 'seed': seed, 'xp': xp}
         )
     if probe.data.ndim == 2:
@@ -212,7 +214,7 @@ def initialize_reconstruction(
         scan = init_state.scan
     else:
         logging.info("Initializing scan...")
-        scan = pane.from_data(raw_data['scan_hook'], ScanHook)(  # type: ignore
+        scan = pane.from_data(scan_hook, ScanHook)(  # type: ignore
             {'dtype': dtype, 'seed': seed, 'xp': xp}
         )
 
