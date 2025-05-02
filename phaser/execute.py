@@ -6,7 +6,7 @@ import typing as t
 import numpy
 import pane
 
-from phaser.utils.num import cast_array_module, get_backend_module, xp_is_jax, Sampling
+from phaser.utils.num import cast_array_module, get_backend_module, xp_is_jax, Sampling, to_complex_dtype
 from phaser.utils.object import ObjectSampling
 from .hooks import Hook, ObjectHook, RawData
 from .plan import GradientEnginePlan, ReconsPlan, EnginePlan, ScanHook, ProbeHook
@@ -165,7 +165,9 @@ def initialize_reconstruction(
 
     logging.info("Executing plan...")
 
-    dtype: type = numpy.float32 if plan.dtype == 'float32' else numpy.float64
+    dtype: t.Type[numpy.floating] = numpy.float32 if plan.dtype == 'float32' else numpy.float64
+    cdtype: t.Type[numpy.complexfloating] = to_complex_dtype(dtype)
+
     logging.info(f"dtype: {dtype} array backend: {xp.__name__}")
     if xp_is_jax(xp):
         import jax
@@ -184,13 +186,24 @@ def initialize_reconstruction(
     data = Patterns(raw_data['patterns'], raw_data['mask'])
     sampling = raw_data['sampling']
     wavelength = t.cast(float, raw_data['wavelength'])
+    probe_hook = raw_data['probe_hook']
+    scan_hook = raw_data['scan_hook']
+    del raw_data
 
     if init_state.probe is not None and plan.init.probe is None:
         logging.info("Re-using probe from initial state...")
         probe = init_state.probe
+        probe.data = probe.data.astype(cdtype)
+
+        if probe.sampling != sampling:
+            logging.info("Resampling patterns to probe from initial state...")
+            data.patterns = sampling.resample_recip(data.patterns, probe.sampling)
+            data.pattern_mask = sampling.resample_recip(data.pattern_mask, probe.sampling)
+            sampling = probe.sampling
+
     else:
         logging.info("Initializing probe...")
-        probe = pane.from_data(raw_data['probe_hook'], ProbeHook)(  # type: ignore
+        probe = pane.from_data(probe_hook, ProbeHook)(  # type: ignore
             {'sampling': sampling, 'wavelength': wavelength, 'dtype': dtype, 'seed': seed, 'xp': xp}
         )
     if probe.data.ndim == 2:
@@ -201,11 +214,9 @@ def initialize_reconstruction(
         scan = init_state.scan
     else:
         logging.info("Initializing scan...")
-        scan = pane.from_data(raw_data['scan_hook'], ScanHook)(  # type: ignore
+        scan = pane.from_data(scan_hook, ScanHook)(  # type: ignore
             {'dtype': dtype, 'seed': seed, 'xp': xp}
         )
-    if scan.shape[:-1] != data.patterns.shape[:-2]:
-        raise ValueError(f"Scan shape {scan.shape[:-1]} doesn't match patterns shape {data.patterns.shape[:-2]}!")
 
     obj_pad_px: float = plan.engines[0].obj_pad_px if len(plan.engines) > 0 else 5.0  # type: ignore
     obj_sampling = ObjectSampling.from_scan(
@@ -215,6 +226,7 @@ def initialize_reconstruction(
     if init_state.object is not None and plan.init.object is None:
         logging.info("Re-using object from initial state...")
         obj = init_state.object
+        obj.data = obj.data.astype(cdtype)
     else:
         logging.info("Initializing object...")
         obj = (plan.init.object or pane.from_data('random', ObjectHook))({
@@ -242,6 +254,16 @@ def initialize_reconstruction(
         })
 
     # perform some checks on preprocessed data
+
+    if state.scan.shape[:-1] != data.patterns.shape[:-2]:
+        n_pos = int(numpy.prod(state.scan.shape[:-1]))
+        n_pat = int(numpy.prod(data.patterns.shape[:-2]))
+        if n_pos != n_pat:
+            raise ValueError(f"# of scan positions {n_pos} doesn't match # of patterns {n_pat}")
+
+        # reshape patterns to match scan
+        data.patterns = data.patterns.reshape((*state.scan.shape[:-1], *data.patterns.shape[-2:]))
+
     avg_pattern_intensity = float(numpy.nanmean(numpy.nansum(data.patterns, axis=(-1, -2))))
 
     if avg_pattern_intensity < 5.0:

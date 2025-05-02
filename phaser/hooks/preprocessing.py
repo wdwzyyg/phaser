@@ -5,7 +5,8 @@ import typing as t
 import numpy
 from numpy.typing import NDArray
 
-from phaser.utils.num import get_array_module, cast_array_module, to_numpy, fft2, ifft2, at
+from phaser.types import cast_length
+from phaser.utils.num import get_array_module, cast_array_module, to_numpy, fft2, ifft2, at, Sampling
 from phaser.utils.misc import create_rng, create_sparse_groupings
 from phaser.utils.optics import fourier_shift_filter
 from phaser.utils.image import affine_transform
@@ -75,10 +76,16 @@ def drop_nan_patterns(args: PostInitArgs, props: DropNanProps) -> t.Tuple[Patter
     mask = fraction_nan > props.threshold
 
     if (n := int(xp.sum(mask))):
-        logger.info(f"Dropping {n}/{scan.shape[0]} patterns which are at least {props.threshold:.1%} NaN values")
-
-        scan = scan[mask]
+        logger.info(f"Dropping {n}/{patterns.shape[0]} patterns which are at least {props.threshold:.1%} NaN values")
         patterns = patterns[mask]
+
+        if scan.shape[0] == mask.size:
+            # apply mask to scan as well
+            scan = scan[mask]
+        elif scan.shape[0] != patterns.shape[0]:
+            raise ValueError(f"# of scan positions {scan.shape[0]} doesn't match # of patterns"
+                             f" before ({mask.size}) or after ({patterns.shape[0]}) filtering")
+        # otherwise, we assume the mask has already been applied to the scan
 
     args['state'].scan = scan
     args['data'].patterns = patterns
@@ -101,14 +108,13 @@ def diffraction_align(args: PostInitArgs, props: t.Any = None) -> t.Tuple[Patter
 
     mean_pattern = sum_pattern / math.prod(patterns.patterns.shape[:-2])
 
-    ky, kx = state.probe.sampling.recip_grid(dtype=patterns.patterns.dtype, xp=xp)
-    #yy, xx = state.probe.sampling.real_grid(dtype=patterns.patterns.dtype, xp=xp)
+    ky, kx = Sampling(
+        cast_length(mean_pattern.shape, 2), extent=(1.0, 1.0)
+    ).recip_grid(dtype=patterns.patterns.dtype, xp=xp)
 
     shift = xp.array([
         xp.nansum(ky * mean_pattern), xp.nansum(kx * mean_pattern)
     ]) / xp.nansum(mean_pattern)
-    # 1/A -> px
-    shift *= xp.array(state.probe.sampling.extent)
 
     logging.info(f"Shifting diffraction patterns by ({shift[1]}, {shift[0]}) px")
 
