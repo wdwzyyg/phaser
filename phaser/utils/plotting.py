@@ -6,6 +6,7 @@ import matplotlib
 from matplotlib import pyplot
 from matplotlib.colors import Colormap, Normalize, LinearSegmentedColormap
 from matplotlib.transforms import Affine2DBase, Affine2D
+import matplotlib.patheffects as path_effects
 
 from .num import (
     get_array_module, abs2, fft2, ifft2,
@@ -20,6 +21,7 @@ from .misc import create_sparse_groupings
 if t.TYPE_CHECKING:
     from ..state import ObjectState, ProbeState
     from matplotlib.axes import Axes
+    from matplotlib.text import Text
     from matplotlib.figure import Figure
     from matplotlib.image import AxesImage
 
@@ -665,6 +667,26 @@ def add_scalebar(ax: 'Axes', size: float, height: float = 0.05):
 def add_scalebar_top(ax: 'Axes', size: float, height: float = 0.05):
     from matplotlib.patches import Rectangle
     ax.add_patch(Rectangle((0.0, 0.0), size, height, fc='white', ec='black', linewidth=2.0, transform=_ScalebarTransform(ax, (0.04, 1.0 - 0.06 - height))))
+
+
+def label_inside_ax(ax: 'Axes', text: str, pos: t.Tuple[float, float] = (0.02, 0.95), color: t.Any = 'white',
+                    stroke: t.Any = 'black', strokewidth: float = 3.0, **text_kwargs: t.Any) -> 'Text':
+    kwargs = {
+        'ha': 'left',
+        'va': 'top',
+        'fontsize': 16.0,
+        'transform': ax.transAxes,
+        'color': color,
+    }
+    kwargs.update(text_kwargs)
+
+    t = ax.text(pos[0], pos[1], text, **kwargs)
+    if strokewidth > 0.0:
+        t.set_path_effects([
+            path_effects.Stroke(linewidth=strokewidth, foreground=stroke),
+            path_effects.Normal()
+        ])
+    return t
 
 
 __all__ = [

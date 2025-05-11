@@ -363,22 +363,22 @@ class ObjectSampling:
         cutout = self.cutout(arr, pos, view.shape).add(view)
         return cutout.obj
 
-    def get_region_crop(self) -> t.Tuple[slice, slice]:
+    def get_region_crop(self, pad: ArrayLike = 0.) -> t.Tuple[slice, slice]:
         if self.region_min is None:
             min_i, min_j = None, None
         else:
-            min_i, min_j = numpy.ceil(self._pos_to_object_idx(self.region_min, (0, 0))).astype(numpy.int_)
+            min_i, min_j = numpy.ceil(self._pos_to_object_idx(self.region_min - pad, (0, 0))).astype(numpy.int_)
         if self.region_max is None:
             max_i, max_j = None, None
         else:
-            max_i, max_j = numpy.floor(self._pos_to_object_idx(self.region_max, (0, 0))).astype(numpy.int_) + 1
+            max_i, max_j = numpy.floor(self._pos_to_object_idx(self.region_max + pad, (0, 0))).astype(numpy.int_) + 1
 
         return (slice(min_i, max_i), slice(min_j, max_j))
 
-    def get_region_mask(self, xp: t.Any = None) -> NDArray[numpy.bool_]:
+    def get_region_mask(self, pad: ArrayLike = 0., xp: t.Any = None) -> NDArray[numpy.bool_]:
         xp2 = numpy if xp is None else cast_array_module(xp)
         mask = xp2.zeros(self.shape, dtype=numpy.bool_)
-        mask = at(mask, self.get_region_crop()).set(numpy.bool_(1))  # type: ignore
+        mask = at(mask, self.get_region_crop(pad=pad)).set(numpy.bool_(1))  # type: ignore
         return mask
 
     def get_region_center(self) -> NDArray[numpy.floating]:

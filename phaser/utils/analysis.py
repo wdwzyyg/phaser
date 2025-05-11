@@ -65,7 +65,7 @@ def contrast_transfer(
 
     xp = get_array_module(img1, img2)
 
-    win = xp.array(window('hann', img1.shape), dtype=numpy.float64)
+    win = xp.array(window(('tukey', 0.3), img1.shape), dtype=numpy.float64)
     img1_fft = xp.fft.fftshift(fft2(img1.astype(numpy.float64) * win), axes=(-2, -1))
     img2_fft = xp.conj(xp.fft.fftshift(fft2(img2.astype(numpy.float64) * win), axes=(-2, -1)))
     fft1_mag = abs2(img1_fft)
@@ -98,7 +98,7 @@ def fourier_ring_correlate(
 
     xp = get_array_module(img1, img2)
 
-    win = xp.array(window('hann', img1.shape), dtype=numpy.float64)
+    win = xp.array(window(('tukey', 0.3), img1.shape), dtype=numpy.float64)
     img1_fft = xp.fft.fftshift(fft2(img1.astype(numpy.float64) * win), axes=(-2, -1))
     img2_fft = xp.conj(xp.fft.fftshift(fft2(img2.astype(numpy.float64) * win), axes=(-2, -1)))
     fft1_mag = abs2(img1_fft)
@@ -111,7 +111,7 @@ def fourier_ring_correlate(
     mag2_count = xp.bincount(r_i, fft2_mag.ravel())
 
     with numpy.errstate(invalid='ignore', divide='ignore'):
-        vals = to_numpy(xp.abs(real_count) / xp.sqrt(mag1_count * mag2_count))
+        vals = to_numpy(real_count / xp.sqrt(mag1_count * mag2_count))
     vals = numpy.nan_to_num(vals, posinf=0., nan=1.)
 
     #vals = numpy.bincount(r_i.ravel(), corr.ravel()) / numpy.bincount(r_i.ravel())
@@ -162,6 +162,7 @@ def align_object_to_ground_truth(
     ground_truth_sampling: ArrayLike,
     rotation_angle: float = 0.0,
     refinement_niter: int = 0,
+    order: int = 1,
 ) -> t.Tuple[NDArray[numpy.floating], NDArray[numpy.floating]]:
     """
     ground_truth: Ground truth phase (in radians, or radians/angstrom for multislice data)
@@ -169,16 +170,15 @@ def align_object_to_ground_truth(
     Returns a tuple (object, ground_truth)
     """
     xp = get_array_module(object.data, ground_truth)
+    ground_truth = xp.asarray(ground_truth)
+    object_phase = xp.angle(xp.asarray(object.data))
 
-    # preprocess object
-    object_sampling = object.sampling
-    object_phase = xp.angle(object.data)
     # normalize multislice objects to radians/angstrom
     if len(object.thicknesses):
         object_phase /= object.thicknesses[:, None, None]
 
     # remove linear ramp
-    object_roi = object_sampling.get_region_mask(xp=xp)
+    object_roi = object.sampling.get_region_mask(xp=xp)
     object_phase = remove_linear_ramp(object_phase, object_roi)
     object_phase -= xp.nanquantile(object_phase[..., object_roi], 0.01, axis=-1)[:, None, None]
     # and get average
@@ -190,16 +190,16 @@ def align_object_to_ground_truth(
     ground_truth_samp = ObjectSampling(
         t.cast(t.Tuple[int, int], ground_truth.shape),
         sampling=ground_truth_sampling, corner=ground_truth_corner,
-        region_min=object_sampling.region_min, region_max=object_sampling.region_max,
+        region_min=object.sampling.region_min, region_max=object.sampling.region_max,
     )
-    crop = ground_truth_samp.get_region_crop()
+    crop = ground_truth_samp.get_region_crop(pad=-0.05 * object.sampling.get_region_extent())
 
     # perform initial resampling
-    upsamp_obj = object_sampling.resample(object_mean, ground_truth_samp, cval=0., rotation=rotation_angle)
+    upsamp_obj = object.sampling.resample(object_mean, ground_truth_samp, cval=0., rotation=rotation_angle, order=order)
 
     # cross correlate
     max_shift = float(numpy.min(
-        (ground_truth_samp.extent - object_sampling.get_region_extent()) / (3.0 * ground_truth_samp.sampling)
+        (ground_truth_samp.extent - object.sampling.get_region_extent()) / (3.0 * ground_truth_samp.sampling)
     ))
     if max_shift < 0:
         raise ValueError("Error: Ground truth extent smaller than object extent")
@@ -211,13 +211,13 @@ def align_object_to_ground_truth(
     ground_truth_samp = ObjectSampling(
         tuple(ground_truth_samp.shape),
         sampling=ground_truth_sampling, corner=ground_truth_corner + shift * ground_truth_sampling,
-        region_min=object_sampling.region_min, region_max=object_sampling.region_max, 
+        region_min=object.sampling.region_min, region_max=object.sampling.region_max, 
     )
     crop = ground_truth_samp.get_region_crop()
 
     if refinement_niter == 0:
         # perform final upsampling
-        upsamp_obj = object_sampling.resample(object_phase, ground_truth_samp, cval=0., rotation=rotation_angle)
+        upsamp_obj = object.sampling.resample(object_phase, ground_truth_samp, cval=0., rotation=rotation_angle, order=order)
         return upsamp_obj[(slice(None), *crop)], ground_truth[tuple(crop)]
 
     import scipy.optimize
@@ -233,7 +233,7 @@ def align_object_to_ground_truth(
 
     def align_and_correlate(mat: NDArray[numpy.floating]) -> NDArray[numpy.floating]:
         affine = _make_affine(mat)
-        upsamp_obj = object_sampling.resample(object_mean, ground_truth_samp, cval=0., affine=affine)
+        upsamp_obj = object.sampling.resample(object_mean, ground_truth_samp, cval=0., affine=affine, order=order)
         return to_numpy(upsamp_obj[tuple(crop)] - ground_truth[tuple(crop)]).ravel()
 
     max_shift_refine = max_shift * ground_truth_samp.sampling[0] / 5.
@@ -243,7 +243,8 @@ def align_object_to_ground_truth(
     min_bound = numpy.array([0.9, -0.1, -0.1, 0.9, -max_shift_refine, -max_shift_refine])
     max_bound = numpy.array([1.1, 0.1, 0.1, 1.1, max_shift_refine, max_shift_refine])
 
-    result = scipy.optimize.least_squares(align_and_correlate, init_mat, bounds=(min_bound, max_bound), method='dogbox', max_nfev=refinement_niter)
+    result = scipy.optimize.least_squares(align_and_correlate, init_mat, bounds=(min_bound, max_bound),
+                                          method='dogbox', max_nfev=refinement_niter, xtol=1e-4)
     print(f"""\
 Refinement result: {result.message}
     nfev: {result.nfev}
@@ -258,5 +259,5 @@ Refinement result: {result.message}
     ]) @ rotation_matrix(rotation_angle) @ translation_matrix(-obj_center)
 
     # perform final upsampling
-    upsamp_obj = object_sampling.resample(object_phase, ground_truth_samp, cval=0., affine=affine)
+    upsamp_obj = object.sampling.resample(object_phase, ground_truth_samp, cval=0., affine=affine, order=order)
     return upsamp_obj[(slice(None), *crop)], ground_truth[tuple(crop)]
