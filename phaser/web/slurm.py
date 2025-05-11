@@ -73,7 +73,7 @@ class SlurmManager:
 
         from .. import web
         with importlib.resources.path(web, 'slurm_worker.sh') as script_path:
-            slurm_args = "--qos=high --time=4:00:00 --partition=xeon-g6-volta --cpus-per-task=20 --gres=gpu:volta:1 --signal=SIGINT@120"
+            slurm_args = "--qos=high --time=4-0 --partition=xeon-g6-volta --cpus-per-task=20 --gres=gpu:volta:1 --signal=SIGINT@120"
             #slurm_args = "--qos=high --time=01:00:00 --partition=debug-cpu --cpus-per-task=20"
             shell = os.environ.get('SHELL', '/bin/bash')
             proc = await asyncio.create_subprocess_exec(
