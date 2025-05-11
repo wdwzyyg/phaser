@@ -126,7 +126,7 @@ def _save_object_phase(state: ReconsState, out_path: Path, options: SaveOptions,
         mask = xp.ones(obj_phase.shape[-2:], dtype=numpy.bool_)
     else:
         # include whole image, but only scale based on ROI
-        mask = state.object.sampling.get_region_mask(xp)
+        mask = state.object.sampling.get_region_mask(xp=xp)
 
     if options.unwrap_phase:
         obj_phase = xp.unwrap(xp.unwrap(obj_phase, axis=-1), axis=-2)
@@ -162,7 +162,7 @@ def _save_object_mag(state: ReconsState, out_path: Path, options: SaveOptions, s
         mask = numpy.ones(obj_mag.shape[-2:], dtype=numpy.bool_)
     else:
         # include whole image, but only scale based on ROI
-        mask = state.object.sampling.get_region_mask(numpy)
+        mask = state.object.sampling.get_region_mask(xp=numpy)
 
     if not stack:
         obj_mag = xp.prod(obj_mag, axis=0)

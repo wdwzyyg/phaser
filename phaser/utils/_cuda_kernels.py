@@ -42,7 +42,7 @@ def set_cutouts(obj: cupy.ndarray, cutouts: cupy.ndarray, start_idxs: cupy.ndarr
 
     start_idxs = cupy.ascontiguousarray(start_idxs.astype(cupy.uint64))
 
-    default = numpy.bool(0).astype(obj.dtype)
+    default = numpy.bool_(0).astype(obj.dtype)
     args = (obj, cupy.ascontiguousarray(cutouts), start_idxs, n_cutouts, n_objects, *obj.shape[-2:], *cutouts.shape[-2:], default)
     kernel(grid, block, args)
     return cutouts
@@ -101,7 +101,7 @@ def add_cutouts(obj: cupy.ndarray, cutouts: cupy.ndarray, start_idxs: cupy.ndarr
 
     start_idxs = cupy.ascontiguousarray(start_idxs.astype(cupy.uint64))
 
-    default = numpy.bool(0).astype(obj.dtype)
+    default = numpy.bool_(0).astype(obj.dtype)
     args = (obj, cupy.ascontiguousarray(cutouts), start_idxs, n_cutouts, n_objects, *obj.shape[-2:], *cutouts.shape[-2:], default)
     kernel(grid, block, args)
     return cutouts

@@ -5,11 +5,11 @@ import logging
 import typing as t
 
 import numpy
-from numpy.typing import NDArray
 
 from phaser.utils.num import Sampling
 from phaser.utils.physics import Electron
 from phaser.io.empad import load_4d, EmpadMetadata
+from phaser.types import cast_length
 from .. import LoadEmpadProps, RawData
 
 
@@ -72,7 +72,7 @@ def load_empad(args: None, props: LoadEmpadProps) -> RawData:
             patterns /= adu
 
     a = wavelength / (diff_step * 1e-3)  # recip. pixel size -> 1 / real space extent
-    sampling = Sampling(patterns.shape[-2:], extent=(a, a))
+    sampling = Sampling(cast_length(patterns.shape[-2:], 2), extent=(a, a))
 
     mask = numpy.zeros_like(patterns, shape=patterns.shape[-2:])
     mask[2:-2, 2:-2] = 1.

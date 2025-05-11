@@ -140,7 +140,7 @@ def create_compact_groupings(positions: NDArray[numpy.floating], max_grouping: i
 
     # fist, we seed the group centroids using k-means clustering
     rng = create_rng(seed, f'groupings_{i}' if i != 0 else 'groupings')
-    centroids, labels = kmeans2(pos_flat, n_groups, minit='++', missing='raise', seed=rng)
+    centroids, labels = kmeans2(pos_flat, n_groups, minit='++', missing='raise', rng=rng)
 
     # then, we use a greedy algorithm to assign points to groups
 
@@ -162,7 +162,7 @@ def create_compact_groupings(positions: NDArray[numpy.floating], max_grouping: i
         while True:
             # compute distances to the unassigned points
             # TODO this should probably exclude ineligible groups
-            distances, indices = tree.query(pos_flat[unassigned], n_neighbors)
+            distances, indices = t.cast(t.Tuple[NDArray[numpy.floating], NDArray[numpy.integer]], tree.query(pos_flat[unassigned], n_neighbors))
             # start by assigning the closest points
             scan_idxs = numpy.argsort(distances[..., 0])
             indices = indices[scan_idxs]

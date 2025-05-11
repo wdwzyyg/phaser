@@ -364,6 +364,7 @@ class ObjectSampling:
         return cutout.obj
 
     def get_region_crop(self, pad: ArrayLike = 0.) -> t.Tuple[slice, slice]:
+        pad = numpy.asarray(pad)
         if self.region_min is None:
             min_i, min_j = None, None
         else:
@@ -375,7 +376,7 @@ class ObjectSampling:
 
         return (slice(min_i, max_i), slice(min_j, max_j))
 
-    def get_region_mask(self, pad: ArrayLike = 0., xp: t.Any = None) -> NDArray[numpy.bool_]:
+    def get_region_mask(self, pad: ArrayLike = 0., *, xp: t.Any = None) -> NDArray[numpy.bool_]:
         xp2 = numpy if xp is None else cast_array_module(xp)
         mask = xp2.zeros(self.shape, dtype=numpy.bool_)
         mask = at(mask, self.get_region_crop(pad=pad)).set(numpy.bool_(1))  # type: ignore
