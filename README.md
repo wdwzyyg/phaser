@@ -1,5 +1,6 @@
 phaser: The weapon of choice for ptychographic reconstructions
 ---
+[![][ci-badge]][ci-url] [![][commit-badge]][commit-url] [![][docs-dev-badge]][docs-dev-url]
 
 `phaser` is a fully-featured package for multislice electron ptychography.
 
@@ -59,3 +60,10 @@ Other notable ptychography packages:
 [numpy]: https://numpy.org/
 [cupy]: https://cupy.dev/
 [jax]: https://docs.jax.dev/en/latest/
+
+[ci-badge]: https://github.com/hexane360/phaser/workflows/Tests/badge.svg
+[ci-url]: https://github.com/hexane360/phaser/actions/workflows/ci.yaml
+[docs-dev-badge]: https://img.shields.io/badge/docs-dev-blue
+[docs-dev-url]: https://hexane360.github.io/phaser/dev/
+[commit-badge]: https://img.shields.io/github/last-commit/hexane360/phaser
+[commit-url]: https://github.com/hexane360/phaser/commits
