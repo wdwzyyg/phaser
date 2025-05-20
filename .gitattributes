@@ -5,3 +5,6 @@
 *.npz filter=lfs diff=lfs merge=lfs -text
 *.raw filter=lfs diff=lfs merge=lfs -text
 *.h5 filter=lfs diff=lfs merge=lfs -text
+
+# ignore ipynb in langauge detection
+*.ipynb linguist-generated
