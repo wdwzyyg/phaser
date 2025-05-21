@@ -4,9 +4,9 @@ set -euo pipefail
 
 python -m jupyter server extension enable --python jupyter-server-proxy
 
-python -m pip install -e '.[web]'
+python -m pip install -e '.[jax,web]'
 
 # download example data
 
-curl --output sample_data.zip -L 'https://www.dropbox.com/scl/fo/txm3k88ubrzvt541v23ir/AL-l_m6VnGlFxzHWZSSc0TA?rlkey=8qxtwnc8cwhpff6jpr5s40y6i&st=d4o7g5kw&dl=1'
+curl --output sample_data.zip -L 'https://www.dropbox.com/scl/fo/txm3k88ubrzvt541v23ir/AL-l_m6VnGlFxzHWZSSc0TA?rlkey=8qxtwnc8cwhpff6jpr5s40y6i&st=x9pbwke0&dl=1'
 unzip sample_data.zip -x / -d sample_data
