@@ -5,11 +5,12 @@ backend: jax
 # raw data source
 raw_data:
   type: empad
-  path: "~/Downloads/mos2/1/mos2/mos2_0.00_dstep1.0.json"
+  path: "sample_data/simulated_mos2/mos2_0.00_dstep1.0.json"
 
 post_load:
  - type: poisson
    scale: 6.09e+6  # 1e+6
+post_init: []
 
 # for each reconstruction engine
 engines:
@@ -29,19 +30,19 @@ engines:
 
    solvers:
      object:
-       type: 'sgd'
-       learning_rate: 1.0e+0
-       momentum: 0.99
+       type: 'adam'
+       learning_rate: 1.0e-2
+       nesterov: True
      probe:
-       type: 'sgd'
-       learning_rate: 1.0e-3
-       momentum: 0.99
+       type: 'adam'
+       learning_rate: 0.2
+       nesterov: True
 
    regularizers:
-     - type: obj_phase_l1
-       cost: 5.0e+1
-     #- type: obj_tikh
-     #  cost: 1.0e+1
+     - type: obj_l2
+       cost: 0.2
+     - type: obj_tikh
+       cost: 1.0
 
    iter_constraints: []
    group_constraints: []

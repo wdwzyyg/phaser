@@ -5,13 +5,11 @@ backend: jax
 # raw data source
 raw_data:
   type: empad
-  path: "~/Downloads/mos2/1/mos2/mos2_0.00_dstep1.0.json"
+  path: "sample_data/simulated_mos2/mos2_0.00_dstep1.0.json"
 
 post_load:
- #- type: crop_data
- #  crop: [~, 30, ~, 30]
  - type: poisson
-   scale: 1.0e+6
+   scale: 6.09e+6  # 1e+6
 
 post_init: []
 
