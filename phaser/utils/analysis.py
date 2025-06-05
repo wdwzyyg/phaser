@@ -17,10 +17,10 @@ def split_image(img: NDArray[NumT]) -> t.Tuple[NDArray[NumT], NDArray[NumT], NDA
     shape = img.shape[-2:]
     # crop image divisible by two
     shape = tuple(s - s%2 for s in shape)
-    img = img[..., *(slice(0, s) for s in shape)]
+    img = img[(Ellipsis, *(slice(0, s) for s in shape))]
 
     return cast_length((
-        img[..., slice(row_start, shape[0], 2), slice(col_start, shape[1], 2)]
+        img[(Ellipsis, slice(row_start, shape[0], 2), slice(col_start, shape[1], 2))]
         for row_start in (0, 1)
         for col_start in (0, 1)
     ), 4)
@@ -32,7 +32,7 @@ def fourier_correlate(img1: NDArray[NumT], img2: NDArray[NumT]) -> NDArray[numpy
 
     xp = get_array_module(img1, img2)
 
-    win = xp.array(window('hann', img1.shape))
+    win = xp.asarray(window('hann', img1.shape))
     img1_fft = numpy.fft.fftshift(fft2(img1.astype(numpy.float64) * win), axes=(-2, -1))
     img2_fft = xp.conj(numpy.fft.fftshift(fft2(img2.astype(numpy.float64) * win), axes=(-2, -1)))
     fft1_mag = abs2(img1_fft)
@@ -65,7 +65,7 @@ def contrast_transfer(
 
     xp = get_array_module(img1, img2)
 
-    win = xp.array(window(('tukey', 0.3), img1.shape), dtype=numpy.float64)
+    win = xp.asarray(window(('tukey', 0.3), img1.shape), dtype=numpy.float64)
     img1_fft = xp.fft.fftshift(fft2(img1.astype(numpy.float64) * win), axes=(-2, -1))
     img2_fft = xp.conj(xp.fft.fftshift(fft2(img2.astype(numpy.float64) * win), axes=(-2, -1)))
     fft1_mag = abs2(img1_fft)
@@ -98,7 +98,7 @@ def fourier_ring_correlate(
 
     xp = get_array_module(img1, img2)
 
-    win = xp.array(window(('tukey', 0.3), img1.shape), dtype=numpy.float64)
+    win = xp.asarray(window(('tukey', 0.3), img1.shape), dtype=numpy.float64)
     img1_fft = xp.fft.fftshift(fft2(img1.astype(numpy.float64) * win), axes=(-2, -1))
     img2_fft = xp.conj(xp.fft.fftshift(fft2(img2.astype(numpy.float64) * win), axes=(-2, -1)))
     fft1_mag = abs2(img1_fft)

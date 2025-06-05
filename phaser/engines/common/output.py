@@ -3,7 +3,6 @@ from pathlib import Path
 import typing as t
 
 import numpy
-from numpy.typing import NDArray
 import tifffile
 
 from phaser.utils.num import to_numpy, abs2, fft2, get_array_module
@@ -122,7 +121,7 @@ def _save_object_phase(state: ReconsState, out_path: Path, options: SaveOptions,
     )
 
     if crop:
-        obj_phase = obj_phase[..., *state.object.sampling.get_region_crop()]
+        obj_phase = obj_phase[(Ellipsis, *state.object.sampling.get_region_crop())]
         mask = xp.ones(obj_phase.shape[-2:], dtype=numpy.bool_)
     else:
         # include whole image, but only scale based on ROI
@@ -158,7 +157,7 @@ def _save_object_mag(state: ReconsState, out_path: Path, options: SaveOptions, s
     xp = get_array_module(state.object.data)
     obj_mag = abs2(state.object.data)
     if crop:
-        obj_mag = obj_mag[..., *state.object.sampling.get_region_crop()]
+        obj_mag = obj_mag[(Ellipsis, *state.object.sampling.get_region_crop())]
         mask = numpy.ones(obj_mag.shape[-2:], dtype=numpy.bool_)
     else:
         # include whole image, but only scale based on ROI

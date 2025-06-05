@@ -26,7 +26,7 @@ engines:
 
    noise_model:
      type: 'poisson'
-     eps: 1.0e-3
+     eps: 1.0e-1
 
    solvers:
      object:
@@ -35,16 +35,18 @@ engines:
        nesterov: True
      probe:
        type: 'adam'
-       learning_rate: 0.2
+       learning_rate: 1.0e-2
        nesterov: True
 
    regularizers:
      - type: obj_l2
-       cost: 0.2
-     - type: obj_tikh
        cost: 1.0
+     - type: obj_tikh
+       cost: 5.0
 
-   iter_constraints: []
+   iter_constraints:
+     - type: limit_probe_support
+       max_angle: 26.0
    group_constraints: []
 
    update_probe: {after: 2}
