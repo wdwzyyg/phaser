@@ -7,7 +7,9 @@ raw_data:
   type: empad
   path: "sample_data/simulated_si/Si_110_Sn_300kV_conv25_defocus15_tds_199.70_dstep0.6.json"
 
-post_load: []
+post_load:
+ - type: poisson
+   scale: 14.46e+6
 post_init: []
 
 # initialization
@@ -30,39 +32,40 @@ engines:
 
    noise_model:
      type: poisson
-     eps: 1.0e-3
+     eps: 2.0
 
    solvers:
      object:
        type: 'adam'
-       learning_rate: 7.0e-2
+       learning_rate: 5.0e-3
        nesterov: True
      probe:
        type: 'adam'
-       learning_rate: 0.3
+       learning_rate: 0.1
        nesterov: True
      positions:
        type: 'sgd'
-       learning_rate: 1.0
-       momentum: 0.99
+       learning_rate: 0.5
+       momentum: 0.90
+       nesterov: True
 
    regularizers:
      - type: obj_l2
-       cost: 0.3
+       cost: 0.4
      - type: obj_tikh
-       cost: 0.6
+       cost: 0.2
      - type: layers_tikh
-       cost: 5.0e+3
+       cost: 5.0e+2
 
    group_constraints: []
    iter_constraints:
      - type: limit_probe_support
-       max_angle: 21.0
+       max_angle: 26.0
      - type: clamp_object_amplitude
        amplitude: 1.0
 
    update_probe: {after: 5}
-   update_positions: {after: 10}
+   update_positions: {after: 5}
 
    save: {every: 10}
    save_images: {every: 2}

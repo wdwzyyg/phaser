@@ -1,5 +1,5 @@
 ---
-name: "si_grad"
+name: "si_grad_exp"
 backend: jax
 
 # raw data source
@@ -8,11 +8,11 @@ raw_data:
   path: "sample_data/experimental_si/acq12_20over.json"
 
 post_load:
- - type: poisson
-   scale: 14.46e+6
-post_init: []
-
-# initialization
+ - type: crop_data
+   crop: [50, -50, 50, -50]
+post_init:
+ - drop_nans
+ - diffraction_align
 
 slices:
   n: 10
@@ -25,14 +25,14 @@ engines:
    # how to output/save
  - type: 'gradient'
    probe_modes: 4
-   bwlim_frac: 0.8
+   bwlim_frac: 1.0
 
    niter: 500
    grouping: 128
 
    noise_model:
      type: poisson
-     eps: 1.0e-3
+     eps: 2.0
 
    solvers:
      object:
@@ -41,12 +41,13 @@ engines:
        nesterov: True
      probe:
        type: 'adam'
-       learning_rate: 0.3
+       learning_rate: 0.1
        nesterov: True
      positions:
        type: 'sgd'
-       learning_rate: 1.0
-       momentum: 0.99
+       learning_rate: 0.5
+       momentum: 0.90
+       nesterov: True
 
    regularizers:
      - type: obj_l2

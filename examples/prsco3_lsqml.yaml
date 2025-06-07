@@ -1,42 +1,44 @@
 ---
-name: "si_lsqml"
+name: "prsco3_lsqml"
 backend: jax
 
 # raw data source
 raw_data:
   type: empad
-  path: "sample_data/simulated_si/Si_110_Sn_300kV_conv25_defocus15_tds_199.70_dstep0.6.json"
+  path: "sample_data/experimental_prsco3/PSO.json"
 
-post_load:
- - type: poisson
-   scale: 14.46e+6
+# initialization
+
+post_init:
+ - drop_nans
+ - diffraction_align
 
 slices:
-  n: 10
-  total_thickness: 200
+  n: 21
+  total_thickness: 210
 
-# for each reconstruction engine
 engines:
-   # how to transition from previous state to current reconstruction state
-   # how to reconstruct
-   # how to output/save
  - type: 'conventional'
-   probe_modes: 4
-   bwlim_frac: 1.0
-
+   sim_shape: [128, 128]
+   probe_modes: 8
    niter: 100
-   grouping: 128
+   grouping: 16
+   bwlim_frac: 1.0
 
    noise_model:
      type: 'amplitude'
-     eps: 1.0e-2
+     eps: 1.0
 
    solver:
      type: 'lsqml'
-     beta_probe: 0.9
-     beta_object: 0.9
-     gamma: 1.0e-2
+     beta_probe:
+       type: expr
+       expr: '1.0 - np.exp(-i / 3)'
+     beta_object:
+       type: expr
+       expr: '1.0 - np.exp(-i / 3)'
 
+     gamma: 1.0e-4
      illum_reg_object: 50.0
      illum_reg_probe: 0.1
 
@@ -49,18 +51,21 @@ engines:
    group_constraints: []
    iter_constraints:
      - type: limit_probe_support
-       max_angle: 26.0
+       max_angle: 22.0
+     - type: clamp_object_amplitude
+       amplitude: 1.0
      - type: layers
        sigma: 100.0
-       weight: 0.3
-     - type: obj_low_pass
-       max_freq: 0.4
+       weight: 0.8
+     - type: obj_gaussian
+       sigma: 0.3
+       weight: 1.0e-2
 
    update_probe: {after: 5}
    update_positions: {after: 5}
 
-   save: {every: 5}
-   save_images: {every: 5}
+   save: {every: 10}
+   save_images: {every: 10}
    save_options:
      images: [
       'probe', 'probe_recip', 'object_phase_sum', 'object_mag_sum',

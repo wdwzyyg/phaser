@@ -1,4 +1,3 @@
-import abc
 import typing as t
 
 import numpy
@@ -42,11 +41,16 @@ class LimitProbeSupportProps(Dataclass):
 
 class RegularizeLayersProps(Dataclass):
     weight: float = 0.9  # weight of regularization to apply
-    sigma: float = 50.0  # standard deviation of gaussian filter
+    sigma: float = 50.0  # standard deviation of gaussian filter (angstrom)
 
 
 class ObjLowPassProps(Dataclass):
     max_freq: float = 0.4  # 1/px (nyquist = 0.5)
+
+
+class GaussianProps(Dataclass):
+    sigma: float  # standard deviation of filter (angstrom)
+    weight: float = 0.9
 
 
 class IterConstraintHook(Hook[None, IterConstraint]):
@@ -55,6 +59,7 @@ class IterConstraintHook(Hook[None, IterConstraint]):
         'limit_probe_support': ('phaser.engines.common.regularizers:LimitProbeSupport', LimitProbeSupportProps),
         'layers': ('phaser.engines.common.regularizers:RegularizeLayers', RegularizeLayersProps),
         'obj_low_pass': ('phaser.engines.common.regularizers:ObjLowPass', ObjLowPassProps),
+        'obj_gaussian': ('phaser.engines.common.regularizers:ObjGaussian', GaussianProps),
         'remove_phase_ramp': ('phaser.engines.common.regularizers:RemovePhaseRamp', t.Dict[str, t.Any]),
     }
 
@@ -64,6 +69,7 @@ class GroupConstraintHook(Hook[None, GroupConstraint]):
         'clamp_object_amplitude': ('phaser.engines.common.regularizers:ClampObjectAmplitude', ClampObjectAmplitudeProps),
         'limit_probe_support': ('phaser.engines.common.regularizers:LimitProbeSupport', LimitProbeSupportProps),
         'obj_low_pass': ('phaser.engines.common.regularizers:ObjLowPass', ObjLowPassProps),
+        'obj_gaussian': ('phaser.engines.common.regularizers:ObjGaussian', GaussianProps),
         'remove_phase_ramp': ('phaser.engines.common.regularizers:RemovePhaseRamp', t.Dict[str, t.Any]),
     }
 
