@@ -217,8 +217,9 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
 
         # runs rescaling
         rescale_factors = []
-        for (group_i, group) in enumerate(groups.iter(state.scan)):
-            group_rescale_factors = dry_run(state, group, propagators, patterns, xp=xp, dtype=dtype)
+        for (group_i, (group, group_patterns)) in enumerate(stream_patterns(groups.iter(state.scan),
+                                                                            patterns, xp=xp, buf_n=props.buffer_n_groups)):
+            group_rescale_factors = dry_run(state, group, propagators, group_patterns, xp=xp, dtype=dtype)
             rescale_factors.append(group_rescale_factors)
 
         rescale_factors = xp.concatenate(rescale_factors, axis=0)
@@ -442,7 +443,7 @@ def dry_run(
     sim: ReconsState,
     group: NDArray[numpy.integer],
     props: t.Optional[NDArray[numpy.complexfloating]],
-    patterns: NDArray[numpy.floating],
+    group_patterns: NDArray[numpy.floating],
     xp: t.Any,
     dtype: t.Type[numpy.floating],
 ) -> NDArray[numpy.floating]:
@@ -462,6 +463,6 @@ def dry_run(
 
     model_wave = fft2(slice_forwards(t_props, probes, sim_slice))
     model_intensity = xp.sum(abs2(model_wave), axis=(1, -2, -1))
-    exp_intensity = xp.sum(xp.array(patterns[tuple(group)]), axis=(-2, -1))
+    exp_intensity = xp.sum(group_patterns, axis=(-2, -1))
 
     return exp_intensity / model_intensity
