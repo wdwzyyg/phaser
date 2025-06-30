@@ -25,7 +25,10 @@ function ObjectPlotSub({object}: {object: ObjectData}) {
 
     let phase = np!.angle(object_data);
     while (phase.shape.length > 2) {
-        phase = np!.nansum(phase, [0]);
+        // phase = np!.nansum(phase, [0]);
+        let middleIndex = (phase.shape[0] - 1) / 2;
+        phase = phase[middleIndex];
+
     }
 
     const [ny, nx] = phase.shape.values();
