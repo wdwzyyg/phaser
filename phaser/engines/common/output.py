@@ -208,7 +208,7 @@ def _plot_tilt(state: ReconsState, out_path: Path, options: SaveOptions):
     tilt = tilt[..., 1] + tilt[..., 0]*1.j
     max_tilt = max(numpy.max(numpy.abs(tilt)), 1.0)  # at least 1 mrad
     c = colorize_complex(tilt / max_tilt, amp=True, rescale=False)
-    ax.scatter(scan[..., 1].ravel(), scan[..., 0].ravel(), c=c, s=0.2)
+    ax.scatter(scan[..., 1].ravel(), scan[..., 0].ravel(), c=c.ravel(), s=0.2)
 
     fig.draw_without_rendering()
     trans = ax.transAxes + fig.transFigure.inverted()
