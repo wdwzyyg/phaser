@@ -194,7 +194,7 @@ def tilt_propagators(
     ky: NDArray[numpy.floating], kx: NDArray[numpy.floating],
     state: ReconsState, 
     props: t.Optional[NDArray[numpy.complexfloating]],  # shape: (Nz-1, Ny, Nx)
-    tilts: NDArray[numpy.floating]                      # shape: (..., 2), in mrad
+    tilts: t.Optional[NDArray[numpy.floating]]          # shape: (..., 2), in mrad
 ) -> t.Optional[NDArray[numpy.complexfloating]]:
     """
     Applies tilt and slice-dependent propagation phase shifts to props.
@@ -204,6 +204,8 @@ def tilt_propagators(
     """
     if props is None:
         return None
+    if tilts is None:
+        return props[:, None, ...]
 
     xp = get_array_module(state.probe.data)
     dtype = to_real_dtype(state.probe.data.dtype)
@@ -266,13 +268,13 @@ def slice_forwards(
     if props is None:
         return f(0, None, state)
 
-    # props shape: (N_slices - 1, [batch], Ny, Nx)
-    n_slices = len(props) + 1
+    n_slices = props.shape[1] + 1  # props shape: (batch, Nz-1, Ny, Nx)
 
     if is_jax(props):
         import jax
         def step_fn(carry, slice_i):
-            new_state = f(slice_i, props[slice_i], carry)
+            # props[:, slice_i] has shape (batch, Ny, Nx)
+            new_state = f(slice_i, props[:, slice_i], carry)
             return new_state, None
 
         state, _ = jax.lax.scan(step_fn, state, jax.numpy.arange(n_slices - 1))
@@ -280,7 +282,7 @@ def slice_forwards(
 
     # fallback numpy mode
     for slice_i in range(n_slices - 1):
-        state = f(slice_i, props[slice_i], state)
+        state = f(slice_i, props[:, slice_i], state)
     return f(n_slices - 1, None, state)
 
 

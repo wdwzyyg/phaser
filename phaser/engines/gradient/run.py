@@ -1,7 +1,5 @@
-import contextlib
 import logging
 from functools import partial
-from pathlib import Path
 import typing as t
 
 import numpy
@@ -9,7 +7,7 @@ from numpy.typing import NDArray
 from typing_extensions import Self
 
 from phaser.hooks.solver import NoiseModel
-from phaser.utils.misc import create_sparse_groupings, create_compact_groupings, shuffled, jax_dataclass
+from phaser.utils.misc import jax_dataclass
 from phaser.utils.num import (
     get_array_module, cast_array_module, jit,
     fft2, ifft2, abs2, check_finite, at, Float, to_complex_dtype, to_real_dtype
@@ -202,7 +200,6 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
     any_output = flag_any_true(save, props.niter) or flag_any_true(save_images, props.niter)
 
     # TODO: this really needs cleanup
-
 
     with OutputDir(
         props.save_options.out_dir, any_output,
@@ -402,6 +399,7 @@ def run_model(
     (ky, kx) = sim.probe.sampling.recip_grid(dtype=dtype, xp=xp)
     xp = get_array_module(sim.probe.data)
     dtype = to_real_dtype(sim.probe.data.dtype)
+    complex_dtype = to_complex_dtype(dtype)
 
     probes = sim.probe.data
     group_obj = sim.object.sampling.get_view_at_pos(sim.object.data, group_scan, probes.shape[-2:])
@@ -414,8 +412,8 @@ def run_model(
             return ifft2(fft2(psi * group_obj[:, slice_i, None]) * prop[:, None])
         return psi * group_obj[:, slice_i, None]
 
-    props = tilt_propagators(ky, kx, sim, props, group_tilts)
-    model_wave = fft2(slice_forwards(props, probes, sim_slice))
+    t_props = tilt_propagators(ky, kx, sim, props, group_tilts)
+    model_wave = fft2(slice_forwards(t_props, probes, sim_slice))
     model_intensity = xp.sum(abs2(model_wave), axis=1)
 
     (loss, solver_states.noise_model_state) = noise_model.calc_loss(
@@ -427,6 +425,7 @@ def run_model(
             group, sim, solver_states.regularizer_states[reg_i]
         )
         loss += reg_loss
+
     return (loss, solver_states)
 
 
@@ -449,14 +448,14 @@ def dry_run(
     group_obj = sim.object.sampling.get_view_at_pos(sim.object.data, sim.scan[tuple(group)], probes.shape[-2:])
     group_subpx_filters = fourier_shift_filter(ky, kx, sim.object.sampling.get_subpx_shifts(sim.scan[tuple(group)], probes.shape[-2:]))[:, None, ...]
     probes = ifft2(fft2(probes) * group_subpx_filters)
-    props = tilt_propagators(ky, kx, sim, props, sim.tilt[tuple(group)])
 
     def sim_slice(slice_i: int, prop: t.Optional[NDArray[numpy.complexfloating]], psi):
         if prop is not None:
             return ifft2(fft2(psi * group_obj[:, slice_i, None]) * prop[:, None])
         return psi * group_obj[:, slice_i, None]
 
-    model_wave = fft2(slice_forwards(props, probes, sim_slice))
+    t_props = tilt_propagators(ky, kx, sim, props, sim.tilt[tuple(group)] if sim.tilt is not None else None)
+    model_wave = fft2(slice_forwards(t_props, probes, sim_slice))
     model_intensity = xp.sum(abs2(model_wave), axis=(1, -2, -1))
     exp_intensity = xp.sum(group_patterns, axis=(-2, -1))
 
