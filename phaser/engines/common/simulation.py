@@ -268,13 +268,12 @@ def slice_forwards(
     if props is None:
         return f(0, None, state)
 
-    n_slices = props.shape[1] + 1  # props shape: (batch, Nz-1, Ny, Nx)
+    n_slices = len(props) + 1  # props shape: (Nz-1, batch, Ny, Nx)
 
     if is_jax(props):
         import jax
         def step_fn(carry, slice_i):
-            # props[:, slice_i] has shape (batch, Ny, Nx)
-            new_state = f(slice_i, props[:, slice_i], carry)
+            new_state = f(slice_i, props[slice_i], carry)
             return new_state, None
 
         state, _ = jax.lax.scan(step_fn, state, jax.numpy.arange(n_slices - 1))
@@ -282,7 +281,7 @@ def slice_forwards(
 
     # fallback numpy mode
     for slice_i in range(n_slices - 1):
-        state = f(slice_i, props[:, slice_i], state)
+        state = f(slice_i, props[slice_i], state)
     return f(n_slices - 1, None, state)
 
 

@@ -99,9 +99,7 @@ def insert_vars(vars: t.Dict[ReconsVar, t.Any], state: ReconsState, group: t.Opt
         if (var := _PATH_MAP.get(path)):
             if var in vars:
                 return vars[var]
-            if val is None:
-                raise ValueError(f"Missing value for var {var}")
-            if var in _PER_ITER_VARS and group is not None:
+            if var in _PER_ITER_VARS and val is not None and group is not None:
                 return val[tuple(group)]
         return val
 
