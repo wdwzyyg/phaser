@@ -188,7 +188,7 @@ def _plot_scan(state: ReconsState, out_path: Path, options: SaveOptions):
 
     scan = to_numpy(state.scan)
     i = numpy.arange(scan[..., 0].size)
-    ax.scatter(scan[..., 1].ravel(), scan[..., 0].ravel(), c=i, s=0.2, cmap='plasma')
+    ax.scatter(scan[..., 1].ravel(), scan[..., 0].ravel(), c=i, cmap='plasma', s=0.5, edgecolors='none')
 
     fig.savefig(out_path)
     pyplot.close(fig)
@@ -213,8 +213,8 @@ def _plot_tilt(state: ReconsState, out_path: Path, options: SaveOptions):
     tilt = to_numpy(state.tilt)
     tilt = tilt[..., 1] + tilt[..., 0]*1.j
     max_tilt = max(numpy.max(numpy.abs(tilt)), 1.0)  # at least 1 mrad
-    c = colorize_complex(tilt / max_tilt, amp=True, rescale=False)
-    ax.scatter(scan[..., 1].ravel(), scan[..., 0].ravel(), c=c.ravel(), s=0.2)
+    c = colorize_complex(tilt.ravel() / max_tilt, amp=True, rescale=False)
+    ax.scatter(scan[..., 1].ravel(), scan[..., 0].ravel(), c=c, s=0.5, edgecolors='none')
 
     fig.draw_without_rendering()
     trans = ax.transAxes + fig.transFigure.inverted()
