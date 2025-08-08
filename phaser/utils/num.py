@@ -21,6 +21,7 @@ if t.TYPE_CHECKING:
     from phaser.utils.image import _InterpBoundaryMode
 
 
+Device: t.TypeAlias = t.Any
 Float: t.TypeAlias = t.Union[float, numpy.floating]
 NumT = t.TypeVar('NumT', bound=numpy.number)
 FloatT = t.TypeVar('FloatT', bound=numpy.floating)
@@ -40,14 +41,15 @@ logger = logging.getLogger(__name__)
 
 
 def _load_cupy() -> ModuleType:
-    import cupy                 # pyright: ignore[reportMissingImports]
+    from ._cuda_kernels import mock_cupy
+
     with warnings.catch_warnings():
         # https://github.com/cupy/cupy/issues/8718
         warnings.filterwarnings(action='ignore', message=r"cupyx\.jit\.rawkernel is experimental", category=FutureWarning)
         import cupyx.scipy.signal   # pyright: ignore[reportMissingImports,reportUnusedImport]
         import cupyx.scipy.ndimage  # pyright: ignore[reportMissingImports,reportUnusedImport] # noqa: F401
 
-    return cupy
+    return t.cast(ModuleType, mock_cupy)
 
 def _load_jax() -> ModuleType:
     import jax
@@ -135,10 +137,94 @@ def get_backend_scipy(backend: BackendName):
 
 
 def get_default_backend() -> BackendName:
+    # check for jax or torch GPUs first
+    if _BACKEND_LOADER.get('jax') is not None:
+        import jax
+        try:
+            if len(jax.devices('gpu')):
+                return 'jax'
+        except RuntimeError:
+            pass
+        try:
+            if len(jax.devices('tpu')):
+                return 'jax'
+        except RuntimeError:
+            pass
+    if _BACKEND_LOADER.get('torch') is not None:
+        import torch
+        if torch.get_default_device().type != 'cpu':
+            return 'torch'
+
     for backend in ('jax', 'torch', 'cupy'):
         if _BACKEND_LOADER.get(backend) is not None:
             return backend
     return 'numpy'
+
+
+def get_devices() -> t.Tuple[t.Tuple[str, Device], ...]:
+    devices: t.List[t.Tuple[str, Device]] = []
+
+    if _BACKEND_LOADER.get('jax') is not None:
+        from ._jax_kernels import get_devices
+        devices.extend(('jax', device) for device in get_devices())
+    if _BACKEND_LOADER.get('torch') is not None:
+        from ._torch_kernels import get_devices
+        devices.extend(('torch', device) for device in get_devices())
+    if _BACKEND_LOADER.get('cupy') is not None:
+        from ._cuda_kernels import get_devices
+        devices.extend(('cupy', device) for device in get_devices())
+    devices.append(('numpy', 'cpu'))
+
+    return tuple(devices)
+
+
+def to_device(device: t.Union[str, Device], xp: t.Any) -> Device:
+    if xp_is_torch(xp):
+        from ._torch_kernels import to_device
+        return to_device(device)
+    if xp_is_cupy(xp):
+        from ._cuda_kernels import to_device
+        return to_device(device)
+    if xp_is_jax(xp):
+        from ._jax_kernels import to_device
+        return to_device(device)
+    if xp is not numpy:
+        raise TypeError(f"Expected an array backend, got '{xp}'")
+    if device != 'cpu':
+        raise ValueError(f"Invalid device '{device}' for backend 'numpy'")
+    return device
+
+
+def get_backend_devices(xp: t.Any) -> t.Tuple[Device, ...]:
+    if xp_is_torch(xp):
+        from ._torch_kernels import get_devices
+        return get_devices()
+    if xp_is_cupy(xp):
+        from ._cuda_kernels import get_devices
+        return get_devices()
+    if xp_is_jax(xp):
+        from ._jax_kernels import get_devices
+        return get_devices()
+    if xp is not numpy:
+        raise TypeError(f"Expected an array backend, got '{xp}'")
+
+    return ('cpu',)
+
+
+def set_default_device(device: Device, xp: t.Any):
+    if xp_is_torch(xp):
+        from ._torch_kernels import set_default_device
+        set_default_device(device)
+    elif xp_is_cupy(xp):
+        from ._cuda_kernels import set_default_device
+        set_default_device(device)
+    elif xp_is_jax(xp):
+        from ._jax_kernels import set_default_device
+        set_default_device(device)
+    elif xp is not numpy:
+        raise TypeError(f"Expected an array backend, got '{xp}'")
+    elif device != 'cpu':
+        raise ValueError(f"Invalid device '{device}' for backend 'numpy'")
 
 
 def get_array_module(*arrs: t.Optional[ArrayLike]):
@@ -260,14 +346,10 @@ def is_torch(arr: t.Any) -> bool:
 
 
 def xp_is_cupy(xp: t.Any) -> bool:
-    if (cupy := _BACKEND_LOADER.get('cupy')) is None:
-        return False
-    return xp is cupy
+    return xp is sys.modules.get('cupy')
 
 def xp_is_jax(xp: t.Any) -> bool:
-    if (jnp := _BACKEND_LOADER.get('jax')) is None:
-        return False
-    return xp is jnp
+    return xp is sys.modules.get('jax.numpy')
 
 def xp_is_torch(xp: t.Any) -> bool:
     if (torch := _BACKEND_LOADER.get('torch')) is None:

@@ -10,6 +10,7 @@ import torch
 
 from phaser.utils.num import _PadMode
 from phaser.utils.image import _InterpBoundaryMode
+from phaser.utils.misc import _MockModule
 
 
 def get_cutouts(obj: torch.Tensor, start_idxs: torch.Tensor, cutout_shape: t.Tuple[int, int]) -> torch.Tensor:
@@ -28,48 +29,6 @@ def get_cutouts(obj: torch.Tensor, start_idxs: torch.Tensor, cutout_shape: t.Tup
     return out
 
 
-class _MockModule:
-    def __init__(self, module: ModuleType, rewrites: t.Dict[str, t.Callable], wrap: t.Callable):
-        self._inner: ModuleType = module
-        self._rewrites: t.Dict[str, t.Callable] = rewrites
-        self._wrap: t.Callable = wrap
-
-        self.__name__ = module.__name__
-        """
-        self.__spec__ = module.__spec__
-        self.__package__ = module.__package__
-        self.__loader__ = module.__loader__
-        self.__path__ = module.__path__
-        self.__doc__ = module.__doc__
-        self.__annotations__ = module.__annotations__
-        if hasattr(module, '__file__') and hasattr(module, '__cached__'):
-            self.__file__ = module.__file__
-            self.__cached__ = module.__cached__
-        """
-
-        self.__setattr__ = lambda name, val: setattr(self._inner, name, val)
-
-    def __getattr__(self, name: t.Any) -> t.Any:
-        fullpath = f"{self.__name__}.{name}"
-        if (rewrite := self._rewrites.get(fullpath, None)):
-            if (val := getattr(self._inner, name, None)) is not None:
-                return functools.update_wrapper(rewrite, val)
-            return rewrite
-
-        val = getattr(self._inner, name)
-
-        if isinstance(val, ModuleType):
-            return _MockModule(val, self._rewrites, self._wrap)
-
-        if hasattr(val, '__call__') and not isinstance(val, type):
-            def inner(*args, **kwargs):
-                return self._wrap(val, *args, **kwargs)
-
-            return functools.update_wrapper(inner, val)
-
-        return val
-
-
 class _MockTensor(torch.Tensor):
     #@property
     #def dtype(self) -> t.Type[numpy.generic]:
@@ -77,7 +36,7 @@ class _MockTensor(torch.Tensor):
 
     @property
     def T(self) -> '_MockTensor': # pyright: ignore[reportIncompatibleVariableOverride]
-        if self.ndim == 2:
+        if self.ndim <= 2:
             return _MockTensor(super().T)
         return t.cast(_MockTensor, self.permute(*range(self.ndim - 1, -1, -1)))
 
@@ -418,6 +377,27 @@ def _map_coordinates_constant(
     result = functools.reduce(operator.add, outputs)
     return result.type(arr.dtype)
 
+
+def get_devices() -> t.Tuple[torch.device, ...]:
+    devices = []
+    devices.extend(f'cuda:{i}' for i in range(torch.cuda.device_count()))
+
+    if torch.backends.mps.is_available():
+        devices.append('mps')
+
+    return tuple(map(torch.device, devices))
+
+
+def to_device(device: t.Union[str, torch.device]) -> torch.device:
+    if isinstance(device, torch.device):
+        return device
+    return torch.device(device)
+
+
+def set_default_device(device: torch.device):
+    if not isinstance(device, torch.device):
+        raise TypeError(f"Invalid device '{device}' for backend torch")
+    torch.set_default_device(device)
 
 
 def _wrap_call(f, *args: t.Any, **kwargs: t.Any) -> t.Any:

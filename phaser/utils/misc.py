@@ -1,4 +1,6 @@
+import functools
 import math
+from types import ModuleType
 import typing as t
 
 import numpy
@@ -218,6 +220,48 @@ class FloatKey(float):
 def unwrap(val: t.Optional[T]) -> T:
     assert val is not None
     return val
+
+
+class _MockModule:
+    def __init__(self, module: ModuleType, rewrites: t.Dict[str, t.Callable], wrap: t.Callable):
+        self._inner: ModuleType = module
+        self._rewrites: t.Dict[str, t.Callable] = rewrites
+        self._wrap: t.Callable = wrap
+
+        self.__name__ = module.__name__
+        """
+        self.__spec__ = module.__spec__
+        self.__package__ = module.__package__
+        self.__loader__ = module.__loader__
+        self.__path__ = module.__path__
+        self.__doc__ = module.__doc__
+        self.__annotations__ = module.__annotations__
+        if hasattr(module, '__file__') and hasattr(module, '__cached__'):
+            self.__file__ = module.__file__
+            self.__cached__ = module.__cached__
+        """
+
+        self.__setattr__ = lambda name, val: setattr(self._inner, name, val)
+
+    def __getattr__(self, name: t.Any) -> t.Any:
+        fullpath = f"{self.__name__}.{name}"
+        if (rewrite := self._rewrites.get(fullpath, None)):
+            if (val := getattr(self._inner, name, None)) is not None:
+                return functools.update_wrapper(rewrite, val)
+            return rewrite
+
+        val = getattr(self._inner, name)
+
+        if isinstance(val, ModuleType):
+            return _MockModule(val, self._rewrites, self._wrap)
+
+        if hasattr(val, '__call__') and not isinstance(val, type):
+            def inner(*args, **kwargs):
+                return self._wrap(val, *args, **kwargs)
+
+            return functools.update_wrapper(inner, val)
+
+        return val
 
 
 __all__ = [
