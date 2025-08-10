@@ -163,7 +163,8 @@ class PatienceObserver(Observer):
         if (error := self._error_from_state(state)) is None:
             return
 
-        if self.best_error is None or error < self.best_error:
+        # if self.best_error is None or error < self.best_error:
+        if self.best_error is None or error < self.best_error * 0.995:
             self.best_error = error
             self.no_improvement_iter = 0
         else:
