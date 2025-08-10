@@ -323,6 +323,8 @@ def initialize_reconstruction(
             "For simulated data, use the 'scale' or 'poisson' preprocessing"
         )
 
+    state = state.to_xp(xp)
+
     observer.start_recons(state)
     return PreparedRecons(
         data, state,
