@@ -144,6 +144,7 @@ class PatienceObserver(Observer):
         self.patience: int = patience
         self.no_improvement_iter: int = 0
         self.best_error: t.Optional[float] = None
+        self.last_error: t.Optional[float] = None
         self.smoothed_error: t.Optional[float] = None
         self.smoothing: float = smoothing
         self.continue_next_engine: bool = continue_next_engine
@@ -164,10 +165,13 @@ class PatienceObserver(Observer):
             return
 
         # if self.best_error is None or error < self.best_error:
-        if self.best_error is None or error < self.best_error * 0.995:
+        if (self.best_error is None or error < self.best_error or
+                self.last_error is None or error < self.last_error * 0.995):
+            self.last_error = error
             self.best_error = error
             self.no_improvement_iter = 0
         else:
+            self.last_error = error
             self.no_improvement_iter += 1
 
         # Exponential moving average
