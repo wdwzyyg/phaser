@@ -180,6 +180,7 @@ class ReconsPlan(Dataclass, kw_only=True):
     name: str
 
     backend: t.Optional[BackendName] = None
+    device: t.Optional[str] = None
     dtype: t.Literal['float32', 'float64'] = 'float32'
 
     wavelength: t.Optional[float] = None

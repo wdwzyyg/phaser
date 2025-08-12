@@ -9,7 +9,7 @@ from typing_extensions import Self
 from phaser.hooks.solver import NoiseModel
 from phaser.utils.num import (
     assert_dtype, get_array_module, cast_array_module, jit,
-    fft2, ifft2, abs2, check_finite, at, Float, to_complex_dtype, to_real_dtype
+    fft2, ifft2, abs2, check_finite, at, Float, to_complex_dtype, to_numpy, to_real_dtype
 )
 import phaser.utils.tree as tree
 from phaser.utils.optics import fourier_shift_filter
@@ -153,9 +153,6 @@ class SolverStates:
 
 
 def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
-    import torch
-    torch.autograd.set_detect_anomaly(True)
-
     #jax.config.update('jax_traceback_filtering', 'off')
     xp = cast_array_module(args['xp'])
     dtype = args['dtype']
@@ -216,6 +213,7 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
     iter_constraint_states = [reg.init_state(state) for reg in iter_constraints]
 
     #with jax.profiler.trace("/tmp/jax-trace", create_perfetto_link=True):
+    #with torch.profiler.profile(with_stack=True) as prof:
     for i in range(1, props.niter+1):
         state.iter.engine_iter = i
         state.iter.total_iter = start_i + i
@@ -258,7 +256,7 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
                 xp=xp, dtype=dtype
             )
 
-            losses.append(loss)
+            losses.append(float(loss))
             check_finite(state.object.data, state.probe.data, context=f"object or probe, group {group_i}")
             observer.update_group(state, props.send_every_group)
 
@@ -318,8 +316,6 @@ def run_group(
     dtype: t.Type[numpy.floating],
 ) -> t.Tuple[ReconsState, float, t.Dict[ReconsVar, t.Any], SolverStates]:
     xp = cast_array_module(xp)
-
-    #print(f"in: {extract_vars(state, vars, group)[0]}")
 
     ((loss, solver_states), grad) = tree.value_and_grad(run_model, has_aux=True, xp=xp, sign=-1)(
         *extract_vars(state, vars, group),

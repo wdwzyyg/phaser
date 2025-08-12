@@ -272,7 +272,7 @@ def get_scipy_module(*arrs: t.Optional[ArrayLike]):
     return scipy
 
 
-def to_numpy(arr: t.Union[DTypeT, NDArray[DTypeT]], stream=None) -> NDArray[DTypeT]:
+def to_numpy(arr: t.Union[DTypeT, NDArray[DTypeT], float, DTypeT], stream=None) -> NDArray[DTypeT]:
     """
     Convert an array to numpy.
     For cupy backend, this is equivalent to `cupy.asnumpy`.
@@ -360,6 +360,12 @@ def xp_is_torch(xp: t.Any) -> bool:
 def block_until_ready(arr: NDArray[DTypeT]) -> NDArray[DTypeT]:
     if hasattr(arr, 'block_until_ready'):  # jax
         return arr.block_until_ready()  # type: ignore
+
+    if is_torch(arr):
+        import torch
+        device = torch.get_default_device()
+        if device.type == 'cuda':
+            torch.cuda.synchronize(device)
 
     if is_cupy(arr):
         cupy = sys.modules['cupy']

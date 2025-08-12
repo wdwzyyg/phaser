@@ -259,6 +259,7 @@ class _MockModule:
             def inner(*args, **kwargs):
                 return self._wrap(val, *args, **kwargs)
 
+            return inner
             return functools.update_wrapper(inner, val)
 
         return val

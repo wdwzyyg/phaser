@@ -232,7 +232,8 @@ def zeros_like(
 ) -> Tree:
     from phaser.utils.num import get_array_module
     xp = get_array_module(tree)
-    return map(lambda x: xp.zeros_like(x, dtype=dtype), tree)
+    kwargs: t.Dict[str, t.Any] = {'dtype': dtype} if dtype is not None else {}
+    return map(lambda x: xp.zeros_like(x, **kwargs), tree)
 
 
 def ones_like(
@@ -240,7 +241,8 @@ def ones_like(
 ) -> Tree:
     from phaser.utils.num import get_array_module
     xp = get_array_module(tree)
-    return map(lambda x: xp.ones_like(x, dtype=dtype), tree)
+    kwargs: t.Dict[str, t.Any] = {'dtype': dtype} if dtype is not None else {}
+    return map(lambda x: xp.ones_like(x, **kwargs), tree)
 
 
 def full_like(
@@ -249,7 +251,8 @@ def full_like(
 ) -> Tree:
     from phaser.utils.num import get_array_module
     xp = get_array_module(tree)
-    return map(lambda x: xp.full_like(x, fill_value, dtype=dtype), tree)
+    kwargs: t.Dict[str, t.Any] = {'dtype': dtype} if dtype is not None else {}
+    return map(lambda x: xp.full_like(x, fill_value, **kwargs), tree)
 
 
 def cast(

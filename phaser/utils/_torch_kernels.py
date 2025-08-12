@@ -14,18 +14,17 @@ from phaser.utils.misc import _MockModule
 
 
 def get_cutouts(obj: torch.Tensor, start_idxs: torch.Tensor, cutout_shape: t.Tuple[int, int]) -> torch.Tensor:
-    out_shape = (*start_idxs.shape[:-1], *obj.shape[:-2], *cutout_shape)
+    #out_shape = (*start_idxs.shape[:-1], *obj.shape[:-2], *cutout_shape)
+    ys, xs = torch.arange(cutout_shape[0]), torch.arange(cutout_shape[1])
+    yy, xx = torch.meshgrid(ys, xs, indexing='ij')
+    yy = start_idxs[..., 0][..., None, None] + yy
+    xx = start_idxs[..., 1][..., None, None] + xx
 
-    # vmap version (broken)
-    #out = torch.vmap(lambda idx: obj[..., idx[0]:idx[0]+cutout_shape[0], idx[1]:idx[1]+cutout_shape[1]])(
-    #    start_idxs.reshape(-1, 2)
-    #).reshape(out_shape)
-
-    out = torch.stack([
-        obj[..., i:i+cutout_shape[0], j:j+cutout_shape[1]]
-        for (i, j) in start_idxs.reshape(-1, 2)
-    ], dim=0).reshape(out_shape)
-
+    out = obj[..., yy, xx]
+    if obj.ndim > 2:
+        # oof
+        out = torch.permute(out, (*(i + obj.ndim - 2 for i in range(start_idxs.ndim - 1)), *range(obj.ndim - 2), -2, -1))
+        #assert out.shape == out_shape
     return out
 
 
@@ -260,6 +259,11 @@ def asarray(
 ) -> _MockTensor:
     dtype = to_torch_dtype(dtype) if dtype is not None else None
     requires_grad = arr.requires_grad if isinstance(arr, torch.Tensor) else False
+
+    if isinstance(arr, numpy.ndarray) and arr.flags['WRITEABLE'] and not copy:
+        device = torch.get_default_device()
+        if device.type == 'cuda':
+            return _MockTensor(torch.from_numpy(arr).to(device=device, dtype=dtype, non_blocking=True))
 
     return _MockTensor(torch.asarray(arr, dtype=dtype, requires_grad=requires_grad, copy=copy))
 
