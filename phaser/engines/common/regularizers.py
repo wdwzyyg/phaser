@@ -34,21 +34,18 @@ class ClampObjectAmplitude:
 
 
 @partial(jit, donate_argnames=('obj',), cupy_fuse=True)
-def clamp_amplitude(obj: NDArray[numpy.complexfloating], amplitude: t.Union[float, numpy.floating]) -> NDArray[numpy.complexfloating]:
-    """
-    Clamps the amplitude between 1-amplitude and 1+amplitude.
-    """
-    amplitude_ceil = 1.0 + amplitude
-    amplitude_floor = 1.0 - amplitude
-
+def clamp_amplitude(obj: NDArray[numpy.complexfloating],
+                    amplitude: t.Union[float, numpy.floating],
+                    ) -> NDArray[numpy.complexfloating]:
     xp = get_array_module(obj)
 
     obj_amp = xp.abs(obj)
-    clamped = xp.minimum(obj_amp, amplitude_ceil)
-    clamped = xp.maximum(clamped, amplitude_floor)
-    scale = clamped / obj_amp
+    obj_phase = xp.angle(obj)
 
-    return obj * scale
+    # Clamp the amplitude
+    clamped_amp = xp.minimum(obj_amp, amplitude)
+
+    return clamped_amp * xp.exp(1j * obj_phase)
 
 class LimitProbeSupport:
     def __init__(self, args: None, props: LimitProbeSupportProps):
