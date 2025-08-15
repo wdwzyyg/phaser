@@ -36,9 +36,34 @@ class LoadEmpadProps(Dataclass):
     det_flips: t.Optional[t.Tuple[bool, bool, bool]] = None
 
 
+class LoadManualProps(Dataclass, kw_only=True):
+    path: Path
+
+    det_shape: t.Optional[t.Tuple[int, int]] = None
+    """Detector shape `(ny, nx)` (after flips are applied). Required when loading raw binary files, optional otherwise."""
+    dtype: t.Optional[str] = None
+    """Numpy dtype to load (e.g. 'float32'). Applies only when loading raw binary files."""
+    gap: int = 0
+    """Gap (in bytes) between patterns in the file. Applies only when loading raw binary files."""
+    offset: int = 0
+    """Offset (in bytes) before start of patterns in the file. Applies only when loading raw binary files."""
+
+    key: t.Optional[str] = None
+    """Key to load from HDF5 or mat file (ex. 'raw.patterns.data')"""
+
+    diff_step: float
+    # TODO: post-validate (one of kv or wavelength must be specified)
+    kv: t.Optional[float] = None
+    wavelength: t.Optional[float] = None
+    adu: t.Optional[float] = None
+    """Detector ADU, representing the single-particle signal. Used to scale patterns."""
+
+    det_flips: t.Optional[t.Tuple[bool, bool, bool]] = None
+
 class RawDataHook(Hook[None, RawData]):
     known = {
         'empad': ('phaser.hooks.io.empad:load_empad', LoadEmpadProps),
+        'manual': ('phaser.hooks.io.manual:load_manual', LoadManualProps),
     }
 
 
