@@ -87,6 +87,10 @@ def worker(url: str, quiet: bool = False):
 
     run_worker(url, quiet=quiet)
 
+@cli.command('process-metadata', help="Process metadata for all the raw datasets contained in FOLDER.")
+@click.argument('args', nargs=-1, type=click.UNPROCESSED)
+
+
 
 if __name__ == '__main__':
     cli()

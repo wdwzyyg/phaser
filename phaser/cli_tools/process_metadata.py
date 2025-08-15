@@ -11,7 +11,7 @@ from rich.prompt import Prompt
 from rich.theme import Theme
 from rich.console import Console
 
-from ptycho_lebeau.metadata import EmpadMetadata, UnscannedMetadata
+from hooks.io.empad import EmpadMetadata
 
 
 T = t.TypeVar('T')
