@@ -3,7 +3,6 @@ from itertools import chain
 import math
 from pathlib import Path
 import logging
-import warnings
 import typing as t
 
 import numpy
@@ -19,11 +18,6 @@ def load_manual(args: None, props: LoadManualProps) -> RawData:
     logger = logging.getLogger(__name__)
 
     path = Path(props.path).expanduser()
-
-    diff_step = props.diff_step
-    probe_hook = scan_hook = tilt_hook = None
-    adu = None
-    det_flips = props.det_flips
 
     if props.wavelength is not None:
         if props.kv is not None:
@@ -54,7 +48,7 @@ def load_manual(args: None, props: LoadManualProps) -> RawData:
     else:
         logger.info("Loading as raw binary...")
         if props.det_shape is None:
-            raise ValueError("det_shape is required when loading raw files.")
+            raise ValueError("det_shape is required when loading raw files")
         if props.dtype is None:
             logger.warning("dtype not specified when loading raw file, defaulting to 'float32'...")
 
@@ -64,45 +58,56 @@ def load_manual(args: None, props: LoadManualProps) -> RawData:
         pattern_size = dtype.itemsize * math.prod(props.det_shape)
         total_pattern_size = pattern_size + props.gap
 
-        if (file_size - props.offset) % total_pattern_size != 0:
-            raise ValueError(f"File size ({file_size} bytes after offset) not divisible by diffraction pattern size ({total_pattern_size} bytes).")
+        if file_size % total_pattern_size != 0:
+            raise ValueError(f"File size ({file_size} bytes after offset) not divisible by diffraction pattern size ({total_pattern_size} bytes)")
 
         patterns = numpy.fromfile(path, dtype=numpy.dtype([
             ('pat', dtype, math.prod(props.det_shape)), ('gap', numpy.bytes_, props.gap),
         ]), offset=props.offset)['pat']
         # reshape to detector (before transpose)
-        patterns = patterns.reshape(-1, *(reversed(props.det_shape) if det_flips and det_flips[2] else props.det_shape))
+        patterns = patterns.reshape(-1, *(reversed(props.det_shape) if props.det_flips and props.det_flips[2] else props.det_shape))
 
     # normalize datatype and shape
-    if numpy.iscomplexobj(patterns):
-        pass
+    if not numpy.issubdtype(patterns.dtype, numpy.number) and not numpy.issubdtype(patterns.dtype, numpy.bool_):
+        raise ValueError(f"Error loading raw data: Expected numeric data, got dtype {patterns.dtype} instead")
 
-    logger.info(f"Applying detector flips: {list(map(int, det_flips or (False, False, False)))} [y, x, transpose]")
-    patterns = apply_flips(patterns)
+    if numpy.iscomplexobj(patterns):
+        raise ValueError(f"Error loading raw data: Expected real-valued data, got dtype {patterns.dtype} instead")
+
+    if not numpy.issubdtype(patterns.dtype, numpy.floating):
+        dtype = numpy.float32 #numpy.result_type(patterns.dtype, numpy.float32)
+        logger.info(f"Casting patterns to floating-point dtype {numpy.dtype(dtype).name}")
+        patterns = patterns.astype(dtype)
+
+    if patterns.ndim < 3:
+        raise ValueError(f"Error loading raw data: Expected at least 3 dimensions, got shape {patterns.shape} instead")
+
+    flips = props.det_flips or (False, False, False)
+    logger.info(f"Applying detector flips: {list(map(int, flips))} [y, x, transpose]")
+    patterns = apply_flips(patterns, flips)
 
     if props.det_shape is not None and patterns.shape[-2:] != props.det_shape:
         raise ValueError(f"Error loading raw data: Expected detector shape {props.det_shape}, got shape {patterns.shape[-2:]} instead")
 
-    if adu is None:
-        warnings.warn("ADU not supplied for experimental dataset. This is not recommended.")
+    if props.adu is None:
+        logger.warning("ADU not supplied for experimental dataset. This is not recommended.")
     else:
-        logger.info(f"Scaling patterns by ADU ({adu:.1f})")
-        patterns /= adu
+        logger.info(f"Scaling patterns by ADU ({props.adu:.1f})")
+        patterns /= props.adu
 
-    a = wavelength / (diff_step * 1e-3)  # recip. pixel size -> 1 / real space extent
+    a = wavelength / (props.diff_step * 1e-3)  # recip. pixel size -> 1 / real space extent
     sampling = Sampling(cast_length(patterns.shape[-2:], 2), extent=(a, a))
 
-    mask = numpy.zeros_like(patterns, shape=patterns.shape[-2:])
-    mask[2:-2, 2:-2] = 1.
+    mask = numpy.ones_like(patterns, shape=patterns.shape[-2:])
 
     return {
         'patterns': numpy.fft.ifftshift(patterns, axes=(-1, -2)),
         'mask': numpy.fft.ifftshift(mask, axes=(-1, -2)),
         'sampling': sampling,
         'wavelength': wavelength,
-        'probe_hook': probe_hook,
-        'scan_hook': scan_hook,
-        'tilt_hook': tilt_hook,
+        'probe_hook': None,
+        'scan_hook': None,
+        'tilt_hook': None,
         'seed': None,
     }
 
