@@ -14,9 +14,9 @@ try:
 except ImportError:
     from yaml import Loader
 
-from ptycho_lebeau.params import ParamMetaSet, SaveRecord
-from ptycho_lebeau.metadata import Metadata, AnyMetadata
-from ptycho_lebeau.util import handle_exception
+from .params import ParamMetaSet, SaveRecord
+from .metadata import Metadata, AnyMetadata
+from .util import handle_exception
 
 
 def _try_parse_metadata(path: Path) -> t.Union[Metadata, ValidationError, None]:

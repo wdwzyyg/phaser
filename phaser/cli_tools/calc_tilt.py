@@ -11,7 +11,7 @@ import numpy
 from rich.console import Console
 from rich.prompt import Prompt, FloatPrompt
 
-from .raw import load_4d
+from phaser.io.empad import load_4d
 from .metadata import AnyMetadata
 
 
