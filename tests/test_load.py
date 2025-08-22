@@ -71,6 +71,59 @@ def test_load_manual_empad_v1(caplog, expected_raw_data: RawData):
     assert_raw_data_matches(raw_data, expected_raw_data, (4,))
 
 
+def test_load_manual_h5py(caplog, expected_raw_data: RawData):
+    caplog.set_level(logging.INFO)
+    get_backend_module("numpy")
+
+    hook = pane.from_data(
+        {
+            "type": "manual",
+            "wavelength": 0.0251,
+            "path": INPUT_FILES_PATH / "dp.h5",
+            "diff_step": 0.4,
+            "fftshifted": True,
+        },  # type: ignore
+        RawDataHook,
+    )
+    raw_data = hook(None)
+
+    assert caplog.record_tuples == [
+        ("phaser.hooks.io.manual", logging.INFO, "Loading as HDF5..."),
+        ("phaser.hooks.io.manual", logging.INFO, "Found patterns at key 'dp' (inferred) in HDF5 file."),
+        ("phaser.hooks.io.manual", logging.INFO, "Applying detector flips: [0, 0, 0] [y, x, transpose]"),
+        ("phaser.hooks.io.manual", logging.WARNING, "ADU not supplied for experimental dataset. This is not recommended."),
+    ]
+
+    assert_raw_data_matches(raw_data, expected_raw_data, (2, 2))
+
+
+def test_load_manual_h5py_customkey(caplog, expected_raw_data: RawData):
+    caplog.set_level(logging.INFO)
+    get_backend_module("numpy")
+
+    hook = pane.from_data(
+        {
+            "type": "manual",
+            "wavelength": 0.0251,
+            "path": INPUT_FILES_PATH / "dp_customkey.h5",
+            "key": "a/b/c/d",
+            "diff_step": 0.4,
+            "fftshifted": True,
+        },  # type: ignore
+        RawDataHook,
+    )
+    raw_data = hook(None)
+
+    assert caplog.record_tuples == [
+        ("phaser.hooks.io.manual", logging.INFO, "Loading as HDF5..."),
+        ("phaser.hooks.io.manual", logging.INFO, "Loaded patterns from key 'a/b/c/d' in HDF5 file."),
+        ("phaser.hooks.io.manual", logging.INFO, "Applying detector flips: [0, 0, 0] [y, x, transpose]"),
+        ("phaser.hooks.io.manual", logging.WARNING, "ADU not supplied for experimental dataset. This is not recommended."),
+    ]
+
+    assert_raw_data_matches(raw_data, expected_raw_data, (2, 2))
+
+
 def test_load_manual_tiff(caplog, expected_raw_data: RawData):
     caplog.set_level(logging.INFO)
     get_backend_module("numpy")

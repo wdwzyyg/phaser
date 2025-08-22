@@ -59,6 +59,8 @@ class LoadManualProps(Dataclass, kw_only=True):
     """Detector ADU, representing the single-particle signal. Used to scale patterns."""
 
     det_flips: t.Optional[t.Tuple[bool, bool, bool]] = None
+    fftshifted: bool = False
+    """Whether patterns are fftshifted (zero-frequency in corner of array)"""
 
 class RawDataHook(Hook[None, RawData]):
     known = {

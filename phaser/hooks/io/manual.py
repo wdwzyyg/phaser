@@ -100,9 +100,13 @@ def load_manual(args: None, props: LoadManualProps) -> RawData:
 
     mask = numpy.ones_like(patterns, shape=patterns.shape[-2:])
 
+    if not props.fftshifted:
+        patterns = numpy.fft.ifftshift(patterns, axes=(-1, -2))
+        mask = numpy.fft.ifftshift(mask, axes=(-1, -2))
+
     return {
-        'patterns': numpy.fft.ifftshift(patterns, axes=(-1, -2)),
-        'mask': numpy.fft.ifftshift(mask, axes=(-1, -2)),
+        'patterns': patterns,
+        'mask': mask,
         'sampling': sampling,
         'wavelength': wavelength,
         'probe_hook': None,
@@ -118,8 +122,8 @@ def _normalize_key(key: str) -> t.Tuple[str, ...]:
 
 
 _HDF5_KNOWN_KEYS: t.List[t.Tuple[str, ...]] = [
-    ('dp,',),
-    ('data,',),
+    ('dp',),
+    ('data',),
 ]
 
 
