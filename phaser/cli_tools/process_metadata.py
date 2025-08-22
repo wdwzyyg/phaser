@@ -11,7 +11,7 @@ from rich.prompt import Prompt
 from rich.theme import Theme
 from rich.console import Console
 
-from hooks.io.empad import EmpadMetadata
+from .metadata import EmpadMetadata, UnscannedMetadata
 
 
 T = t.TypeVar('T')

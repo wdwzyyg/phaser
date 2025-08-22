@@ -1,7 +1,7 @@
 from pathlib import Path
 import sys
 import typing as t
-
+from .cli_tools import tools
 import click
 
 @click.group()
@@ -87,8 +87,51 @@ def worker(url: str, quiet: bool = False):
 
     run_worker(url, quiet=quiet)
 
-@cli.command('process-metadata', help="Process metadata for all the raw datasets contained in FOLDER.")
-@click.argument('args', nargs=-1, type=click.UNPROCESSED)
+# @cli.command(cls=MainCommand, commands=dict((v, v) for v in 
+#     ('prepare', 'run', 'view_raw', 'view_prepared', 'view_output',
+#      'process_metadata', 'extract_params', 'to_csv', 'calc_drift', 'calc_tilt')
+# ))
+
+cli.add_command(tools)
+
+# # --- Action group: tools -----------------------------------------------------
+# @cli.group(invoke_without_command=False)  # require a subcommand
+# @click.pass_context
+# def tools(ctx: click.Context):
+#     """Toolbox of utility subcommands."""
+    # With invoke_without_command=False, Click will show usage if no subcommand.
+
+# @tools.add_command(process_metadata)
+
+# @tools.command('prepare')
+
+# @tools.command('view_raw')
+
+# # @tools.command('view_prepared')
+
+# # @tools.command('view_output')
+
+# @tools.command('process_metadata')
+
+# @tools.command('extract_params')
+# @tools.command('to_csv')
+# @tools.command('calc_drift')
+# @tools.command('calc_tilt')
+
+
+# @tools.command("align-data")
+# @click.argument("input", type=click.Path(exists=True, path_type=Path))
+# @click.argument("output", type=click.Path(path_type=Path))
+# @click.option(
+#     "--method",
+#     type=click.Choice(["fft", "xcorr"], case_sensitive=False),
+#     default="fft",
+#     show_default=True,
+#     help="Alignment method.",
+# )
+# def align_data_cmd(input: Path, output: Path, method: str):
+#     """Align image/data files and write the result."""
+#     align_data(input, output, method)
 
 
 
