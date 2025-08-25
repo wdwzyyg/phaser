@@ -7,6 +7,8 @@ from .calc_drift import calc_drift
 from .view_raw import view_raw
 from .view_prepared import view_prepared
 from .view_output   import view_output
+from .extract_params import extract_params
+from .to_csv import to_csv
 
 @click.group()
 def tools():
@@ -21,4 +23,12 @@ tools.add_command(calc_drift)
 tools.add_command(view_raw)
 tools.add_command(view_prepared)
 tools.add_command(view_output)
+tools.add_command(extract_params)
+tools.add_command(to_csv)
+
+
+
+# @click.command(cls=MainCommand, commands=dict((v, v) for v in 
+#     ('prepare', 'run', 'view_raw', 'view_prepared', 'view_output',
+#      'process_metadata', 'extract_params', 'to_csv', 'calc_drift', 'calc_tilt')
 
