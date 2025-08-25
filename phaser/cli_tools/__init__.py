@@ -19,4 +19,6 @@ tools.add_command(prepare)
 tools.add_command(calc_tilt)
 tools.add_command(calc_drift)
 tools.add_command(view_raw)
+tools.add_command(view_prepared)
+tools.add_command(view_output)
 
