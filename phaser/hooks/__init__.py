@@ -35,6 +35,13 @@ class LoadEmpadProps(Dataclass):
     adu: t.Optional[float] = None
     det_flips: t.Optional[t.Tuple[bool, bool, bool]] = None
 
+class LoadGatanProps(Dataclass):
+    path: Path
+
+    diff_step: t.Optional[float] = None
+    kv: t.Optional[float] = None
+    adu: t.Optional[float] = None
+
 
 class LoadManualProps(Dataclass, kw_only=True):
     path: Path
@@ -65,8 +72,11 @@ class LoadManualProps(Dataclass, kw_only=True):
 class RawDataHook(Hook[None, RawData]):
     known = {
         'empad': ('phaser.hooks.io.empad:load_empad', LoadEmpadProps),
+        'gatan': ('phaser.hooks.io.gatan:load_gatan', LoadGatanProps),
         'manual': ('phaser.hooks.io.manual:load_manual', LoadManualProps),
     }
+
+
 
 
 class ProbeHookArgs(t.TypedDict):
@@ -163,6 +173,13 @@ class PostInitArgs(t.TypedDict):
 class ScaleProps(Dataclass):
     scale: float
 
+class OffsetProps(Dataclass):
+    offset: float
+
+class BinProps(Dataclass):
+    bin: int
+
+
 
 class CropDataProps(Dataclass):
     crop: t.Tuple[
@@ -189,6 +206,8 @@ class PostLoadHook(Hook[RawData, RawData]):
         'crop_data': ('phaser.hooks.preprocessing:crop_data', CropDataProps),
         'poisson': ('phaser.hooks.preprocessing:add_poisson_noise', PoissonProps),
         'scale': ('phaser.hooks.preprocessing:scale_patterns', ScaleProps),
+        'offset': ('phaser.hooks.preprocessing:offset_patterns', OffsetProps),
+        'bin': ('phaser.hooks.preprocessing:bin_patterns', BinProps),
     }
 
 
