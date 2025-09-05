@@ -72,11 +72,9 @@ class LoadManualProps(Dataclass, kw_only=True):
 class RawDataHook(Hook[None, RawData]):
     known = {
         'empad': ('phaser.hooks.io.empad:load_empad', LoadEmpadProps),
-        'gatan': ('phaser.hooks.io.gatan:load_gatan', LoadGatanProps),
+        'gatan': ('phaser.hooks.io.gatan:load_gatan', LoadGatanProps, ('rsciio',)),
         'manual': ('phaser.hooks.io.manual:load_manual', LoadManualProps),
     }
-
-
 
 
 class ProbeHookArgs(t.TypedDict):
@@ -173,12 +171,13 @@ class PostInitArgs(t.TypedDict):
 class ScaleProps(Dataclass):
     scale: float
 
+
 class OffsetProps(Dataclass):
     offset: float
 
+
 class BinProps(Dataclass):
     bin: int
-
 
 
 class CropDataProps(Dataclass):

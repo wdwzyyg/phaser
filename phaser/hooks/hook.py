@@ -22,7 +22,7 @@ class Hook(t.Generic[T, U], abc.ABC):
         self.type: t.Optional[str] = type
         self.f: t.Optional[t.Callable[..., U]] = None
         self.props: t.Optional[t.Any] = props
-        self.dependencies: t.Tuple[str, ...] = ()
+        self.dependencies: t.Tuple[str, ...] = dependencies
 
     def func_ref(self) -> str:
         if self.type is not None:
@@ -35,6 +35,10 @@ class Hook(t.Generic[T, U], abc.ABC):
                 return globals()[self.ref]
             raise ValueError(f"Can't resolve function reference '{self.ref}'.")
 
+        if self.dependencies is not None:
+            from ._dependencies import check_dependencies
+            check_dependencies(self.dependencies, self.func_ref())
+
         (module_path, func_name) = self.ref.split(':')
         try:
             module = importlib.import_module(module_path)
@@ -46,10 +50,6 @@ class Hook(t.Generic[T, U], abc.ABC):
             f = getattr(module, func_name)
         except AttributeError:
             raise AttributeError(f"No function '{func_name}' found in module '{module_path}'")
-
-        if self.dependencies is not None:
-            from ._dependencies import check_dependencies
-            check_dependencies(self.dependencies, self.func_ref())
 
         return f
 
