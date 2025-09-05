@@ -8,7 +8,7 @@ import numpy
 import pane
 
 from phaser.types import EarlyTermination
-from phaser.utils.num import cast_array_module, get_array_module, get_backend_module, xp_is_jax, Sampling, to_complex_dtype
+from phaser.utils.num import Device, cast_array_module, get_array_module, get_backend_devices, get_backend_module, set_default_device, to_device, xp_is_jax, Sampling, to_complex_dtype, xp_is_torch
 from phaser.utils.object import ObjectSampling
 from phaser.utils.misc import unwrap
 from .hooks import EngineHook, Hook, ObjectHook, RawData
@@ -50,7 +50,7 @@ def execute_engine(
     engine: EngineHook,
 ) -> PreparedRecons:
     xp = get_array_module(recons.state.object.data, recons.state.probe.data)
-    dtype = recons.patterns.patterns.dtype
+    dtype = recons.patterns.patterns.dtype.type
     plan = t.cast(EnginePlan, engine.props)
 
     engine_i = recons.state.iter.engine_num
@@ -223,16 +223,36 @@ def load_raw_data(
 
 
 def initialize_reconstruction(
-    plan: ReconsPlan, *, xp: t.Any = None, seed: t.Any = None,
-    name: t.Optional[str] = None,
+    plan: ReconsPlan, *, xp: t.Any = None, device: t.Optional[Device] = None,
+    seed: t.Any = None, name: t.Optional[str] = None,
     init_state: t.Union[ReconsState, PartialReconsState, None] = None,
     observers: t.Union[Observer, t.Iterable[Observer], None] = None,
     override_observers: t.Union[Observer, t.Iterable[Observer], None] = None,
 ) -> PreparedRecons:
-    xp = cast_array_module(get_backend_module(plan.backend) if xp is None else xp)
+    logging.basicConfig(level=logging.INFO)
+
+    if xp is not None:
+        xp = cast_array_module(xp)
+        # TODO: nicer output here
+        logging.info(f"Using manually-specified backend {xp}")
+        devices = get_backend_devices(xp)
+        logging.info(f"Available devices: {list(devices)}")
+        manual = device is not None
+        device = to_device(device, xp) if device is not None else devices[0]
+        logging.info(f"Using {'manually-specified ' if manual else ''}device {device}")
+    else:
+        xp = get_backend_module(plan.backend)
+        logging.info(f"Using {'plan-specified' if plan.backend is not None else 'default'} backend {xp}")
+        devices = get_backend_devices(xp)
+        logging.info(f"Available devices: {list(devices)}")
+
+        device = to_device(plan.device, xp) if plan.device is not None else devices[0]
+        logging.info(f"Using {'plan-specified ' if plan.device is not None else ''}device {device}")
+
+    set_default_device(device, xp)
+
     observer = _normalize_observers(observers, override_observers)
 
-    logging.basicConfig(level=logging.INFO)
     logging.info("Executing plan...")
     observer.init_recons(plan)
 
@@ -360,8 +380,8 @@ def initialize_reconstruction(
 
 def prepare_for_engine(patterns: Patterns, state: ReconsState, xp: t.Any, engine: EnginePlan) -> t.Tuple[Patterns, ReconsState]:
     # TODO: more graceful
-    if isinstance(engine, GradientEnginePlan) and not xp_is_jax(xp):
-        raise ValueError("The gradient descent engine requires the jax backend.")
+    if isinstance(engine, GradientEnginePlan) and not (xp_is_jax(xp) or xp_is_torch(xp)):
+        raise ValueError("The gradient descent engine requires the 'jax' or 'torch' backend.")
 
     state = state.to_xp(xp)
 
