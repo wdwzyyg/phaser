@@ -2,6 +2,7 @@ import dataclasses
 import itertools
 import logging
 import math
+import sys
 import typing as t
 
 import numpy
@@ -42,7 +43,8 @@ def execute_plan(
         recons.observer.finish_recons(recons.state)
         logging.info("Reconstruction finished!")
     finally:
-        recons.observer.close()
+        # pass any excpetion info to observers
+        recons.observer.close(sys.exc_info()[1])
 
 
 def execute_engine(
