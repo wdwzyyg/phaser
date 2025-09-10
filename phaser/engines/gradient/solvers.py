@@ -186,7 +186,7 @@ def trace(
         new_trace = tree.map(
             lambda g, t: None if g is None else f(g, t),
             updates,
-            state.trace,
+            state,
             is_leaf=lambda g: g is None,
         )
         updates = tree.map(f, updates, new_trace) if nesterov else new_trace

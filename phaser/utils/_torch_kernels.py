@@ -44,7 +44,7 @@ class _MockTensor(torch.Tensor):
 
 
 _TORCH_TO_NUMPY_DTYPE: t.Dict[torch.dtype, t.Type[numpy.generic]] = {
-    torch.bool       : numpy.bool,
+    torch.bool       : numpy.bool_,
     torch.uint8      : numpy.uint8,
     torch.int8       : numpy.int8,
     torch.int16      : numpy.int16,
@@ -58,7 +58,7 @@ _TORCH_TO_NUMPY_DTYPE: t.Dict[torch.dtype, t.Type[numpy.generic]] = {
 }
 
 _NUMPY_TO_TORCH_DTYPE: t.Dict[t.Type[numpy.generic], torch.dtype] = {
-    numpy.bool       : torch.bool,
+    numpy.bool_      : torch.bool,
     numpy.uint8      : torch.uint8,
     numpy.int8       : torch.int8,
     numpy.int16      : torch.int16,
