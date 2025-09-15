@@ -124,6 +124,7 @@ def _normalize_key(key: str) -> t.Tuple[str, ...]:
 _HDF5_KNOWN_KEYS: t.List[t.Tuple[str, ...]] = [
     ('dp',),
     ('data',),
+    ('datacube_root', 'datacube', 'data'),
 ]
 
 
