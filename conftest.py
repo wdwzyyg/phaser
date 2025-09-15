@@ -9,7 +9,7 @@ try:
     import cupy  # pyright: ignore[reportMissingImports]
     if cupy.cuda.runtime.getDeviceCount() > 0:
         AVAILABLE_BACKENDS.add('cupy')
-except ImportError:
+except (ImportError, RuntimeError):
     pass
 
 try:

@@ -180,15 +180,15 @@ def load_raw_data(
 
     raw_data['scan_hook'] = pane.into_data(merge(  # type: ignore
         pane.from_data(t.cast(dict, raw_data.get('scan_hook', None)), ScanHook) if raw_data.get('scan_hook', None) is not None else None,
-        _MISSING if plan.init.scan in (None, {}) else plan.init.scan
+        None if plan.init.scan in (None, {}) else plan.init.scan
     ))
     raw_data['tilt_hook'] = pane.into_data(merge(  # type: ignore
         pane.from_data(t.cast(dict, raw_data.get('tilt_hook', None)), TiltHook) if raw_data.get('tilt_hook', None) is not None else None,
-        _MISSING if plan.init.tilt in (None, {}) else plan.init.tilt
+        None if plan.init.tilt in (None, {}) else plan.init.tilt
     ))
     raw_data['probe_hook'] = pane.into_data(merge(  # type: ignore
         pane.from_data(t.cast(dict, raw_data.get('probe_hook', None)), ProbeHook) if raw_data.get('probe_hook', None) is not None else None,
-        _MISSING if plan.init.probe in (None, {}) else plan.init.probe
+        None if plan.init.probe in (None, {}) else plan.init.probe
     ))
     #print(f"scan_hook: {raw_data['scan_hook']}")
     #print(f"probe_hook: {raw_data['probe_hook']}")
@@ -232,6 +232,9 @@ def initialize_reconstruction(
     override_observers: t.Union[Observer, t.Iterable[Observer], None] = None,
 ) -> PreparedRecons:
     logging.basicConfig(level=logging.INFO)
+
+    with open("post_init_plan.json", "w") as f:
+        pane.write_json(plan, f, indent=4)
 
     if xp is not None:
         xp = cast_array_module(xp)
@@ -452,7 +455,7 @@ def prepare_for_engine(patterns: Patterns, state: ReconsState, xp: t.Any, engine
     return patterns, state
 
 
-_MISSING = object()
+#_MISSING = object()
 
 
 def merge(left: t.Any, right: t.Any) -> t.Any:
@@ -465,8 +468,8 @@ def merge(left: t.Any, right: t.Any) -> t.Any:
             return val.dict(set_only=True)
         return None
 
-    if left is _MISSING or right is _MISSING:
-        return left if right is _MISSING else right
+    if left is None or right is None:
+        return left if right is None else right
 
     if isinstance(left, Hook) and isinstance(right, Hook):
         if left.ref != right.ref:
@@ -477,9 +480,9 @@ def merge(left: t.Any, right: t.Any) -> t.Any:
 
     if (left_d := _as_dict(left)) is not None and (right_d := _as_dict(right)) is not None:
         keys = set(left_d.keys()) | set(right_d.keys())
-        return {k: merge(left_d.get(k, _MISSING), right_d.get(k, _MISSING)) for k in keys}
+        return {k: merge(left_d.get(k, None), right_d.get(k, None)) for k in keys}
 
-    return left if right is _MISSING else right
+    return left if right is None else right
 
 
 __all__ = [
