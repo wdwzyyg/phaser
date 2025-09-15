@@ -12,7 +12,7 @@ export interface WorkerState {
     current_job: string | null;
     start_time: string | null;
     hostname: string | null;
-    backends: Record<string, Array<string>> | null;
+    backends: Array<[string, string]> | null;
 }
 
 export interface WorkerUpdate {

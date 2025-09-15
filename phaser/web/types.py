@@ -66,7 +66,7 @@ class WorkerState(pane.PaneBase):
     current_job: t.Optional[JobID] = None
     start_time: t.Optional[datetime.datetime] = None
     hostname: t.Optional[str] = None
-    backends: t.Optional[t.Dict[str, t.Tuple[str, ...]]] = None
+    backends: t.Optional[t.Sequence[t.Tuple[str, str]]] = None
 
 class WorkerUpdate(pane.PaneBase):
     worker_id: WorkerID
@@ -159,7 +159,7 @@ class ConnectMessage(pane.PaneBase):
     """Message sent when a worker starts up"""
     hostname: t.Optional[str] = None
     """Hostname worker is running on, if known"""
-    backends: t.Optional[t.Dict[str, t.Tuple[str, ...]]] = None
+    backends: t.Optional[t.Sequence[t.Tuple[str, str]]] = None
     """Computational backends available to worker, dict from backend -> device"""
     msg: t.Literal['connect'] = 'connect'
 

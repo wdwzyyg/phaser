@@ -14,7 +14,7 @@ import pane
 
 from phaser.execute import execute_plan, Observer, ReconsPlan, EnginePlan
 from phaser.state import ReconsState, PartialReconsState
-from phaser.utils.num import detect_supported_backends
+from phaser.utils.num import get_devices, repr_device
 
 from .types import (
     ConnectMessage, PollMessage, PingMessage, UpdateMessage, LogMessage, JobResultMessage,
@@ -87,7 +87,8 @@ class WorkerObserver(Observer):
 
 def run_worker(url: str, quiet: bool = False):
     connect_message = ConnectMessage(
-        hostname=socket.gethostname(), backends=t.cast(t.Dict[str, t.Tuple[str, ...]], detect_supported_backends())
+        hostname=socket.gethostname(),
+        backends=tuple((backend, repr_device(device)) for (backend, device) in get_devices())
     )
 
     def send_message(msg: WorkerMessage) -> ServerResponse:

@@ -161,8 +161,8 @@ def get_default_backend() -> BackendName:
     return 'numpy'
 
 
-def get_devices() -> t.Tuple[t.Tuple[str, Device], ...]:
-    devices: t.List[t.Tuple[str, Device]] = []
+def get_devices() -> t.Tuple[t.Tuple[BackendName, Device], ...]:
+    devices: t.List[t.Tuple[BackendName, Device]] = []
 
     if _BACKEND_LOADER.get('jax') is not None:
         from ._jax_kernels import get_devices
@@ -176,6 +176,14 @@ def get_devices() -> t.Tuple[t.Tuple[str, Device], ...]:
     devices.append(('numpy', 'cpu'))
 
     return tuple(devices)
+
+
+def repr_device(device: Device) -> str:
+    s = str(device)
+
+    return {
+        'TFRT_CPU_0': 'cpu',
+    }.get(s, s)
 
 
 def to_device(device: t.Union[str, Device], xp: t.Any) -> Device:
@@ -1000,6 +1008,7 @@ def at(arr: NDArray[DTypeT], idx: IndexLike) -> _AtImpl[DTypeT]:
 
 __all__ = [
     'get_backend_module', 'get_default_backend',
+    'get_devices', 'repr_device', 'to_device', 'get_backend_devices', 'set_default_device',
     'get_array_module', 'cast_array_module', 'get_scipy_module',
     'to_numpy', 'as_numpy', 'as_array',
     'is_cupy', 'is_jax', 'xp_is_cupy', 'xp_is_jax',

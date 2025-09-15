@@ -21,15 +21,12 @@ import { handleRequest } from './requests';
 export function Worker({i, state}: {i: number, state: WorkerState}) {
     const [opened, {toggle}] = useDisclosure(false);
 
-    function procBackends(backends: Record<string, Array<string>>): string {
+    function procBackends(backends: Array<[string, string]>): string {
+        // TODO: refactor
         let arr: Array<string> = [];
-
-        for (const [backend, devices] of Object.entries(backends)) {
-            for (const device of devices) {
-                arr.push(`${backend}[${device}]`);
-            }
+        for (const [backend, device] of backends) {
+            arr.push(`${backend}[${device}]`);
         }
-
         return arr.join(', ');
     }
 
