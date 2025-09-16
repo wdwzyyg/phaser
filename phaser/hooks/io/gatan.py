@@ -35,8 +35,6 @@ def load_gatan(args: None, props: LoadGatanProps) -> RawData:
     diff_step = props.diff_step or metadata.diff_step
     scan_shape = metadata.scan_shape
     
-
-    print(f"Scan shape: {scan_shape}, Step size: {metadata.scan_step}")
     adu = 1 #props.adu or meta.adu
     needs_scale = not metadata.is_simulated()
 
