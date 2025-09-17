@@ -3,6 +3,7 @@ import typing as t
 
 from .types import Dataclass, Slices, BackendName, SimpleFlag, ReconsVars, IsVersion, EmptyDict
 from .hooks import RawDataHook, ProbeHook, ObjectHook, ScanHook, EngineHook, PostInitHook, PostLoadHook, TiltHook
+from .hooks.mtf import DetectorMtfHook
 from .hooks.solver import NoiseModelHook, ConventionalSolverHook, PositionSolverHook, GradientSolverHook
 from .hooks.schedule import FlagLike, ScheduleLike
 from .hooks.regularization import IterConstraintHook, GroupConstraintHook, CostRegularizerHook
@@ -186,6 +187,7 @@ class ReconsPlan(Dataclass, kw_only=True):
     wavelength: t.Optional[float] = None
 
     raw_data: RawDataHook
+    detector_mtf: DetectorMtfHook
 
     post_load: t.Sequence[PostLoadHook] = ()
 

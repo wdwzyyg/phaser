@@ -13,6 +13,7 @@ from phaser.utils.num import Device, cast_array_module, get_array_module, get_ba
 from phaser.utils.object import ObjectSampling
 from phaser.utils.misc import unwrap
 from .hooks import EngineHook, Hook, ObjectHook, RawData
+from .hooks.mtf import DetectorMtf
 from .plan import GradientEnginePlan, ReconsPlan, EnginePlan, ScanHook, ProbeHook, TiltHook
 from .state import Patterns, ReconsState, PartialReconsState, IterState, ProgressState, PreparedRecons
 from .observer import Observer, LoggingObserver, PatienceObserver, SaveObserver, ObserverSet
@@ -25,6 +26,7 @@ def execute_plan(
     observers: t.Union[Observer, t.Iterable[Observer], None] = None,
     override_observers: t.Union[Observer, t.Iterable[Observer], None] = None,
 ):
+    
     recons = initialize_reconstruction(
         plan, xp=xp, seed=seed, name=name, init_state=init_state,
         observers=observers, override_observers=override_observers
@@ -166,6 +168,8 @@ def load_raw_data(
     dtype: type = numpy.float32 if plan.dtype == 'float32' else numpy.float64
 
     raw_data = plan.raw_data(None)
+    mtf = plan.detector_mtf(None)
+
 
     wavelength = plan.wavelength or raw_data.get('wavelength', None)
     if wavelength is None:
@@ -285,6 +289,7 @@ def initialize_reconstruction(
     probe_hook = raw_data.get('probe_hook', None)
     scan_hook = raw_data.get('scan_hook', None)
     tilt_hook = raw_data.get('tilt_hook', None)
+
 
     del raw_data
 

@@ -16,6 +16,8 @@ if t.TYPE_CHECKING:
     from ..execute import Observer
 
 
+
+
 class RawData(t.TypedDict):
     patterns: NDArray[numpy.floating]
     mask: NDArray[numpy.floating]

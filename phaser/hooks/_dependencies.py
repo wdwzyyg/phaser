@@ -42,5 +42,7 @@ def check_dependencies(dependencies: t.Sequence[str], hook: str):
 
 
 _DEPENDENCIES = {
-    'rsciio': ImportDependency('rsciio', "'pip install rosettasciio' or 'conda install rosettasciio'"),
+    'rsciio': ImportDependency('rsciio', "'pip install rosettasciio'"),
+    'starfile': ImportDependency('starfile', "'pip install starfile'"),
+
 }

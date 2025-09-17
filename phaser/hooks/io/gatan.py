@@ -35,7 +35,7 @@ def load_gatan(args: None, props: LoadGatanProps) -> RawData:
     diff_step = props.diff_step or metadata.diff_step
     scan_shape = metadata.scan_shape
     
-    adu = 1 #props.adu or meta.adu
+    # adu = 1 #props.adu or meta.adu
     needs_scale = not metadata.is_simulated()
 
     probe_hook = {
