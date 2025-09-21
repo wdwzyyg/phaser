@@ -350,7 +350,6 @@ def initialize_reconstruction(
         object=obj,
         scan=scan,
         tilt=tilt,
-        progress=ProgressState(iters=numpy.array([]), detector_errors=numpy.array([])),
         wavelength=wavelength
     )
     data, state = _normalize_scan_shape(data, state)
