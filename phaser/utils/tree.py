@@ -205,13 +205,13 @@ def value_and_grad(
         f = jax.value_and_grad(f, argnums, has_aux=has_aux)
 
         @functools.wraps(f)
-        def wrapper(*args: t.Any, **kwargs: t.Any) -> t.Tuple[Tree, Tree]:
+        def jax_wrapper(*args: t.Any, **kwargs: t.Any) -> t.Tuple[Tree, Tree]:
             (value, grad) = f(*args, **kwargs)
             # conjugate to get Wirtinger derivative, multiply by sign
             grad = map(lambda arr: arr.conj() * sign, grad, is_leaf=lambda x: x is None)
             return (value, grad)
 
-        return wrapper
+        return jax_wrapper
 
     if not xp_is_torch(xp):
         raise ValueError("`value_and_grad` is only supported for backends 'jax' and 'torch'")
@@ -220,14 +220,14 @@ def value_and_grad(
     f = torch.func.grad_and_value(f, argnums, has_aux=has_aux)
 
     @functools.wraps(f)
-    def wrapper(*args: t.Any, **kwargs: t.Any) -> t.Tuple[Tree, Tree]:
+    def torch_wrapper(*args: t.Any, **kwargs: t.Any) -> t.Tuple[Tree, Tree]:
         # flip order of return values
         (grad, value) = f(*args, **kwargs)
         # multiply by sign
         grad = map(lambda arr: arr * sign, grad, is_leaf=lambda x: x is None)
         return (value, grad)
 
-    return wrapper
+    return torch_wrapper
 
 
 def leaves(

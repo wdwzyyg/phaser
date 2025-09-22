@@ -155,9 +155,9 @@ class PatienceObserver(Observer):
         self.no_improvement_iter = 0
 
     def _error_from_state(self, state: t.Union[ReconsState, PartialReconsState]) -> t.Optional[float]:
-        if state.progress is None or state.progress.detector_errors.size == 0:
+        if state.progress is None or (progress := state.progress['total_loss']) is None or not len(progress.values):
             return None
-        return state.progress.detector_errors[-1]
+        return progress.values[-1]
 
     def update_iteration(self, state: ReconsState, i: int, n: int, error: t.Optional[float] = None):
         if (error := self._error_from_state(state)) is None:
