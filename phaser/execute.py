@@ -352,6 +352,7 @@ def initialize_reconstruction(
         tilt=tilt,
         wavelength=wavelength
     )
+    state = state.to_xp(xp)  # TODO: figure out why this isn't already the case
     data, state = _normalize_scan_shape(data, state)
 
     # process post_init hooks
