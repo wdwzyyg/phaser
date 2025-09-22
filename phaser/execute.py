@@ -14,7 +14,7 @@ from phaser.utils.object import ObjectSampling
 from phaser.utils.misc import unwrap
 from .hooks import EngineHook, Hook, ObjectHook, RawData
 from .plan import GradientEnginePlan, ReconsPlan, EnginePlan, ScanHook, ProbeHook, TiltHook
-from .state import Patterns, ReconsState, PartialReconsState, IterState, ProgressState, PreparedRecons
+from .state import Patterns, ReconsState, PartialReconsState, IterState, PreparedRecons
 from .observer import Observer, LoggingObserver, PatienceObserver, SaveObserver, ObserverSet
 
 
