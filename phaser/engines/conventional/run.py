@@ -1,7 +1,5 @@
 import logging
 
-import numpy
-
 from phaser.utils.misc import mask_fraction_of_groups
 from phaser.utils.num import assert_dtype, cast_array_module, to_numpy, to_complex_dtype
 from phaser.observer import Observer
@@ -128,7 +126,7 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
                 progress[k].values.append(error)
 
         sim.state.progress = progress
-        observer.update_iteration(sim.state, i, props.niter, error)
+        observer.update_iteration(sim.state, i, props.niter, {'total_loss': error})
 
     observer.finish_engine(sim.state)
     return sim.state

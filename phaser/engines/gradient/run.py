@@ -235,7 +235,7 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
         iter_shuffle_groups = shuffle_groups({'state': state, 'niter': props.niter})
 
         # accumulated losses across groups
-        losses = {k: 0.0 for k in loss_keys}
+        losses: t.Dict[str, float] = {k: 0.0 for k in loss_keys}
 
         # update schedules for this iteration
         # this needs to be done outside the JIT context, which makes this kinda hacky
@@ -300,7 +300,7 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
             assert_dtype(state.scan, dtype)
 
         state.progress = progress
-        observer.update_iteration(state, i, props.niter, losses['total_loss'])
+        observer.update_iteration(state, i, props.niter, losses)
 
     observer.finish_engine(state)
     return state
