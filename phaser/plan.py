@@ -81,6 +81,9 @@ class EnginePlan(Dataclass, kw_only=True):
     (smooths over ~1/smoothing iterations)
     """
 
+    """Detector configuration """
+    detector_mtf: t.Optional[t.Dict] = None
+
     send_every_group: bool = False
 
 
@@ -187,7 +190,6 @@ class ReconsPlan(Dataclass, kw_only=True):
     wavelength: t.Optional[float] = None
 
     raw_data: RawDataHook
-    detector_mtf: t.Optional[DetectorMtfHook] = None
 
     post_load: t.Sequence[PostLoadHook] = ()
 

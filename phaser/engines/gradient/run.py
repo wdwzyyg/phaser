@@ -269,6 +269,7 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
                 group_patterns=group_patterns, #load_group(group),
                 pattern_mask=pattern_mask,
                 probe_int=probe_int,
+                detector_mtf=None,
                 xp=xp, dtype=dtype
             )
 
@@ -332,6 +333,7 @@ def run_group(
     group_patterns: NDArray[numpy.floating],
     pattern_mask: NDArray[numpy.floating],
     probe_int: t.Union[float, numpy.floating],
+    detector_mtf: t.Optional[NDArray[numpy.floating]],
     xp: t.Any,
     dtype: t.Type[numpy.floating],
 ) -> t.Tuple[ReconsState, t.Dict[str, Float], t.Dict[ReconsVar, t.Any], SolverStates]:
@@ -340,7 +342,7 @@ def run_group(
     (grad, (solver_states, losses)) = tree.grad(run_model, has_aux=True, xp=xp, sign=-1)(
         *extract_vars(state, vars, group),
         group=group, props=props, group_patterns=group_patterns, pattern_mask=pattern_mask,
-        noise_model=noise_model, regularizers=regularizers, solver_states=solver_states,
+        noise_model=noise_model, regularizers=regularizers, solver_states=solver_states,detector_mtf=detector_mtf,
         xp=xp, dtype=dtype
     )
     for k in grad.keys():
@@ -387,6 +389,7 @@ def run_model(
     noise_model: NoiseModel[t.Any],
     regularizers: t.Sequence[CostRegularizer[t.Any]],
     solver_states: SolverStates,
+    detector_mtf: t.Optional[NDArray[numpy.floating]],
     xp: t.Any,
     dtype: t.Type[numpy.floating],
 ) -> t.Tuple[Float, t.Tuple[SolverStates, t.Dict[str, Float]]]:
@@ -419,15 +422,9 @@ def run_model(
     # get intensity pattern for each position in group   
     model_intensity = xp.sum(abs2(model_wave), axis=1)
 
-
-    model_intensity = scipy.signal.convolve(model_intensity, gaussian_2D_kernel.array[None, :, :], mode='same')
-
-
-    
-
-
-
-
+    if detector_mtf is not None:
+        # apply detector MTF
+        model_intensity = scipy.signal.convolve(model_intensity, gaussian_2D_kernel.array[None, :, :], mode='same')
 
     (loss, solver_states.noise_model_state) = noise_model.calc_loss(
         model_wave, model_intensity, group_patterns, pattern_mask, solver_states.noise_model_state
