@@ -9,13 +9,13 @@ from typing_extensions import Self
 from phaser.hooks.solver import NoiseModel
 from phaser.utils.num import (
     assert_dtype, get_array_module, cast_array_module, jit,
-    fft2, ifft2, abs2, check_finite, at, Float, to_complex_dtype, to_numpy, to_real_dtype,
+    fft2, ifft2, abs2, check_finite, at, Float, to_complex_dtype, to_real_dtype,
     get_scipy_module
 )
 import phaser.utils.tree as tree
 from phaser.utils.optics import fourier_shift_filter
 from phaser.observer import Observer
-from phaser.state import ReconsState
+from phaser.state import ProgressState, ReconsState
 from phaser.hooks import EngineArgs
 from phaser.hooks.solver import GradientSolver
 from phaser.hooks.regularization import CostRegularizer, GroupConstraint
@@ -219,8 +219,15 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
     iter_solver_states = [solver.init_state(state) for solver in iter_solvers]
     iter_constraint_states = [reg.init_state(state) for reg in iter_constraints]
 
-    #with jax.profiler.trace("/tmp/jax-trace", create_perfetto_link=True):
-    #with torch.profiler.profile(with_stack=True) as prof:
+    loss_keys = ('detector_loss', 'total_loss', *(reg.name() for reg in regularizers))
+    # populate missing keys in progress dictionary
+    for k in loss_keys:
+        if k not in state.progress:
+            state.progress[k] = ProgressState()
+
+    # progress gets clobbered by the jits, so we keep track of it manually
+    progress = state.progress
+
     for i in range(1, props.niter+1):
         state.iter.engine_iter = i
         state.iter.total_iter = start_i + i
@@ -234,6 +241,9 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
         # whether to shuffle groups this iteration
         iter_shuffle_groups = shuffle_groups({'state': state, 'niter': props.niter})
 
+        # accumulated losses across groups
+        losses: t.Dict[str, float] = {k: 0.0 for k in loss_keys}
+
         # update schedules for this iteration
         # this needs to be done outside the JIT context, which makes this kinda hacky
         solver_states.group_solver_states = [
@@ -244,11 +254,10 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
             solver.update_for_iter(state, solver_state, props.niter)
             for (solver, solver_state) in zip(iter_solvers, iter_solver_states)
         ]
-        losses = []
 
         for (group_i, (group, group_patterns)) in enumerate(stream_patterns(groups.iter(state.scan, i, iter_shuffle_groups),
                                                                             patterns, xp=xp, buf_n=props.buffer_n_groups)):
-            (state, loss, iter_grads, solver_states) = run_group(
+            (state, group_losses, iter_grads, solver_states) = run_group(
                 state, group=group, vars=iter_vars,
                 noise_model=noise_model,
                 group_solvers=group_solvers,
@@ -263,11 +272,16 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
                 xp=xp, dtype=dtype
             )
 
-            losses.append(float(loss))
+            losses = tree.map(xp.add, losses, group_losses)
+
             check_finite(state.object.data, state.probe.data, context=f"object or probe, group {group_i}")
             observer.update_group(state, props.send_every_group)
 
-        loss = float(numpy.mean(losses))
+        # report losses normalized by # of probe positions
+        losses = tree.map(lambda v: float(v / groups.n_pos), losses)
+        for (k, v) in losses.items():
+            progress[k].iters.append(i + start_i)
+            progress[k].values.append(v)
 
         # update per-iteration solvers
         for (sol_i, solver) in enumerate(iter_solvers):
@@ -275,7 +289,7 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
             if len(solver_grads) == 0:
                 continue
             (update, iter_solver_states[sol_i]) = solver.update(
-                state, iter_solver_states[sol_i], filter_vars(iter_grads, solver.params), loss
+                state, iter_solver_states[sol_i], filter_vars(iter_grads, solver.params), losses['total_loss']
             )
             state = apply_update(state, update)
 
@@ -292,9 +306,8 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
             state.object.sampling.check_scan(state.scan, state.probe.sampling.extent / 2.)
             assert_dtype(state.scan, dtype)
 
-        state.progress.iters = numpy.concatenate([state.progress.iters, [i + start_i]])
-        state.progress.detector_errors = numpy.concatenate([state.progress.detector_errors, [loss]])
-        observer.update_iteration(state, i, props.niter, loss)
+        state.progress = progress
+        observer.update_iteration(state, i, props.niter, losses)
 
     observer.finish_engine(state)
     return state
@@ -321,23 +334,23 @@ def run_group(
     probe_int: t.Union[float, numpy.floating],
     xp: t.Any,
     dtype: t.Type[numpy.floating],
-) -> t.Tuple[ReconsState, float, t.Dict[ReconsVar, t.Any], SolverStates]:
+) -> t.Tuple[ReconsState, t.Dict[str, Float], t.Dict[ReconsVar, t.Any], SolverStates]:
     xp = cast_array_module(xp)
 
-    ((loss, solver_states), grad) = tree.value_and_grad(run_model, has_aux=True, xp=xp, sign=-1)(
+    (grad, (solver_states, losses)) = tree.grad(run_model, has_aux=True, xp=xp, sign=-1)(
         *extract_vars(state, vars, group),
         group=group, props=props, group_patterns=group_patterns, pattern_mask=pattern_mask,
         noise_model=noise_model, regularizers=regularizers, solver_states=solver_states,
         xp=xp, dtype=dtype
     )
     for k in grad.keys():
-        if k == 'probe':
-            grad[k] /= group.shape[-1]
-        else:
-            grad[k] /= probe_int * group.shape[-1]
-
-    #print(f"obj grad: {xp.max(abs2(grad['object']))}")
-    #print(f"probe grad: {xp.max(abs2(grad['probe'])) if 'probe' in grad else None}")
+        # scale gradients appropriately
+        # per-pattern variables are normalized by the grouping `group.shape[-1]`
+        # Additionally, all gradients except the probe should be normalized by probe intensity
+        grad[k] /= xp.array(
+            (1.0 if k in _PER_ITER_VARS else group.shape[-1]) * (1.0 if k == 'probe' else probe_int),
+            dtype=dtype
+        )
 
     # update iter grads at group
     iter_grads = tree.map(lambda v1, v2: at(v1, tuple(group)).set(v2), iter_grads, filter_vars(grad, vars & _PER_ITER_VARS))
@@ -347,7 +360,7 @@ def run_group(
         if len(solver_grads) == 0:
             continue
         (update, solver_states.group_solver_states[sol_i]) = solver.update(
-            state, solver_states.group_solver_states[sol_i], solver_grads, loss
+            state, solver_states.group_solver_states[sol_i], solver_grads, losses['total_loss']
         )
         state = apply_update(state, update)
 
@@ -356,7 +369,7 @@ def run_group(
             group, state, solver_states.group_constraint_states[reg_i]
         )
 
-    return (state, loss, iter_grads, solver_states)
+    return (state, losses, iter_grads, solver_states)
 
 
 @partial(
@@ -376,7 +389,7 @@ def run_model(
     solver_states: SolverStates,
     xp: t.Any,
     dtype: t.Type[numpy.floating],
-) -> t.Tuple[Float, SolverStates]:
+) -> t.Tuple[Float, t.Tuple[SolverStates, t.Dict[str, Float]]]:
     # apply vars to simulation
     sim = insert_vars(vars, sim, group)
     group_scan = sim.scan
@@ -420,13 +433,18 @@ def run_model(
         model_wave, model_intensity, group_patterns, pattern_mask, solver_states.noise_model_state
     )
 
+    losses: t.Dict[str, Float] = {'detector_loss': loss}
+
     for (reg_i, reg) in enumerate(regularizers):
         (reg_loss, solver_states.regularizer_states[reg_i]) = reg.calc_loss_group(
             group, sim, solver_states.regularizer_states[reg_i]
         )
+        losses[reg.name()] = reg_loss
         loss += reg_loss
 
-    return (loss, solver_states)
+    losses['total_loss'] = loss
+
+    return (loss, (solver_states, losses))
 
 
 # TODO: DRY
