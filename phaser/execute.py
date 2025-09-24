@@ -168,7 +168,7 @@ def load_raw_data(
     dtype: type = numpy.float32 if plan.dtype == 'float32' else numpy.float64
 
     raw_data = plan.raw_data(None)
-    mtf = plan.detector_mtf(None)
+    mtf = plan.detector_mtf
 
 
     wavelength = plan.wavelength or raw_data.get('wavelength', None)

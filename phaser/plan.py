@@ -187,7 +187,7 @@ class ReconsPlan(Dataclass, kw_only=True):
     wavelength: t.Optional[float] = None
 
     raw_data: RawDataHook
-    detector_mtf: DetectorMtfHook
+    detector_mtf: t.Optional[DetectorMtfHook] = None
 
     post_load: t.Sequence[PostLoadHook] = ()
 

@@ -9,7 +9,8 @@ from typing_extensions import Self
 from phaser.hooks.solver import NoiseModel
 from phaser.utils.num import (
     assert_dtype, get_array_module, cast_array_module, jit,
-    fft2, ifft2, abs2, check_finite, at, Float, to_complex_dtype, to_numpy, to_real_dtype
+    fft2, ifft2, abs2, check_finite, at, Float, to_complex_dtype, to_numpy, to_real_dtype,
+    get_scipy_module
 )
 import phaser.utils.tree as tree
 from phaser.utils.optics import fourier_shift_filter
@@ -22,9 +23,15 @@ from phaser.plan import GradientEnginePlan
 from phaser.types import process_flag, ReconsVar
 from ..common.simulation import GroupManager, make_propagators, tilt_propagators, slice_forwards, stream_patterns
 
+#for testing purposes only
+from astropy.convolution import Gaussian2DKernel
+
+gaussian_2D_kernel = Gaussian2DKernel(5, x_size=10 , y_size=10)
+
 
 logger = logging.getLogger(__name__)
 _PER_ITER_VARS: t.FrozenSet[ReconsVar] = frozenset({'positions', 'tilt'})
+
 
 
 def process_solvers(
@@ -375,6 +382,8 @@ def run_model(
     group_scan = sim.scan
     group_tilts = sim.tilt
 
+    scipy = get_scipy_module(sim.object.data)
+
     (ky, kx) = sim.probe.sampling.recip_grid(dtype=dtype, xp=xp)
     xp = get_array_module(sim.probe.data)
     dtype = to_real_dtype(sim.probe.data.dtype)
@@ -393,7 +402,19 @@ def run_model(
 
     t_props = tilt_propagators(ky, kx, sim, props, group_tilts)
     model_wave = fft2(slice_forwards(t_props, probes, sim_slice))
+
+    # get intensity pattern for each position in group   
     model_intensity = xp.sum(abs2(model_wave), axis=1)
+
+
+    model_intensity = scipy.signal.convolve(model_intensity, gaussian_2D_kernel.array[None, :, :], mode='same')
+
+
+    
+
+
+
+
 
     (loss, solver_states.noise_model_state) = noise_model.calc_loss(
         model_wave, model_intensity, group_patterns, pattern_mask, solver_states.noise_model_state
