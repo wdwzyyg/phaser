@@ -431,8 +431,8 @@ def run_model(
     model_intensity = xp.sum(abs2(model_wave), axis=1)
 
     if detector_mtf is not None:
-        print('applying mtf')
-        print(model_intensity.shape)
+        # print('applying mtf')
+        # print(model_intensity.shape)
         blurred = fft2(model_intensity)*detector_mtf[None, :, :]
         model_intensity = ifft2(blurred)
         # model_intensity = scipy.signal.convolve(model_intensity, detector_mtf[None, :, :], mode='same')
