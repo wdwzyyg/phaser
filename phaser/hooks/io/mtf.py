@@ -11,41 +11,61 @@ from phaser.utils.num import Sampling
 # from phaser.io.empad import load_4d, EmpadMetadata
 from phaser.types import cast_length
 from phaser.hooks.mtf import StarFileMtfProps, GaussianMTFProps, DetectorMtf, MTFHookArgs
-
+from scipy.interpolate import RegularGridInterpolator
 import starfile as sf
+
 
 import matplotlib.pyplot as plt
 
+
+def calc_k2_space(shape:tuple ):
+
+    ky = numpy.fft.fftfreq(shape[0])
+    kx = numpy.fft.fftfreq(shape[1])
+    ky, kx = numpy.meshgrid(ky, kx, indexing='ij')
+    k2 = ky**2 + kx**2
+
+    return k2
+    
 
 def load_starfile_mtf(args: MTFHookArgs, props: StarFileMtfProps) -> DetectorMtf:
     logger = logging.getLogger(__name__)
 
     path = Path(props.path).expanduser()
 
-    mtf = DetectorMtf()
+    shape = args['shape']
+    N = props.bin
+
+    k2 = calc_k2_space(shape=shape)
+    k = numpy.sqrt(k2)
+
     if path.suffix.lower() == '.star':
         df = sf.read(path)
 
-        mtf['inverse_pixels'] = df['rlnResolutionInversePixel'].to_numpy()
-        mtf['values'] = df['rlnMtfValue'].to_numpy()
+        kp = df['rlnResolutionInversePixel'].to_numpy()
+        mp = df['rlnMtfValue'].to_numpy()
+
+        
+        ratio = numpy.sinc(N * kp) / numpy.maximum(numpy.sinc(kp), 1e-12)
+        mp *= ratio
+
+        mtf = numpy.interp(k/N, kp, mp)
+
 
     else:
         mtf = None
 
-    print(mtf)
-
-    return {
-       'mtf': mtf
-    }
+    # print(mtf)
+    # plt.imshow(mtf)
+    # plt.show()    
+    return mtf
 
 def calc_gaussian_mtf(args: MTFHookArgs, props: GaussianMTFProps):
 
     shape = args['shape']
-    ky = numpy.fft.fftfreq(shape[0])
-    kx = numpy.fft.fftfreq(shape[1])
-    ky, kx = numpy.meshgrid(ky, kx, indexing='ij')
-    k2 = ky**2 + kx**2
-    
+
+    k2 = calc_k2_space(shape=shape)
+
     mtf = numpy.exp(-props.sigma**2 * k2/2)
 
     return mtf

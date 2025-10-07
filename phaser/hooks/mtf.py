@@ -34,6 +34,6 @@ class DetectorMtf(t.TypedDict):
 
 class DetectorMtfHook(Hook[None, DetectorMtf]):
     known = {
-        'starfile': ('phaser.hooks.io.mtf:load', StarFileMtfProps, ('starfile',)),
+        'starfile': ('phaser.hooks.io.mtf:load_starfile_mtf', StarFileMtfProps, ('starfile',)),
         'gaussian':('phaser.hooks.io.mtf:calc_gaussian_mtf', GaussianMTFProps),
     }
