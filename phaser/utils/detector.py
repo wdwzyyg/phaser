@@ -17,6 +17,7 @@ from .num import as_array, is_cupy, is_jax, NumT, ComplexT, DTypeT
 from .tree import tree_dataclass
 from .misc import create_rng
 from ..hooks.mtf import DetectorMtf
+from .num import Sampling
 
 
 def resample_1D_mtf(mtf: DetectorMtf, bin_factor):
@@ -36,24 +37,12 @@ def resample_1D_mtf(mtf: DetectorMtf, bin_factor):
     return DetectorMtf(inverse_pixel=nu_binned,values=M_binned)
 
 
-def calc_2D_mtf(mtf: DetectorMtf, detector_shape: tuple, bin_factor: t.Optional[int] = 1):
-
-    resampled_mtf = resample_1D_mtf(mtf, bin_factor)
-
-    rows = detector_shape[0]
-    cols = detector_shape[1]
-
-    freq_x = numpy.fft.fftfreq(cols, 1)
-    freq_y = numpy.fft.fftfreq(rows, 1)
-
-    # Create a 2D grid of frequencies
-    freq_grid_x, freq_grid_y = numpy.meshgrid(freq_x, freq_y)
-
-    k2 = numpy.sqrt(freq_grid_y**2+freq_grid_x**2)
-
-    mtf2d = numpy.interp(k2, mtf['inverse_pixel'], mtf['values'])
-
-    return mtf2d
+def gaussian2d_mtf(sampling:Sampling, sigma:numpy.floating, norm):
+    ky = numpy.fft.fftfreq(sampling.shape[0], sampling.sampling[0])
+    kx = numpy.fft.fftfreq(sampling.shape[1], sampling.sampling[1])
+    ky, kx = numpy.meshgrid(ky, kx, indexing='ij')
+    k2 = ky**2 + kx**2
+    return numpy.exp(- (2 * numpy.pi**2 * sigma**2) * k2)
 
 
 def apply_mtf(intensities, mtf:DetectorMtf):

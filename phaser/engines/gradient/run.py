@@ -24,9 +24,11 @@ from phaser.types import process_flag, ReconsVar
 from ..common.simulation import GroupManager, make_propagators, tilt_propagators, slice_forwards, stream_patterns
 
 #for testing purposes only
-from astropy.convolution import Gaussian2DKernel
+# import matplotlib.pylot as plt
 
-gaussian_2D_kernel = Gaussian2DKernel(5, x_size=10 , y_size=10)
+# from astropy.convolution import Gaussian2DKernel
+
+# gaussian_2D_kernel = Gaussian2DKernel(5, x_size=10 , y_size=10)
 
 
 logger = logging.getLogger(__name__)
@@ -169,6 +171,12 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
     seed = args['seed']
     patterns = args['data'].patterns
     pattern_mask = xp.array(args['data'].pattern_mask)
+    
+    if args['data'].mtf is not None:
+        detector_mtf = xp.array(args['data'].mtf)
+    else:
+        detector_mtf = None
+
     assert_dtype(patterns, dtype)
     assert_dtype(pattern_mask, dtype)
 
@@ -269,7 +277,7 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
                 group_patterns=group_patterns, #load_group(group),
                 pattern_mask=pattern_mask,
                 probe_int=probe_int,
-                detector_mtf=None,
+                detector_mtf=detector_mtf,
                 xp=xp, dtype=dtype
             )
 
@@ -423,8 +431,10 @@ def run_model(
     model_intensity = xp.sum(abs2(model_wave), axis=1)
 
     if detector_mtf is not None:
-        # apply detector MTF
-        model_intensity = scipy.signal.convolve(model_intensity, gaussian_2D_kernel.array[None, :, :], mode='same')
+        print('applying mtf')
+        blurred = fft2(model_intensity)*detector_mtf[:, None]
+        model_intensity = ifft2(blurred)
+        # model_intensity = scipy.signal.convolve(model_intensity, detector_mtf[None, :, :], mode='same')
 
     (loss, solver_states.noise_model_state) = noise_model.calc_loss(
         model_wave, model_intensity, group_patterns, pattern_mask, solver_states.noise_model_state

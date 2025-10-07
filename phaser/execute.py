@@ -13,7 +13,8 @@ from phaser.utils.num import Device, cast_array_module, get_array_module, get_ba
 from phaser.utils.object import ObjectSampling
 from phaser.utils.misc import unwrap
 from .hooks import EngineHook, Hook, ObjectHook, RawData
-from .hooks.mtf import DetectorMtf
+from .hooks.mtf import DetectorMtf, MTFHookArgs
+
 from .plan import GradientEnginePlan, ReconsPlan, EnginePlan, ScanHook, ProbeHook, TiltHook
 from .state import Patterns, ReconsState, PartialReconsState, IterState, PreparedRecons
 from .observer import Observer, LoggingObserver, PatienceObserver, SaveObserver, ObserverSet
@@ -168,7 +169,6 @@ def load_raw_data(
     dtype: type = numpy.float32 if plan.dtype == 'float32' else numpy.float64
 
     raw_data = plan.raw_data(None)
-    mtf = plan.detector_mtf
 
 
     wavelength = plan.wavelength or raw_data.get('wavelength', None)
@@ -283,6 +283,10 @@ def initialize_reconstruction(
 
     raw_data = load_raw_data(plan, xp, seed, init_state=init_state)
 
+    # mtf_data -> inv pix and value
+
+
+
     data = Patterns(raw_data['patterns'], raw_data['mask'])
     sampling = raw_data['sampling']
     wavelength = unwrap(raw_data.get('wavelength', None))
@@ -352,6 +356,12 @@ def initialize_reconstruction(
         obj.data = obj.data.reshape((1, *obj.data.shape))
         obj.thicknesses = numpy.array([], dtype=dtype)
 
+    
+
+    
+    if plan.detector is not None:
+        data.mtf = plan.detector(MTFHookArgs(shape=data.patterns.shape[2:4]))
+
     state = ReconsState(
         iter=IterState(0, 0, 0),
         probe=probe,
@@ -401,6 +411,10 @@ def prepare_for_engine(patterns: Patterns, state: ReconsState, xp: t.Any, engine
             new_sampling = Sampling(engine.sim_shape, extent=tuple(state.probe.sampling.extent))
         else:
             new_sampling = Sampling(engine.sim_shape, sampling=tuple(state.probe.sampling.sampling))
+
+
+        # if mtf_hook is not None:
+        #     mtf = calculate_mtf
 
         logging.info(f"Resampling probe and patterns to shape {new_sampling.shape}...")
         state.probe.data = state.probe.sampling.resample(state.probe.data, new_sampling)

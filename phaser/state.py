@@ -20,6 +20,9 @@ class Patterns():
     """Raw diffraction patterns, with 0-frequency sample in corner"""
     pattern_mask: NDArray[numpy.floating]
     """Mask indicating which portions of the diffraction patterns contain data."""
+    
+    mtf: t.Optional[NDArray[numpy.floating]] = None
+    """MTF of the detector"""
 
     def to_numpy(self) -> Self:
         return self.__class__(

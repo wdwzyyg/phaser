@@ -81,9 +81,6 @@ class EnginePlan(Dataclass, kw_only=True):
     (smooths over ~1/smoothing iterations)
     """
 
-    """Detector configuration """
-    detector_mtf: t.Optional[t.Dict] = None
-
     send_every_group: bool = False
 
 
@@ -198,6 +195,7 @@ class ReconsPlan(Dataclass, kw_only=True):
     post_init: t.Sequence[PostInitHook] = ()
 
     slices: t.Optional[Slices] = None
+    detector: t.Optional[DetectorMtfHook] = None
 
     engines: t.List[EngineHook]
     #engines: t.List[t.Annotated[t.Union[ConventionalEngine, GradientEngine], Tagged('type')]]
