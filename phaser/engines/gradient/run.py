@@ -6,6 +6,7 @@ import numpy
 from numpy.typing import NDArray
 from typing_extensions import Self
 
+
 from phaser.hooks.solver import NoiseModel
 from phaser.utils.num import (
     assert_dtype, get_array_module, cast_array_module, jit,
@@ -24,7 +25,10 @@ from phaser.types import process_flag, ReconsVar
 from ..common.simulation import GroupManager, make_propagators, tilt_propagators, slice_forwards, stream_patterns
 
 #for testing purposes only
-# import matplotlib.pylot as plt
+import matplotlib
+matplotlib.use("Agg")          # must be set before importing pyplot
+import matplotlib.pyplot as plt
+import jax
 
 # from astropy.convolution import Gaussian2DKernel
 
@@ -381,6 +385,14 @@ def run_group(
 
     return (state, losses, iter_grads, solver_states)
 
+def plot_intensity(intensity):
+
+    plt.figure(figsize=(4,3), dpi=120)
+    plt.imshow(numpy.fft.fftshift(intensity.real), origin="lower")
+    plt.tight_layout()
+    plt.savefig(f"intensity.png")
+    plt.close()
+    
 
 @partial(
     jit,
@@ -431,11 +443,11 @@ def run_model(
     model_intensity = xp.sum(abs2(model_wave), axis=1)
 
     if detector_mtf is not None:
-        # print('applying mtf')
-        # print(model_intensity.shape)
+       
         blurred = fft2(model_intensity)*detector_mtf[None, :, :]
         model_intensity = ifft2(blurred)
-        # model_intensity = scipy.signal.convolve(model_intensity, detector_mtf[None, :, :], mode='same')
+        jax.debug.callback(plot_intensity, model_intensity[1,:,:])
+        
 
     (loss, solver_states.noise_model_state) = noise_model.calc_loss(
         model_wave, model_intensity, group_patterns, pattern_mask, solver_states.noise_model_state

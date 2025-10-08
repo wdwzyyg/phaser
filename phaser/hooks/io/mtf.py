@@ -15,7 +15,7 @@ from scipy.interpolate import RegularGridInterpolator
 import starfile as sf
 
 
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 
 
 def calc_k2_space(shape:tuple ):
@@ -55,9 +55,6 @@ def load_starfile_mtf(args: MTFHookArgs, props: StarFileMtfProps) -> DetectorMtf
     else:
         mtf = None
 
-    # print(mtf)
-    # plt.imshow(mtf)
-    # plt.show()    
     return mtf
 
 def calc_gaussian_mtf(args: MTFHookArgs, props: GaussianMTFProps):
