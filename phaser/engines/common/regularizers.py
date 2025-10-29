@@ -2,7 +2,6 @@ from functools import partial
 import logging
 from math import prod
 import typing as t
-
 import numpy
 from numpy.typing import NDArray
 
@@ -20,7 +19,14 @@ from phaser.hooks.regularization import (
 
 class ClampObjectAmplitude:
     def __init__(self, args: None, props: ClampObjectAmplitudeProps):
-        self.amplitude = props.amplitude
+        self.min: t.Optional[float]
+        self.max: t.Optional[float]
+
+        if isinstance(props.amplitude, list):
+            self.min, self.max = props.amplitude
+        else:
+            self.min = None
+            self.max = props.amplitude
 
     def init_state(self, sim: ReconsState) -> None:
         return None
@@ -29,19 +35,29 @@ class ClampObjectAmplitude:
         return self.apply_iter(sim, state)
 
     def apply_iter(self, sim: ReconsState, state: None) -> t.Tuple[ReconsState, None]:
-        amp = to_real_dtype(sim.object.data.dtype)(self.amplitude)
-        sim.object.data = clamp_amplitude(sim.object.data, amp)
+        cast = to_real_dtype(sim.object.data.dtype)
+        sim.object.data = clamp_amplitude(sim.object.data, self.min, self.max)
         return (sim, None)
 
 
 @partial(jit, donate_argnames=('obj',), cupy_fuse=True)
-def clamp_amplitude(obj: NDArray[numpy.complexfloating], amplitude: t.Union[float, numpy.floating]) -> NDArray[numpy.complexfloating]:
+def clamp_amplitude(obj: NDArray[numpy.complexfloating], min: t.Optional[float], max: t.Optional[float]) -> NDArray[numpy.complexfloating]:
     xp = get_array_module(obj)
 
     obj_amp = xp.abs(obj)
-    scale = xp.minimum(obj_amp, amplitude) / obj_amp
-    return obj * scale
+    new_amp = obj_amp
 
+    if min is not None and max is not None:
+        new_amp = xp.clip(new_amp, min, max)
+    elif min is not None:
+        new_amp = xp.maximum(new_amp, min)
+    elif max is not None:
+        new_amp = xp.minimum(new_amp, max)
+    else:
+        return obj
+
+    scale = xp.where(obj_amp > 0, new_amp / obj_amp, 0.0) #no divide by 0
+    return obj * scale
 
 class LimitProbeSupport:
     def __init__(self, args: None, props: LimitProbeSupportProps):
