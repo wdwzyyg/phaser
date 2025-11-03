@@ -357,8 +357,6 @@ def initialize_reconstruction(
         obj.thicknesses = numpy.array([], dtype=dtype)
 
     
-
-    
     if plan.detector is not None:
         data.mtf = plan.detector(MTFHookArgs(shape=data.patterns.shape[2:4]))
 
@@ -413,8 +411,7 @@ def prepare_for_engine(patterns: Patterns, state: ReconsState, xp: t.Any, engine
             new_sampling = Sampling(engine.sim_shape, sampling=tuple(state.probe.sampling.sampling))
 
 
-        # if mtf_hook is not None:
-        #     mtf = calculate_mtf
+
 
         logging.info(f"Resampling probe and patterns to shape {new_sampling.shape}...")
         state.probe.data = state.probe.sampling.resample(state.probe.data, new_sampling)
@@ -422,6 +419,10 @@ def prepare_for_engine(patterns: Patterns, state: ReconsState, xp: t.Any, engine
         patterns.patterns = state.probe.sampling.resample_recip(patterns.patterns, new_sampling)
         # and pattern mask
         patterns.pattern_mask = state.probe.sampling.resample_recip(patterns.pattern_mask, new_sampling)
+        # and detector_mtf
+        if patterns.mtf is not None:
+            patterns.mtf = state.probe.sampling.resample_recip(patterns.mtf, new_sampling)
+
 
         state.probe.sampling = new_sampling
 

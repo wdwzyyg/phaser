@@ -446,7 +446,9 @@ def run_model(
        
         blurred = fft2(model_intensity)*detector_mtf[None, :, :]
         model_intensity = ifft2(blurred)
-        jax.debug.callback(plot_intensity, model_intensity[1,:,:])
+        
+        # uncommment to save out a probe position for testing
+        # jax.debug.callback(plot_intensity, model_intensity[1,:,:])
         
 
     (loss, solver_states.noise_model_state) = noise_model.calc_loss(
