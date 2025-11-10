@@ -361,3 +361,19 @@ def test_set_view_at_pos(backend: BackendName, dtype: str) -> numpy.ndarray:
         assert numpy.max(to_numpy(obj)) == mag
 
     return to_numpy(obj)
+
+
+@with_backends('numpy', 'jax', 'cupy', 'torch')
+def test_get_region_mask(backend: BackendName):
+    xp = get_backend_module(backend)
+
+    samp = ObjectSampling(
+        shape=(64, 64),
+        sampling=(1.0, 1.0),
+        corner=(-5.0, -10.0),
+        region_min=(0., 0.),
+        region_max=None,
+    )
+
+    mask = samp.get_region_mask(xp=xp)
+    assert to_numpy(xp.sum(mask)) == 59 * 54
