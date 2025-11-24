@@ -67,7 +67,7 @@ engines:
      - type: clamp_object_amplitude
        amplitude: 1.05
      - type: nonneg_object_phase
-       relax: 0
+       weight: 1.0
 
    update_probe: {after: 5}
    update_positions: {after: 5}
@@ -129,6 +129,8 @@ engines:
      - type: tilt_gaussian
        sigma: 5.0
        weight: 0.1
+     - type: nonneg_object_phase
+       weight: 1.0
 
    update_probe: True
    update_positions: True
@@ -187,7 +189,7 @@ engines:
      - type: clamp_object_amplitude
        amplitude: 1.05
      - type: nonneg_object_phase
-       relax: 0
+       weight: 1.0
      - type: tilt_gaussian
        sigma: 5.0 # real Å
        weight: 0.3

@@ -69,7 +69,7 @@ class GaussianProps(Dataclass):
 
 
 class NonNegObjectPhaseProps(Dataclass):
-    relax: float = 0.0
+    weight: float = 1.0
 
 
 class IterConstraintHook(Hook[None, IterConstraint]):

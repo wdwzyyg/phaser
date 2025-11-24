@@ -85,17 +85,20 @@ class RemovePhaseRamp:
 
 
 @partial(jit, donate_argnames=('obj',), cupy_fuse=True)
-def non_neg_phase(obj: NDArray[numpy.complexfloating], relax:  t.Union[float, numpy.floating]) -> NDArray[numpy.complexfloating]:
+def non_neg_phase(obj: NDArray[numpy.complexfloating], weight: t.Union[float, numpy.floating]) -> NDArray[numpy.complexfloating]:
+    """
+    weight: between 0-1
+    """
     xp = get_array_module(obj)
     obj_phase = xp.angle(obj)
-    obj_phase = (1 - relax) * xp.maximum(obj_phase, 0) + relax * obj_phase
+    obj_phase = weight * xp.maximum(obj_phase, 0) + (1-weight) * obj_phase
 
     return xp.abs(obj) * xp.exp(1j * obj_phase)
 
 
 class NonNegObjectPhase:
     def __init__(self, args: None, props: NonNegObjectPhaseProps):
-        self.relax: float = props.relax
+        self.weight: float = props.weight
 
     def init_state(self, sim: ReconsState) -> None:
         return None
@@ -104,7 +107,7 @@ class NonNegObjectPhase:
         return self.apply_iter(sim, state)
 
     def apply_iter(self, sim: ReconsState, state: None) -> t.Tuple[ReconsState, None]:
-        sim.object.data = non_neg_phase(sim.object.data, self.relax)
+        sim.object.data = non_neg_phase(sim.object.data, self.weight)
         return (sim, None)
 
 
