@@ -1,0 +1,211 @@
+---
+name: "acq1_09_postiv"
+backend: jax
+
+# raw data source
+# test
+raw_data:
+  type: empad
+  path: "./acq1_of13/acq1_of13_calib.json"
+
+
+init:
+  tilt:
+    type: custom
+    path: './acq1_of13/tilt_scan_x150_y300.npy'
+
+post_init:
+ - drop_nans
+ - diffraction_align
+
+# initialization
+
+slices:
+  n: 50
+  total_thickness: 190
+
+engines:
+#0 high reg basic and late start high position update
+ - type: 'gradient'
+   sim_shape: [128, 128]
+   probe_modes: 8
+   niter: 100
+   grouping: 128
+   bwlim_frac: 1.0
+
+   noise_model:
+     type: 'poisson'
+     eps: 2.0
+
+   solvers:
+     object:
+       type: 'adam'
+       learning_rate: 5.0e-3
+       nesterov: True
+     probe:
+       type: 'adam'
+       learning_rate: 0.01 # lower down from 0.05
+       nesterov: True
+     positions:
+       type: 'adam'
+       learning_rate: 0.05 # cannot go too high
+       nesterov: True
+
+   regularizers:
+     - type: obj_l2
+       cost: 0.2
+     - type: obj_tikh
+       cost: 0.4
+
+   group_constraints: []
+   iter_constraints:
+     - type: layers
+       sigma: 10
+       weight: 0.9
+     - type: limit_probe_support
+       max_angle: 28.0
+     - type: clamp_object_amplitude
+       amplitude: 1.05
+     - type: nonneg_object_phase
+       weight: 1.0
+
+   update_probe: {after: 5}
+   update_positions: {after: 5}
+
+   save: {every: 10}
+   save_images: {every: 5}
+   save_options:
+     images: [
+      'probe', 'probe_recip', 'object_phase_sum', 'object_mag_sum',
+      'object_phase_stack', 'object_mag_stack', 'scan',
+     ]
+   early_termination: 5
+
+#1 late start tilt
+ - type: 'gradient'
+   sim_shape: [128, 128]
+   probe_modes: 8
+   niter: 100
+   grouping: 128
+   bwlim_frac: 1.0
+
+   noise_model:
+     type: 'poisson'
+     eps: 2.0
+
+   solvers:
+     object:
+       type: 'adam'
+       learning_rate: 5.0e-3
+       nesterov: True
+     probe:
+       type: 'adam'
+       learning_rate: 5.0e-3
+       nesterov: True
+     positions:
+       type: 'adam'
+       learning_rate: 5.0e-3
+       nesterov: True
+     tilt:
+       type: 'adam'
+       learning_rate: 0.05
+       nesterov: True
+
+   regularizers:
+     - type: obj_l2
+       cost: 0.2
+     - type: obj_tikh
+       cost: 0.4
+
+   group_constraints: []
+   iter_constraints:
+     - type: layers
+       sigma: 10
+       weight: 0.9
+     - type: limit_probe_support
+       max_angle: 28.0
+     - type: clamp_object_amplitude
+       amplitude: 1.05
+     - type: tilt_gaussian
+       sigma: 5.0
+       weight: 0.1
+     - type: nonneg_object_phase
+       weight: 1.0
+
+   update_probe: True
+   update_positions: True
+   update_tilt: True
+
+   save: {every: 10}
+   save_images: {every: 5}
+   save_options:
+     images: [
+      'probe', 'probe_recip', 'object_phase_sum', 'object_mag_sum',
+      'object_phase_stack', 'object_mag_stack', 'scan', 'tilt'
+     ]
+   early_termination: 5
+
+
+# relax layer constraint and pad
+ - type: 'gradient'
+   sim_shape: [192, 192] # enough up-sampling, 256 exceed mem limit
+   probe_modes: 8
+   niter: 100
+   grouping: 64 # 128 request 41 Gb mem,
+   bwlim_frac: 0.8 # but limit to ~2 alpha
+
+   noise_model:
+     type: 'poisson'
+     eps: 2.0
+
+   solvers:
+     object:
+       type: 'adam'
+       learning_rate: 1.5e-3
+       nesterov: True
+     probe:
+       type: 'adam'
+       learning_rate: 1.5e-3 # probe should be comparable with object
+       nesterov: True
+     positions:
+       type: 'adam'
+       learning_rate: 1.0e-3
+       nesterov: True
+     tilt:
+       type: 'adam'
+       learning_rate: 1.0e-3
+       nesterov: True
+
+   regularizers:
+     - type: obj_l2
+       cost: 0.2
+     - type: obj_tikh
+       cost: 0.4
+
+   group_constraints: []
+   iter_constraints:
+     - type: limit_probe_support
+       max_angle: 28.0
+     - type: clamp_object_amplitude
+       amplitude: 1.05
+     - type: nonneg_object_phase
+       weight: 1.0
+     - type: tilt_gaussian
+       sigma: 5.0 # real Å
+       weight: 0.3
+     - type: layers
+       sigma: 4.0
+       weight: 0.6
+
+   update_probe: {after: 5}
+   update_positions: {after: 5}
+   update_tilt: {after: 5}
+
+   save: {every: 5}
+   save_images: {every: 5}
+   save_options:
+     images: [
+      'probe', 'probe_recip', 'object_phase_sum', 'object_mag_sum',
+      'object_phase_stack', 'object_mag_stack', 'scan', 'tilt'
+     ]
+   early_termination: 15

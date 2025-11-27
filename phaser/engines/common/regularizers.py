@@ -11,7 +11,7 @@ from phaser.utils.num import (
 )
 from phaser.state import ReconsState
 from phaser.hooks.regularization import (
-    ClampObjectAmplitudeProps, LimitProbeSupportProps,
+    ClampObjectAmplitudeProps, LimitProbeSupportProps, NonNegObjectPhaseProps,
     RegularizeLayersProps, ObjLowPassProps, GaussianProps,
     CostRegularizerProps, TVRegularizerProps, UnstructuredGaussianProps
 )
@@ -98,6 +98,34 @@ class RemovePhaseRamp:
         phase = remove_linear_ramp(xp.angle(sim.object.data), state)
         sim.object.data = t.cast(NDArray[numpy.complexfloating], xp.abs(sim.object.data) * xp.exp(1.j * phase))
         return (sim, state)
+
+
+
+@partial(jit, donate_argnames=('obj',), cupy_fuse=True)
+def non_neg_phase(obj: NDArray[numpy.complexfloating], weight: t.Union[float, numpy.floating]) -> NDArray[numpy.complexfloating]:
+    """
+    weight: between 0-1
+    """
+    xp = get_array_module(obj)
+    obj_phase = xp.angle(obj)
+    obj_phase = weight * xp.maximum(obj_phase, 0) + (1-weight) * obj_phase
+
+    return xp.abs(obj) * xp.exp(1j * obj_phase)
+
+
+class NonNegObjectPhase:
+    def __init__(self, args: None, props: NonNegObjectPhaseProps):
+        self.weight: float = props.weight
+
+    def init_state(self, sim: ReconsState) -> None:
+        return None
+
+    def apply_group(self, group: NDArray[numpy.integer], sim: ReconsState, state: None) -> t.Tuple[ReconsState, None]:
+        return self.apply_iter(sim, state)
+
+    def apply_iter(self, sim: ReconsState, state: None) -> t.Tuple[ReconsState, None]:
+        sim.object.data = non_neg_phase(sim.object.data, self.weight)
+        return (sim, None)
 
 
 class RegularizeLayers:
