@@ -8,7 +8,10 @@ import typing as t
 import numpy
 from numpy.typing import ArrayLike, NDArray
 
-from .num import get_array_module, get_scipy_module, to_numpy, at, abs2, xp_is_jax, xp_is_torch
+from .num import (
+    Sampling, cast_array_module, get_array_module, get_scipy_module, to_numpy, at, abs2,
+    xp_is_jax, xp_is_torch, Float
+)
 
 
 NumT = t.TypeVar('NumT', bound=numpy.number)
@@ -230,9 +233,55 @@ def affine_transform(
         return output
 
 
+def gaussian_transfer(
+    ky: NDArray[numpy.floating],
+    kx: NDArray[numpy.floating],
+    sigma: t.Union[Float, t.Tuple[Float, Float]],
+) -> NDArray[numpy.floating]:
+    """
+    Construct a 2D Gaussian transfer function.
+
+    Can be used to apply a Gaussian blur in Fourier space.
+    The units of `sigma` should cancel the units of `ky`/`kx`.
+
+    Parameters:
+        ky: y frequency components, units of 1/length (not rad/length)
+        ky: x frequency components, units of 1/length
+        sigma: Standard deviation in (y, x).
+
+    Returns: Array of same shape as `ky`/`kx`.
+    """
+    xp = get_array_module(ky, kx)
+
+    if isinstance(sigma, (tuple, list)):
+        sigma_y, sigma_x = sigma
+    else:
+        sigma_y = sigma_x = sigma
+
+    pre = -2 * numpy.pi**2
+    return xp.exp(pre * ((ky * sigma_y)**2 + (kx * sigma_x)**2))
+
+
+def square_pixel_transfer(shape: t.Tuple[int, int], *, xp: t.Any = None) -> NDArray[numpy.floating]:
+    """
+    Construct the transfer function for an ideal, square-pixeled detector.
+    Note that this contrast transfer is not isotropic; the MTF is better
+    along the detector axes than it is along the diagonals.
+
+    Parameters:
+        shape: Shape of transfer function to generate.
+
+    Returns: Array of shape `shape`
+    """
+    xp = numpy if xp is None else cast_array_module(xp)
+    ky, kx = Sampling(shape, sampling=[1., 1.]).recip_grid(xp=xp)
+    return xp.sinc(ky) * xp.sinc(kx)
+
+
 __all__ = [
     'apply_flips',
     'remove_linear_ramp', 'colorize_complex', 'scale_to_integral_type',
     'affine_transform', 'to_affine_matrix',
     'scale_matrix', 'rotation_matrix', 'translation_matrix',
+    'gaussian_transfer', 'square_pixel_transfer',
 ]

@@ -88,15 +88,22 @@ def affine_transform(
     indices = jnp.indices(output_shape, dtype=float)
 
     matrix = jnp.array(matrix)
+    offset = jnp.zeros((), matrix.dtype) if offset is None else jnp.array(offset)
+
+    if matrix.shape == (n_axes, n_axes + 1):
+        # add bottom row to transformation matrix
+        matrix = jnp.stack((matrix, jnp.array([0.] * n_axes + [1.], matrix.dtype)), axis=0)
     if matrix.shape == (n_axes + 1, n_axes + 1):
         # homogenous transform matrix
         coords = jnp.tensordot(
             matrix, jnp.stack((*indices, jnp.ones_like(indices[0])), axis=0), axes=1
         )[:-1]
+    elif matrix.shape == (n_axes, n_axes):
+        coords = (indices.T @ matrix + jnp.array(offset)).T
     elif matrix.shape == (n_axes,):
         coords = (indices.T * matrix + jnp.array(offset)).T
     else:
-        raise ValueError(f"Expected matrix of shape ({n_axes + 1}, {n_axes + 1}) or ({n_axes},), instead got shape {matrix.shape}")
+        raise ValueError(f"Expected matrix of shape ({n_axes}, {n_axes}), ({n_axes},), ({n_axes + 1}, {n_axes + 1}), or ({n_axes}, {n_axes + 1}), instead got shape {matrix.shape}")
 
     coords += jnp.finfo(coords.dtype).eps
 
