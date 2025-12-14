@@ -36,12 +36,16 @@ class ClampObjectAmplitude:
 
     def apply_iter(self, sim: ReconsState, state: None) -> t.Tuple[ReconsState, None]:
         cast = to_real_dtype(sim.object.data.dtype)
-        sim.object.data = clamp_amplitude(sim.object.data, self.min, self.max)
+        sim.object.data = clamp_amplitude(sim.object.data, None if self.min is None else cast(self.min), None if self.max is None else cast(self.max))
         return (sim, None)
 
 
 @partial(jit, donate_argnames=('obj',), cupy_fuse=True)
-def clamp_amplitude(obj: NDArray[numpy.complexfloating], min: t.Optional[float], max: t.Optional[float]) -> NDArray[numpy.complexfloating]:
+def clamp_amplitude(
+    obj: NDArray[numpy.complexfloating],
+    min: t.Union[float, numpy.floating, None],
+    max: t.Union[float, numpy.floating, None]
+) -> NDArray[numpy.complexfloating]:
     xp = get_array_module(obj)
 
     obj_amp = xp.abs(obj)
