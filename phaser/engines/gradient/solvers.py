@@ -26,7 +26,7 @@ import typing as t
 import numpy
 from numpy.typing import NDArray
 
-from phaser.utils.num import get_array_module
+from phaser.utils.num import get_array_module, to_real_dtype, xp_is_torch
 import phaser.utils.tree as tree
 from phaser.hooks.solver import GradientSolver, GradientSolverArgs
 from phaser.hooks.schedule import ScheduleLike, Schedule
@@ -229,7 +229,7 @@ def scale_by_adam(
     def init_fn(params: Params) -> ScaleByAdamState:
         xp = get_array_module(params)
         mu = tree.zeros_like(params, dtype=mu_dtype)  # First moment
-        nu = tree.zeros_like(params)  # Second moment
+        nu = tree.map(lambda x: xp.zeros_like(x, dtype=to_real_dtype(x.dtype)), params)  # Second moment
         return ScaleByAdamState(n=xp.zeros((), dtype=xp.int32), mu=mu, nu=nu)
 
     def update_fn(
@@ -240,6 +240,15 @@ def scale_by_adam(
         mu = tree.update_moment(updates, state.mu, b1, 1)
         nu = tree.update_moment_per_elem_norm(updates, state.nu, b2, 2)
         n_inc = safe_increment(state.n)
+
+        # HACK: on mps we need to prevent small mu values from returning nan
+        if xp_is_torch(xp) and any(
+            leaf.device.type == 'mps' for leaf in tree.leaves(updates)
+        ):
+            mu = tree.map(
+                lambda arr: xp.nan_to_num(arr, nan=0.),
+                mu, is_leaf=lambda x: x is None
+            )
 
         if nesterov:
             mu_hat = tree.map(

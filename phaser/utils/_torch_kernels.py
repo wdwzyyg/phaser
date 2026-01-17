@@ -1,12 +1,12 @@
 import functools
 import itertools
 import operator
-from types import ModuleType
 import typing as t
 
 import numpy
 from numpy.typing import ArrayLike
 import torch
+import torch.nn.functional as F
 
 from phaser.utils.num import _PadMode
 from phaser.utils.image import _InterpBoundaryMode
@@ -115,6 +115,16 @@ _PAD_MODE_MAP: t.Dict[_PadMode, str] = {
     'wrap': 'circular',
 }
 
+
+def nan_to_num(arr: torch.Tensor, **kwargs: t.Any) -> torch.Tensor:
+    if torch.is_complex(arr):
+        return torch.view_as_complex(
+            torch.nan_to_num(torch.view_as_real(arr), **kwargs)
+        )
+
+    return torch.nan_to_num(arr, **kwargs) 
+
+
 def min(
     arr: torch.Tensor, axis: t.Union[int, t.Tuple[int, ...], None] = None, *,
     keepdims: bool = False
@@ -173,6 +183,14 @@ def maximum(
     return torch.maximum(x1, x2)
 
 
+def cumsum(
+    arr: torch.Tensor, axis: t.Optional[int] = None,
+) -> torch.Tensor:
+    if axis is None:
+        return torch.cumsum(arr.ravel(), 0)
+    return torch.cumsum(arr, axis)
+
+
 def split(
     arr: torch.Tensor, sections: int, *, axis: int = 0 
 ) -> t.Tuple[torch.Tensor, ...]:
@@ -201,7 +219,7 @@ def pad(
     pad = tuple(itertools.chain.from_iterable(t.cast(t.Sequence[t.Tuple[int, int]], reversed(pad))))
 
     kwargs = {'value': cval} if mode == 'constant' else {}
-    return _MockTensor(torch.nn.functional.pad(arr, pad, mode=_PAD_MODE_MAP[mode], **kwargs))
+    return _MockTensor(F.pad(arr, pad, mode=_PAD_MODE_MAP[mode], **kwargs))
 
 
 def unwrap(arr: torch.Tensor, discont: t.Optional[float] = None, axis: int = -1, *,
@@ -233,19 +251,22 @@ def unwrap(arr: torch.Tensor, discont: t.Optional[float] = None, axis: int = -1,
 
 
 def indices(
-    shape: t.Tuple[int, ...], dtype: t.Union[str, None, t.Type[numpy.generic], torch.dtype] = None, sparse: bool = False
+    shape: t.Tuple[int, ...],
+    dtype: t.Union[str, None, t.Type[numpy.generic], torch.dtype] = None,
+    sparse: bool = False,
+    device: t.Optional[torch.device] = None,
 ) -> t.Union[torch.Tensor, t.Tuple[torch.Tensor, ...]]:
-    dtype = to_torch_dtype(dtype) if dtype is not None else torch.int64
+    dtype = to_torch_dtype(dtype) if dtype is not None else torch.int32
 
     n = len(shape)
 
     if sparse:
         return tuple(
-            _MockTensor(torch.arange(s, dtype=dtype).reshape((1,) * i + (s,) + (1,) * (n - i - 1)))
+            _MockTensor(torch.arange(s, dtype=dtype, device=device).reshape((1,) * i + (s,) + (1,) * (n - i - 1)))
             for (i, s) in enumerate(shape)
         )
 
-    arrs = tuple(torch.arange(s, dtype=dtype) for s in shape)
+    arrs = tuple(torch.arange(s, dtype=dtype, device=device) for s in shape)
     return _MockTensor(torch.stack(torch.meshgrid(*arrs, indexing='ij'), dim=0))
 
 
@@ -275,23 +296,26 @@ def affine_transform(
     order: int = 1, mode: _InterpBoundaryMode = 'grid-constant',
     cval: ArrayLike = 0.0,
 ) -> torch.Tensor:
+    float_dtype = max_supported_float(input.device)
 
     if output_shape is None:
         output_shape = input.shape
     n_axes = len(output_shape)  # num axes to transform over
 
-    idxs = t.cast(torch.Tensor, indices(output_shape, dtype=torch.float64))
+    idxs = t.cast(torch.Tensor, indices(output_shape, dtype=float_dtype, device=input.device))
 
-    matrix = asarray(matrix)
+    matrix = asarray(matrix, dtype=float_dtype)
     if matrix.size() == (n_axes + 1, n_axes + 1):
         # homogenous transform matrix
         coords = torch.tensordot(
             matrix, torch.stack((*idxs, torch.ones_like(idxs[0])), dim=0), dims=1
         )[:-1]
     elif matrix.size() == (n_axes,):
-        coords = (idxs.T * matrix + asarray(offset)).T
+        coords = (idxs.T * matrix + asarray(offset, dtype=float_dtype)).T
     else:
         raise ValueError(f"Expected matrix of shape ({n_axes + 1}, {n_axes + 1}) or ({n_axes},), instead got shape {matrix.shape}")
+
+    cval = torch.asarray(cval, dtype=input.dtype)
 
     return _MockTensor(torch.vmap(
         lambda a: map_coordinates(a, coords, order=order, mode=mode, cval=cval)
@@ -352,7 +376,7 @@ def _map_coordinates_constant(
 ) -> torch.Tensor:
     from phaser.utils.num import to_real_dtype
     weight_dtype = to_torch_dtype(to_real_dtype(to_numpy_dtype(arr.dtype)))
-    cval = torch.tensor(cval)
+    cval = torch.asarray(cval, device=arr.device)
 
     is_valid = lambda idx, size: (0 <= idx) & (idx < size)  # noqa: E731
     clip = lambda idx, size: torch.clip(idx, 0, size - 1)   # noqa: E731
@@ -382,6 +406,44 @@ def _map_coordinates_constant(
     return result.type(arr.dtype)
 
 
+_INTERP_TO_TORCH_PAD: t.Dict[_InterpBoundaryMode, str] = {
+    'nearest': 'replicate',
+    'wrap': 'circular',
+    'grid-wrap': 'circular',
+    'constant': 'constant',
+    'grid-constant': 'constant',
+    'mirror': 'reflect',
+}
+
+
+def _convolve1d(
+    arr: torch.Tensor, weights: torch.Tensor, axis: int, *,
+    mode: _InterpBoundaryMode, cval: float = 0.
+) -> torch.Tensor:
+    pad_mode = _INTERP_TO_TORCH_PAD.get(mode)
+    if pad_mode is None:
+        raise ValueError(f"Pad mode '{mode}' not implemented for torch backend")
+
+    # reorder to last axis
+    reorder = axis != arr.ndim - 1
+    if reorder:
+        arr = torch.moveaxis(arr, axis, -1)
+    leading_shape = arr.shape[:-1]
+    arr = arr.reshape((-1, arr.shape[-1]))
+    r = len(weights) // 2
+
+    # torch's conv1d is actually a correlation
+    weights = weights.flip(0)
+
+    # TODO: this will fail for some pads where weights is large, investigate further
+    arr = F.pad(arr, (len(weights) - r - 1, r), mode=pad_mode, value=cval)
+    arr = F.conv1d(
+        arr[:, None, :], weights[None, None, :]
+    )[:, 0].reshape((*leading_shape, -1))
+
+    return torch.moveaxis(arr, -1, axis) if reorder else arr
+
+
 def get_devices() -> t.Tuple[torch.device, ...]:
     devices = []
     devices.extend(f'cuda:{i}' for i in range(torch.cuda.device_count()))
@@ -402,6 +464,17 @@ def set_default_device(device: torch.device):
     if not isinstance(device, torch.device):
         raise TypeError(f"Invalid device '{device}' for backend torch")
     torch.set_default_device(device)
+
+    default_dtype = to_torch_dtype(max_supported_float(device))
+    torch.set_default_dtype(default_dtype)
+
+
+def max_supported_float(
+    device: t.Optional[torch.device] = None
+) -> t.Union[t.Type[numpy.float32], t.Type[numpy.float64]]:
+    if device is None:
+        device = torch.get_default_device()
+    return numpy.float32 if device.type in ('mps', 'xpu') else numpy.float64
 
 
 def _wrap_call(f, *args: t.Any, **kwargs: t.Any) -> t.Any:
@@ -436,9 +509,11 @@ mock_torch = _MockModule(torch, {
     'torch.mod': functools.update_wrapper(lambda *args, **kwargs: _MockTensor(_wrap_call(torch.remainder, *args, **kwargs)), torch.remainder),  # type: ignore
     'torch.split': split,
     'torch.pad': pad,
+    'torch.nan_to_num': nan_to_num,
     'torch.min': min, 'torch.max': max,
     'torch.nanmin': nanmin, 'torch.nanmax': nanmax,
     'torch.minimum': minimum, 'torch.maximum': maximum,
+    'torch.cumsum': cumsum,
     'torch.unwrap': unwrap,
     'torch.indices': indices,
     'torch.size': size,
