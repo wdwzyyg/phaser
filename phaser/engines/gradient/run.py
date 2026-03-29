@@ -1,4 +1,5 @@
 import logging
+from copy import deepcopy
 from functools import partial
 import typing as t
 
@@ -22,6 +23,7 @@ from phaser.hooks.regularization import CostRegularizer, GroupConstraint
 from phaser.plan import GradientEnginePlan
 from phaser.types import process_flag, ReconsVar
 from ..common.simulation import GroupManager, make_propagators, tilt_propagators, slice_forwards, stream_patterns
+from phaser.utils.analysis import structural_similarity
 
 
 logger = logging.getLogger(__name__)
@@ -235,6 +237,9 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
     other_keys = (
         *(('pos_update_rms',) if 'positions' in all_vars else ()),
         *(('tilt_update_rms',) if 'tilt' in all_vars else ()),
+        *(('obj_ssim',) if props.track_ssim  else ()),
+        *(('probe_ssim',) if props.track_ssim  else ()),
+
     )
 
     # populate missing keys in progress dictionary
@@ -314,7 +319,21 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
             (update, iter_solver_states[sol_i]) = solver.update(
                 state, iter_solver_states[sol_i], filter_vars(iter_grads, solver.params), losses['total_loss']
             )
+
+            state_store = deepcopy(state) if props.track_ssim else None
             state = apply_update(state, update)
+
+            if 'obj_ssim' in other_keys and state_store is not None:
+                obj_before = numpy.angle(to_numpy(state_store.object.data[0]))
+                obj_after = numpy.angle(to_numpy(state.object.data[0]))
+                progress['obj_ssim'].iters.append(i + start_i)
+                progress['obj_ssim'].values.append(structural_similarity(obj_after, obj_before))
+
+            if 'probe_ssim' in other_keys and state_store is not None:
+                probe_before = numpy.abs(to_numpy(state_store.probe.data[0]))
+                probe_after = numpy.abs(to_numpy(state.probe.data[0]))
+                progress['probe_ssim'].iters.append(i + start_i)
+                progress['probe_ssim'].values.append(structural_similarity(probe_after, probe_before))
 
             if 'positions' in update:
                 pos_update_rms = float(xp.mean(xp.linalg.norm(update['positions'], axis=-1)))

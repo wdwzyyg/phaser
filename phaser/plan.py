@@ -85,14 +85,21 @@ class EnginePlan(Dataclass, kw_only=True):
     save_images: FlagLike = False
     save_options: SaveOptions = SaveOptions()
 
-    early_termination: t.Optional[int] = None
-    """Terminate after n iterations without improvement"""
+    early_termination_loss: t.Optional[int] = None
+    """Terminate after n iterations without improvement in total_loss"""
+    early_termination_obj_ssim: t.Optional[int] = None
+    """Terminate after n iterations without improvement in obj_ssim (requires track_ssim=True)"""
+    early_termination_probe_ssim: t.Optional[int] = None
+    """Terminate after n iterations without improvement in probe_ssim (requires track_ssim=True)"""
     early_termination_smoothing: float = 0.9
     """
     Smoothing factor to apply to error measurement for early termination.
     NOTE: Low smoothing factor means a large amount of smoothing!
     (smooths over ~1/smoothing iterations)
     """
+
+    track_ssim: bool = False
+    """Track SSIM between consecutive iterations as a convergence metric."""
 
     check_every_group: bool = False
     send_every_group: bool = False
@@ -154,7 +161,7 @@ class GradientEnginePlan(EnginePlan):
     regularizers: t.List[CostRegularizerHook]
     group_constraints: t.List[GroupConstraintHook]
     iter_constraints: t.List[IterConstraintHook]
-
+    
 
 class SGDSolverPlan(Dataclass, kw_only=True):
     learning_rate: ScheduleLike

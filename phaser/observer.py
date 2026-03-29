@@ -169,44 +169,75 @@ class LoggingObserver(Observer):
 
 
 class PatienceObserver(Observer):
-    def __init__(self, patience: int, smoothing: float = 0.1, continue_next_engine: bool = True):
-        self.patience: int = patience
-        self.no_improvement_iter: int = 0
-        self.best_error: t.Optional[float] = None
-        self.smoothed_error: t.Optional[float] = None
+    # metrics where higher values indicate improvement
+    _HIGHER_IS_BETTER: t.FrozenSet[str] = frozenset({'obj_ssim', 'probe_ssim'})
+
+    def __init__(
+        self,
+        patience_loss: t.Optional[int] = None,
+        patience_obj_ssim: t.Optional[int] = None,
+        patience_probe_ssim: t.Optional[int] = None,
+        smoothing: float = 0.1,
+        continue_next_engine: bool = True,
+    ):
         self.smoothing: float = smoothing
         self.continue_next_engine: bool = continue_next_engine
+
+        # build active metric table: key -> patience
+        self._patience: t.Dict[str, int] = {}
+        if patience_loss is not None:
+            self._patience['total_loss'] = patience_loss
+        if patience_obj_ssim is not None:
+            self._patience['obj_ssim'] = patience_obj_ssim
+        if patience_probe_ssim is not None:
+            self._patience['probe_ssim'] = patience_probe_ssim
+
+        self._best: t.Dict[str, float] = {}
+        self._no_improvement: t.Dict[str, int] = {}
+        self._smoothed: t.Dict[str, float] = {}
 
     def init_engine(
         self, init_state: ReconsState, *, recons_name: str,
         plan: EnginePlan, **kwargs: t.Any
     ):
-        self.no_improvement_iter = 0
-
-    def _error_from_state(self, state: t.Union[ReconsState, PartialReconsState]) -> t.Optional[float]:
-        if state.progress is None or (progress := state.progress['total_loss']) is None or not len(progress.values):
-            return None
-        return progress.values[-1]
+        self._best = {}
+        self._no_improvement = {k: 0 for k in self._patience}
+        self._smoothed = {}
 
     def update_iteration(self, state: ReconsState, i: int, n: int, errors: t.Dict[str, float]):
-        if (error := errors.get('total_loss')) is None:
-            return
+        for key, patience in self._patience.items():
+            # read value: loss comes from errors dict, ssim metrics from state.progress
+            if key == 'total_loss':
+                value: t.Optional[float] = errors.get('total_loss')
+            else:
+                prog = state.progress.get(key) if state.progress else None
+                value = prog.values[-1] if prog is not None and len(prog.values) else None
 
-        if self.best_error is None or error < self.best_error:
-            self.best_error = error
-            self.no_improvement_iter = 0
-        else:
-            self.no_improvement_iter += 1
+            if value is None:
+                continue
 
-        # Exponential moving average
-        if self.smoothed_error is None:
-            self.smoothed_error = error
-        else:
-            self.smoothed_error = (1 - self.smoothing) * self.smoothed_error + self.smoothing * error
+            # exponential moving average
+            if key not in self._smoothed:
+                self._smoothed[key] = value
+            else:
+                self._smoothed[key] = (1 - self.smoothing) * self._smoothed[key] + self.smoothing * value
 
-        if self.no_improvement_iter >= self.patience:
-            logging.info(f"Early termination: no improvement for {self.patience} iterations")
-            raise EarlyTermination(state, self.continue_next_engine)
+            higher_is_better = key in self._HIGHER_IS_BETTER
+            improved = (
+                key not in self._best
+                or (higher_is_better and value > self._best[key])
+                or (not higher_is_better and value < self._best[key])
+            )
+
+            if improved:
+                self._best[key] = value
+                self._no_improvement[key] = 0
+            else:
+                self._no_improvement[key] += 1
+
+            if self._no_improvement[key] >= patience:
+                logging.info(f"Early termination: {key} no improvement for {patience} iterations")
+                raise EarlyTermination(state, self.continue_next_engine)
 
 
 class SaveObserver(Observer):

@@ -57,9 +57,14 @@ def execute_engine(
 
     engine_i = recons.state.iter.engine_num
 
-    if plan.early_termination:
+    if any(v is not None for v in (
+        plan.early_termination_loss, plan.early_termination_obj_ssim, plan.early_termination_probe_ssim
+    )):
         engine_observer = ObserverSet((recons.observer, PatienceObserver(
-            plan.early_termination, plan.early_termination_smoothing
+            patience_loss=plan.early_termination_loss,
+            patience_obj_ssim=plan.early_termination_obj_ssim,
+            patience_probe_ssim=plan.early_termination_probe_ssim,
+            smoothing=plan.early_termination_smoothing,
         )))
     else:
         engine_observer = recons.observer

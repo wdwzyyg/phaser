@@ -295,3 +295,135 @@ Refinement result: {result.message}
     if return_crop:
         return upsamp_obj[(slice(None), *crop)], ground_truth[tuple(crop)], crop
     return upsamp_obj[(slice(None), *crop)], ground_truth[tuple(crop)]
+
+
+def _resample_to_shape(im, target_shape: t.Tuple[int, ...], xp: t.Any):
+    """Resample im to target_shape, staying on the input device."""
+    xp_name = getattr(xp, '__name__', '')
+
+    if xp_name == 'numpy':
+        from scipy.ndimage import zoom
+        zoom_factors = tuple(s1 / s2 for s1, s2 in zip(target_shape, im.shape))
+        return zoom(im, zoom_factors, order=1)
+
+    if 'cupy' in xp_name:
+        from cupyx.scipy.ndimage import zoom
+        zoom_factors = tuple(s1 / s2 for s1, s2 in zip(target_shape, im.shape))
+        return zoom(im, zoom_factors, order=1)
+
+    # JAX
+    import jax.image
+    return jax.image.resize(im, target_shape, method='linear')
+
+
+def _uniform_filter_2d(im, size: int, xp: t.Any):
+    """
+    Separable 2D box filter, staying on the input device.
+
+    Dispatches to:
+    - scipy.ndimage.uniform_filter        for numpy
+    - cupyx.scipy.ndimage.uniform_filter  for cupy (GPU-native)
+    - cumsum-based separable filter       for JAX / other backends (XLA-friendly)
+    """
+    xp_name = getattr(xp, '__name__', '')
+
+    if xp_name == 'numpy':
+        from scipy.ndimage import uniform_filter
+        return uniform_filter(im, size)
+
+    if 'cupy' in xp_name:
+        from cupyx.scipy.ndimage import uniform_filter
+        return uniform_filter(im, size)
+
+    # JAX or other: separable cumsum box filter (no D2H transfer, XLA-friendly)
+    def _along_axis(arr, axis: int):
+        pad = size // 2
+        pad_config = [(0, 0)] * arr.ndim
+        pad_config[axis] = (pad, pad)
+        padded = xp.pad(arr, pad_config, mode='reflect')
+
+        # prepend a zero slice so that cs[i+size] - cs[i] = sum(padded[i : i+size])
+        zero_shape = list(padded.shape)
+        zero_shape[axis] = 1
+        cs = xp.concatenate(
+            [xp.zeros(zero_shape, dtype=padded.dtype), xp.cumsum(padded, axis=axis)],
+            axis=axis,
+        )
+        n = arr.shape[axis]
+        sl_end = [slice(None)] * arr.ndim
+        sl_end[axis] = slice(size, size + n)
+        sl_beg = [slice(None)] * arr.ndim
+        sl_beg[axis] = slice(0, n)
+        return (cs[tuple(sl_end)] - cs[tuple(sl_beg)]) / size
+
+    return _along_axis(_along_axis(im, -2), -1)
+
+
+## simplified version from skimage/metrics/_structural_similarity.py
+def structural_similarity(
+    im1,
+    im2,
+    data_range=None,
+    win_size=3,
+    **kwargs,
+) -> float:
+    """
+    Compute the mean structural similarity index between two images.
+    Please pay attention to the `data_range` parameter with floating-point images.
+
+    Parameters
+    ----------
+    im1, im2 : ndarray
+        Arrays from any supported backend (numpy, JAX, cupy). All computation
+        stays on the input device; only the final scalar crosses the boundary.
+    data_range : float, optional
+        The data range of the input image (difference between maximum and
+        minimum possible values). Computed from im2 if not provided.
+    win_size : odd int in px, 3 as the smallest.
+
+    Returns
+    -------
+    mssim : float
+        The mean structural similarity index over the image.
+    """
+    xp = get_array_module(im1, im2)
+
+    im1 = im1.astype(numpy.float64)
+    im2 = im2.astype(numpy.float64)
+
+    if im1.shape != im2.shape:
+        im2 = _resample_to_shape(im2, im1.shape, xp)
+
+    if data_range is None:
+        data_range = float(im2.max() - im2.min())
+
+    K1 = 0.01
+    K2 = 0.03
+
+    ux = _uniform_filter_2d(im1, win_size, xp)
+    uy = _uniform_filter_2d(im2, win_size, xp)
+    uxx = _uniform_filter_2d(im1 * im1, win_size, xp)
+    uyy = _uniform_filter_2d(im2 * im2, win_size, xp)
+    uxy = _uniform_filter_2d(im1 * im2, win_size, xp)
+
+    vx = uxx - ux * ux
+    vy = uyy - uy * uy
+    vxy = uxy - ux * uy
+
+    R = data_range
+    C1 = (K1 * R) ** 2
+    C2 = (K2 * R) ** 2
+
+    A1 = 2 * ux * uy + C1
+    A2 = 2 * vxy + C2
+    B1 = ux ** 2 + uy ** 2 + C1
+    B2 = vx + vy + C2
+
+    S = (A1 * A2) / (B1 * B2)
+
+    # crop edges to avoid filter boundary effects
+    pad = (win_size - 1) // 2
+    slices = tuple(slice(pad, s - pad) for s in im1.shape)
+
+    # single scalar D2H transfer
+    return float(xp.mean(S[slices]))

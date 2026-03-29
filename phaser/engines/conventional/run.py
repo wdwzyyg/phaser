@@ -1,7 +1,10 @@
 import logging
+import numpy
+from copy import deepcopy
 
 from phaser.utils.misc import mask_fraction_of_groups
 from phaser.utils.num import assert_dtype, cast_array_module, to_numpy, to_complex_dtype
+from phaser.utils.analysis import structural_similarity
 from phaser.observer import Observer
 from phaser.hooks import EngineArgs
 from phaser.plan import ConventionalEnginePlan
@@ -56,7 +59,12 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
     else:
         other_keys = ()
 
-    for k in ('detector_loss', 'total_loss', *other_keys):
+    ssim_keys = (
+        *(('obj_ssim',) if props.track_ssim else ()),
+        *(('probe_ssim',) if props.track_ssim else ()),
+    )
+
+    for k in ('detector_loss', 'total_loss', *other_keys, *ssim_keys):
         if k not in sim.state.progress:
             sim.state.progress[k] = ProgressState()
 
@@ -88,6 +96,8 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
         iter_update_positions = update_positions({'state': sim.state, 'niter': props.niter})
         iter_shuffle_groups = shuffle_groups({'state': sim.state, 'niter': props.niter})
 
+        state_store = deepcopy(sim.state) if props.track_ssim else None
+
         sim, pos_update, group_errors = solver.run_iteration(
             sim, groups.iter(sim.state.scan, i, iter_shuffle_groups),
             patterns=patterns, pattern_mask=pattern_mask, propagators=propagators,
@@ -100,6 +110,17 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
         )
         assert_dtype(sim.state.object.data, cdtype)
         assert_dtype(sim.state.probe.data, cdtype)
+
+        if state_store is not None:
+            obj_before = numpy.angle(to_numpy(state_store.object.data[0]))
+            obj_after = numpy.angle(to_numpy(sim.state.object.data[0]))
+            progress['obj_ssim'].iters.append(i + start_i)
+            progress['obj_ssim'].values.append(structural_similarity(obj_after, obj_before))
+
+            probe_before = numpy.abs(to_numpy(state_store.probe.data[0]))
+            probe_after = numpy.abs(to_numpy(sim.state.probe.data[0]))
+            progress['probe_ssim'].iters.append(i + start_i)
+            progress['probe_ssim'].values.append(structural_similarity(probe_after, probe_before))
 
         sim = sim.apply_iter_constraints()
 
