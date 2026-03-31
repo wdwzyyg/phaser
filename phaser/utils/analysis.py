@@ -298,7 +298,7 @@ Refinement result: {result.message}
 
 
 def _resample_to_shape(im, target_shape: t.Tuple[int, ...], xp: t.Any):
-    """Resample im to target_shape, staying on the input device."""
+    """Resample im to target_shape, staying on the input device. first dimension untouched"""
     xp_name = getattr(xp, '__name__', '')
 
     if xp_name == 'numpy':
@@ -316,9 +316,11 @@ def _resample_to_shape(im, target_shape: t.Tuple[int, ...], xp: t.Any):
     return jax.image.resize(im, target_shape, method='linear')
 
 
-def _uniform_filter_2d(im, size: int, xp: t.Any):
+def _uniform_filter_spatial(im, size: int, xp: t.Any):
     """
-    Separable 2D box filter, staying on the input device.
+    Separable box filter over the last two spatial dims only (any ndim >= 2).
+    Accepts stacked inputs e.g. (N, H, W), filtering H and W only — enabling
+    fused multi-statistic computation in one call.
 
     Dispatches to:
     - scipy.ndimage.uniform_filter        for numpy
@@ -326,23 +328,22 @@ def _uniform_filter_2d(im, size: int, xp: t.Any):
     - cumsum-based separable filter       for JAX / other backends (XLA-friendly)
     """
     xp_name = getattr(xp, '__name__', '')
+    sizes = [1] * (im.ndim - 2) + [size, size]
 
     if xp_name == 'numpy':
         from scipy.ndimage import uniform_filter
-        return uniform_filter(im, size)
+        return uniform_filter(im, sizes)
 
     if 'cupy' in xp_name:
         from cupyx.scipy.ndimage import uniform_filter
-        return uniform_filter(im, size)
+        return uniform_filter(im, sizes)
 
-    # JAX or other: separable cumsum box filter (no D2H transfer, XLA-friendly)
+    # JAX or other: cumsum box filter along axes -2 and -1 only (XLA-friendly)
     def _along_axis(arr, axis: int):
         pad = size // 2
         pad_config = [(0, 0)] * arr.ndim
         pad_config[axis] = (pad, pad)
         padded = xp.pad(arr, pad_config, mode='reflect')
-
-        # prepend a zero slice so that cs[i+size] - cs[i] = sum(padded[i : i+size])
         zero_shape = list(padded.shape)
         zero_shape[axis] = 1
         cs = xp.concatenate(
@@ -359,32 +360,43 @@ def _uniform_filter_2d(im, size: int, xp: t.Any):
     return _along_axis(_along_axis(im, -2), -1)
 
 
-## simplified version from skimage/metrics/_structural_similarity.py
 def structural_similarity(
     im1,
     im2,
     data_range=None,
-    win_size=3,
+    win_size: int = 3,
+    num_scales: int = 3,
     **kwargs,
 ) -> float:
     """
-    Compute the mean structural similarity index between two images.
-    Please pay attention to the `data_range` parameter with floating-point images.
+    Multi-scale contrast-structure similarity (geometric mean across scales).
+
+    Computes the contrast-structure (CS) component of SSIM at each scale of a
+    bilinear downsampling pyramid, then combines as a geometric mean:
+        result = (cs_1 * cs_2 * ... * cs_N)^(1/N)
+
+    Luminance is omitted. Equal scale weights are used.
+
+    Efficient implementation:
+      - fused filter pass: all statistics filtered in one call per scale
+      - bilinear downsampling pyramid via _resample_to_shape
+      - fully on-device: only the final scalar crosses the device boundary
 
     Parameters
     ----------
     im1, im2 : ndarray
-        Arrays from any supported backend (numpy, JAX, cupy). All computation
-        stays on the input device; only the final scalar crosses the boundary.
+        Arrays from any supported backend (numpy, JAX, cupy).
     data_range : float, optional
-        The data range of the input image (difference between maximum and
-        minimum possible values). Computed from im2 if not provided.
-    win_size : odd int in px, 3 as the smallest.
+        Computed from im2 if not provided.
+    win_size : int
+        Box filter size in pixels (default 3).
+    num_scales : int
+        Number of pyramid levels (default 3).
 
     Returns
     -------
     mssim : float
-        The mean structural similarity index over the image.
+        MS-SSIM value in [0, 1].
     """
     xp = get_array_module(im1, im2)
 
@@ -393,37 +405,38 @@ def structural_similarity(
 
     if im1.shape != im2.shape:
         im2 = _resample_to_shape(im2, im1.shape, xp)
-
     if data_range is None:
         data_range = float(im2.max() - im2.min())
 
-    K1 = 0.01
-    K2 = 0.03
+    C2 = (0.03 * data_range) ** 2
 
-    ux = _uniform_filter_2d(im1, win_size, xp)
-    uy = _uniform_filter_2d(im2, win_size, xp)
-    uxx = _uniform_filter_2d(im1 * im1, win_size, xp)
-    uyy = _uniform_filter_2d(im2 * im2, win_size, xp)
-    uxy = _uniform_filter_2d(im1 * im2, win_size, xp)
-
-    vx = uxx - ux * ux
-    vy = uyy - uy * uy
-    vxy = uxy - ux * uy
-
-    R = data_range
-    C1 = (K1 * R) ** 2
-    C2 = (K2 * R) ** 2
-
-    A1 = 2 * ux * uy + C1
-    A2 = 2 * vxy + C2
-    B1 = ux ** 2 + uy ** 2 + C1
-    B2 = vx + vy + C2
-
-    S = (A1 * A2) / (B1 * B2)
-
-    # crop edges to avoid filter boundary effects
     pad = (win_size - 1) // 2
-    slices = tuple(slice(pad, s - pad) for s in im1.shape)
+    weight = 1.0 / num_scales
 
-    # single scalar D2H transfer
-    return float(xp.mean(S[slices]))
+    mssim = 1.0
+    for scale in range(num_scales):
+        if min(im1.shape[-2:]) < win_size:
+            break
+
+        # fused: stack [im1, im2, im1², im2², im1·im2] and filter in one pass
+        stacked = xp.stack([im1, im2, im1 * im1, im2 * im2, im1 * im2])
+        f = _uniform_filter_spatial(stacked, win_size, xp)
+        ux, uy, uxx, uyy, uxy = f[0], f[1], f[2], f[3], f[4]
+
+        vx = uxx - ux * ux
+        vy = uyy - uy * uy
+        vxy = uxy - ux * uy
+
+        # crop boundary artifacts
+        s = (slice(pad, -pad), slice(pad, -pad))
+        vx, vy, vxy = vx[s], vy[s], vxy[s]
+
+        cs = float(xp.mean((2 * vxy + C2) / (vx + vy + C2)))
+        mssim *= cs ** weight
+
+        if scale < num_scales - 1:
+            new_shape = (im1.shape[0], im1.shape[-2] // 2, im1.shape[-1] // 2)
+            im1 = _resample_to_shape(im1, new_shape, xp)
+            im2 = _resample_to_shape(im2, new_shape, xp)
+
+    return mssim

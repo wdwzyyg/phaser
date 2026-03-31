@@ -1,4 +1,5 @@
 import logging
+import typing as t
 import numpy
 from copy import deepcopy
 
@@ -59,9 +60,12 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
     else:
         other_keys = ()
 
+    calc_ssim_flag = process_flag(props.calc_ssim)
+    ssim_enabled = flag_any_true(props.calc_ssim, props.niter)
+
     ssim_keys = (
-        *(('obj_ssim',) if props.track_ssim else ()),
-        *(('probe_ssim',) if props.track_ssim else ()),
+        *(('obj_ssim',) if ssim_enabled else ()),
+        *(('probe_ssim',) if ssim_enabled else ()),
     )
 
     for k in ('detector_loss', 'total_loss', *other_keys, *ssim_keys):
@@ -88,6 +92,7 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
 
     sim.state.progress = progress
     observer.start_engine(sim.state)
+    prev_ssim_state: t.Optional[ReconsState] = None
 
     for i in range(1, props.niter+1):
         sim.state.iter.engine_iter = i
@@ -95,8 +100,6 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
 
         iter_update_positions = update_positions({'state': sim.state, 'niter': props.niter})
         iter_shuffle_groups = shuffle_groups({'state': sim.state, 'niter': props.niter})
-
-        state_store = deepcopy(sim.state) if props.track_ssim else None
 
         sim, pos_update, group_errors = solver.run_iteration(
             sim, groups.iter(sim.state.scan, i, iter_shuffle_groups),
@@ -110,17 +113,6 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
         )
         assert_dtype(sim.state.object.data, cdtype)
         assert_dtype(sim.state.probe.data, cdtype)
-
-        if state_store is not None:
-            obj_before = numpy.angle(to_numpy(state_store.object.data[0]))
-            obj_after = numpy.angle(to_numpy(sim.state.object.data[0]))
-            progress['obj_ssim'].iters.append(i + start_i)
-            progress['obj_ssim'].values.append(structural_similarity(obj_after, obj_before))
-
-            probe_before = numpy.abs(to_numpy(state_store.probe.data[0]))
-            probe_after = numpy.abs(to_numpy(sim.state.probe.data[0]))
-            progress['probe_ssim'].iters.append(i + start_i)
-            progress['probe_ssim'].values.append(structural_similarity(probe_after, probe_before))
 
         sim = sim.apply_iter_constraints()
 
@@ -151,6 +143,20 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
             for k in ('detector_loss', 'total_loss'):
                 progress[k].iters.append(i + start_i)
                 progress[k].values.append(error)
+
+        # ssim: compare end-of-iteration state against the reference saved at the
+        # previous flag firing, then update the reference for the next interval
+        if ssim_enabled and calc_ssim_flag({'state': sim.state, 'niter': props.niter}):
+            if prev_ssim_state is not None:
+                ssim_o = structural_similarity(xp.angle(sim.state.object.data[0]), xp.angle(prev_ssim_state.object.data[0]))
+                progress['obj_ssim'].iters.append(i + start_i)
+                progress['obj_ssim'].values.append(ssim_o)
+
+                ssim_p = structural_similarity(xp.abs(sim.state.probe.data[0]), xp.abs(prev_ssim_state.probe.data[0]))
+                progress['probe_ssim'].iters.append(i + start_i)
+                progress['probe_ssim'].values.append(ssim_p)
+
+            prev_ssim_state = deepcopy(sim.state)
 
         sim.state.progress = progress
         observer.update_iteration(sim.state, i, props.niter, {'total_loss': error})
