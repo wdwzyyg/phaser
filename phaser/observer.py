@@ -193,7 +193,7 @@ class PatienceObserver(Observer):
             self._patience['probe_ssim'] = patience_probe_ssim
 
         self._best: t.Dict[str, float] = {}
-        self._no_improvement: t.Dict[str, int] = {}
+        self._last_improvement_iter: t.Dict[str, int] = {}
         self._smoothed: t.Dict[str, float] = {}
 
     def init_engine(
@@ -201,17 +201,25 @@ class PatienceObserver(Observer):
         plan: EnginePlan, **kwargs: t.Any
     ):
         self._best = {}
-        self._no_improvement = {k: 0 for k in self._patience}
+        self._last_improvement_iter = {}
         self._smoothed = {}
 
     def update_iteration(self, state: ReconsState, i: int, n: int, errors: t.Dict[str, float]):
+        current_iter = int(state.iter.total_iter)
+
         for key, patience in self._patience.items():
-            # read value: loss comes from errors dict, ssim metrics from state.progress
+            # read value: loss from errors dict every iteration;
+            # ssim metrics only when a new value was computed this iteration
             if key == 'total_loss':
                 value: t.Optional[float] = errors.get('total_loss')
             else:
                 prog = state.progress.get(key) if state.progress else None
-                value = prog.values[-1] if prog is not None and len(prog.values) else None
+                if prog is None or not len(prog.values):
+                    continue
+                # skip if no new ssim value was produced this iteration
+                if not len(prog.iters) or prog.iters[-1] != current_iter:
+                    continue
+                value = prog.values[-1]
 
             if value is None:
                 continue
@@ -231,12 +239,13 @@ class PatienceObserver(Observer):
 
             if improved:
                 self._best[key] = value
-                self._no_improvement[key] = 0
-            else:
-                self._no_improvement[key] += 1
+                self._last_improvement_iter[key] = current_iter
 
-            if self._no_improvement[key] >= patience:
-                logging.info(f"Early termination: {key} no improvement for {patience} iterations")
+            iters_without_improvement = current_iter - self._last_improvement_iter.get(key, current_iter)
+            if iters_without_improvement >= patience:
+                logging.info(
+                    f"Early termination: {key} no improvement for {iters_without_improvement} iterations"
+                )
                 raise EarlyTermination(state, self.continue_next_engine)
 
 

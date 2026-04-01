@@ -356,12 +356,12 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
         if ssim_enabled and calc_ssim_flag({'state': state, 'niter': props.niter}):
             if prev_ssim_state is not None:
                 ssim_o = structural_similarity(xp.angle(state.object.data), xp.angle(prev_ssim_state.object.data))
-                progress['obj_ssim'].iters.append(i + start_i)
+                progress['obj_ssim'].iters.append(int(state.iter.total_iter))
                 progress['obj_ssim'].values.append(ssim_o)
                 logger.info(f" Object phase SSIM: {ssim_o}")
 
                 ssim_p = structural_similarity(xp.abs(state.probe.data), xp.abs(prev_ssim_state.probe.data))
-                progress['probe_ssim'].iters.append(i + start_i)
+                progress['probe_ssim'].iters.append(int(state.iter.total_iter))
                 progress['probe_ssim'].values.append(ssim_p)
                 logger.info(f" Probe intensity SSIM: {ssim_p}")
 

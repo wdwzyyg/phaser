@@ -149,11 +149,11 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
         if ssim_enabled and calc_ssim_flag({'state': sim.state, 'niter': props.niter}):
             if prev_ssim_state is not None:
                 ssim_o = structural_similarity(xp.angle(sim.state.object.data[0]), xp.angle(prev_ssim_state.object.data[0]))
-                progress['obj_ssim'].iters.append(i + start_i)
+                progress['obj_ssim'].iters.append(int(sim.state.iter.total_iter))
                 progress['obj_ssim'].values.append(ssim_o)
 
                 ssim_p = structural_similarity(xp.abs(sim.state.probe.data[0]), xp.abs(prev_ssim_state.probe.data[0]))
-                progress['probe_ssim'].iters.append(i + start_i)
+                progress['probe_ssim'].iters.append(int(sim.state.iter.total_iter))
                 progress['probe_ssim'].values.append(ssim_p)
 
             prev_ssim_state = deepcopy(sim.state)
