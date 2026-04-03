@@ -10,7 +10,7 @@ from phaser.state import ReconsState, PartialReconsState, ProgressState
 from phaser.types import EarlyTermination, flag_any_true, process_flag
 
 if t.TYPE_CHECKING:
-    from phaser.hooks.schedule import FlagArgs
+    from phaser.hooks.schedule import FlagArgs, FlagLike
     from typing_extensions import Self
 
 P = t.ParamSpec('P')
@@ -247,6 +247,66 @@ class PatienceObserver(Observer):
                     f"Early termination: {key} no improvement for {iters_without_improvement} iterations"
                 )
                 raise EarlyTermination(state, self.continue_next_engine)
+
+
+class SSIMObserver(Observer):
+    """Computes obj_ssim and probe_ssim at each calc_ssim flag firing."""
+
+    def __init__(self, calc_ssim: 'FlagLike'):
+        from phaser.types import process_flag, flag_any_true
+        self._calc_ssim_raw = calc_ssim
+        self._calc_ssim_flag = process_flag(calc_ssim)
+        self._ssim_enabled: bool = False
+        self._prev_state: t.Optional[ReconsState] = None
+
+    def init_engine(
+        self, init_state: ReconsState, *, recons_name: str,
+        plan: EnginePlan, **kwargs: t.Any
+    ):
+        from phaser.types import flag_any_true
+        self._ssim_enabled = flag_any_true(self._calc_ssim_raw, plan.niter)
+        self._prev_state = None
+
+        if self._ssim_enabled:
+            for k in ('obj_ssim', 'probe_ssim'):
+                if k not in init_state.progress:
+                    init_state.progress[k] = ProgressState()
+
+    def update_iteration(self, state: ReconsState, i: int, n: int, errors: t.Dict[str, float]):
+        if not self._ssim_enabled:
+            return
+        if not self._calc_ssim_flag({'state': state, 'niter': n}):
+            return
+
+        from copy import deepcopy
+        from phaser.utils.num import get_array_module
+        from phaser.utils.analysis import structural_similarity
+
+        if self._prev_state is not None:
+            xp = get_array_module(state.object.data)
+            total_iter = int(state.iter.total_iter)
+            prev_iter = int(self._prev_state.iter.total_iter)
+
+            ssim_o = structural_similarity(
+                xp.angle(state.object.data),
+                xp.angle(self._prev_state.object.data),
+            )
+            state.progress['obj_ssim'].iters.append(total_iter)
+            state.progress['obj_ssim'].values.append(ssim_o)
+
+            ssim_p = structural_similarity(
+                xp.abs(state.probe.data),
+                xp.abs(self._prev_state.probe.data),
+            )
+            state.progress['probe_ssim'].iters.append(total_iter)
+            state.progress['probe_ssim'].values.append(ssim_p)
+
+            logging.info(
+                f"SSIM (iters {prev_iter}→{total_iter}): "
+                f"obj={ssim_o:.4f}  probe={ssim_p:.4f}"
+            )
+
+        self._prev_state = deepcopy(state)
 
 
 class SaveObserver(Observer):

@@ -15,7 +15,7 @@ from phaser.utils.misc import unwrap
 from .hooks import EngineHook, Hook, ObjectHook, RawData
 from .plan import GradientEnginePlan, ReconsPlan, EnginePlan, ScanHook, ProbeHook, TiltHook
 from .state import Patterns, ReconsState, PartialReconsState, IterState, PreparedRecons
-from .observer import Observer, LoggingObserver, PatienceObserver, SaveObserver, ObserverSet
+from .observer import Observer, LoggingObserver, PatienceObserver, SSIMObserver, SaveObserver, ObserverSet
 
 
 def execute_plan(
@@ -57,15 +57,23 @@ def execute_engine(
 
     engine_i = recons.state.iter.engine_num
 
+    extra_observers: t.List[Observer] = []
+
+    if plan.calc_ssim is not False:
+        extra_observers.append(SSIMObserver(plan.calc_ssim))
+
     if any(v is not None for v in (
         plan.early_termination_loss, plan.early_termination_obj_ssim, plan.early_termination_probe_ssim
     )):
-        engine_observer = ObserverSet((recons.observer, PatienceObserver(
+        extra_observers.append(PatienceObserver(
             patience_loss=plan.early_termination_loss,
             patience_obj_ssim=plan.early_termination_obj_ssim,
             patience_probe_ssim=plan.early_termination_probe_ssim,
             smoothing=plan.early_termination_smoothing,
-        )))
+        ))
+
+    if extra_observers:
+        engine_observer = ObserverSet((recons.observer, *extra_observers))
     else:
         engine_observer = recons.observer
 

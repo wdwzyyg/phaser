@@ -1,11 +1,9 @@
 import logging
 import typing as t
 import numpy
-from copy import deepcopy
 
 from phaser.utils.misc import mask_fraction_of_groups
 from phaser.utils.num import assert_dtype, cast_array_module, to_numpy, to_complex_dtype
-from phaser.utils.analysis import structural_similarity
 from phaser.observer import Observer
 from phaser.hooks import EngineArgs
 from phaser.plan import ConventionalEnginePlan
@@ -60,15 +58,7 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
     else:
         other_keys = ()
 
-    calc_ssim_flag = process_flag(props.calc_ssim)
-    ssim_enabled = flag_any_true(props.calc_ssim, props.niter)
-
-    ssim_keys = (
-        *(('obj_ssim',) if ssim_enabled else ()),
-        *(('probe_ssim',) if ssim_enabled else ()),
-    )
-
-    for k in ('detector_loss', 'total_loss', *other_keys, *ssim_keys):
+    for k in ('detector_loss', 'total_loss', *other_keys):
         if k not in sim.state.progress:
             sim.state.progress[k] = ProgressState()
 
@@ -92,7 +82,6 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
 
     sim.state.progress = progress
     observer.start_engine(sim.state)
-    prev_ssim_state: t.Optional[ReconsState] = None
 
     for i in range(1, props.niter+1):
         sim.state.iter.engine_iter = i
@@ -143,20 +132,6 @@ def run_engine(args: EngineArgs, props: ConventionalEnginePlan) -> ReconsState:
             for k in ('detector_loss', 'total_loss'):
                 progress[k].iters.append(i + start_i)
                 progress[k].values.append(error)
-
-        # ssim: compare end-of-iteration state against the reference saved at the
-        # previous flag firing, then update the reference for the next interval
-        if ssim_enabled and calc_ssim_flag({'state': sim.state, 'niter': props.niter}):
-            if prev_ssim_state is not None:
-                ssim_o = structural_similarity(xp.angle(sim.state.object.data[0]), xp.angle(prev_ssim_state.object.data[0]))
-                progress['obj_ssim'].iters.append(int(sim.state.iter.total_iter))
-                progress['obj_ssim'].values.append(ssim_o)
-
-                ssim_p = structural_similarity(xp.abs(sim.state.probe.data[0]), xp.abs(prev_ssim_state.probe.data[0]))
-                progress['probe_ssim'].iters.append(int(sim.state.iter.total_iter))
-                progress['probe_ssim'].values.append(ssim_p)
-
-            prev_ssim_state = deepcopy(sim.state)
 
         sim.state.progress = progress
         observer.update_iteration(sim.state, i, props.niter, {'total_loss': error})

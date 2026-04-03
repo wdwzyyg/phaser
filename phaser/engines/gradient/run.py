@@ -1,5 +1,4 @@
 import logging
-from copy import deepcopy
 from functools import partial
 import typing as t
 
@@ -23,7 +22,6 @@ from phaser.hooks.regularization import CostRegularizer, GroupConstraint
 from phaser.plan import GradientEnginePlan
 from phaser.types import process_flag, flag_any_true, ReconsVar
 from ..common.simulation import GroupManager, make_propagators, tilt_propagators, slice_forwards, stream_patterns
-from phaser.utils.analysis import structural_similarity
 
 
 logger = logging.getLogger(__name__)
@@ -234,14 +232,9 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
     loss_keys = (
         'detector_loss', 'total_loss', *(reg.name() for reg in regularizers),
     )
-    calc_ssim_flag = process_flag(props.calc_ssim)
-    ssim_enabled = flag_any_true(props.calc_ssim, props.niter)
-
     other_keys = (
         *(('pos_update_rms',) if 'positions' in all_vars else ()),
         *(('tilt_update_rms',) if 'tilt' in all_vars else ()),
-        *(('obj_ssim',) if ssim_enabled else ()),
-        *(('probe_ssim',) if ssim_enabled else ()),
     )
 
     # populate missing keys in progress dictionary
@@ -251,7 +244,6 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
 
     # progress gets clobbered by the jits, so we keep track of it manually
     progress = state.progress
-    prev_ssim_state: t.Optional[ReconsState] = None
 
     for i in range(1, props.niter+1):
         state.iter.engine_iter = i
@@ -350,22 +342,6 @@ def run_engine(args: EngineArgs, props: GradientEnginePlan) -> ReconsState:
             # check positions are at least overlapping object
             state.object.sampling.check_scan(state.scan, state.probe.sampling.extent / 2.)
             assert_dtype(state.scan, dtype)
-
-        # ssim: compare end-of-iteration state against the reference saved at the
-        # previous flag firing, then update the reference for the next interval
-        if ssim_enabled and calc_ssim_flag({'state': state, 'niter': props.niter}):
-            if prev_ssim_state is not None:
-                ssim_o = structural_similarity(xp.angle(state.object.data), xp.angle(prev_ssim_state.object.data))
-                progress['obj_ssim'].iters.append(int(state.iter.total_iter))
-                progress['obj_ssim'].values.append(ssim_o)
-                logger.info(f" Object phase SSIM: {ssim_o}")
-
-                ssim_p = structural_similarity(xp.abs(state.probe.data), xp.abs(prev_ssim_state.probe.data))
-                progress['probe_ssim'].iters.append(int(state.iter.total_iter))
-                progress['probe_ssim'].values.append(ssim_p)
-                logger.info(f" Probe intensity SSIM: {ssim_p}")
-
-            prev_ssim_state = deepcopy(state)
 
         state.progress = progress
         observer.update_iteration(state, i, props.niter, losses)
