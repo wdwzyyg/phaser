@@ -87,10 +87,10 @@ class EnginePlan(Dataclass, kw_only=True):
 
     early_termination_loss: t.Optional[int] = None
     """Terminate after n iterations without improvement in total_loss"""
-    early_termination_obj_ssim: t.Optional[int] = None
-    """Terminate after n iterations without improvement in obj_ssim (requires calc_ssim to be enabled)"""
-    early_termination_probe_ssim: t.Optional[int] = None
-    """Terminate after n iterations without improvement in probe_ssim (requires calc_ssim to be enabled)"""
+    early_termination_obj_rel_msssim: t.Optional[int] = None
+    """Terminate after n iterations without improvement in obj_rel_msssim (requires calc_rel_msssim to be enabled)"""
+    early_termination_probe_rel_msssim: t.Optional[int] = None
+    """Terminate after n iterations without improvement in probe_rel_msssim (requires calc_rel_msssim to be enabled)"""
     early_termination_smoothing: float = 0.9
     """
     Smoothing factor to apply to error measurement for early termination.
@@ -98,7 +98,7 @@ class EnginePlan(Dataclass, kw_only=True):
     (smooths over ~1/smoothing iterations)
     """
 
-    calc_ssim: FlagLike = False
+    calc_rel_msssim: FlagLike = False
     """Compute SSIM between consecutive iterations as a convergence metric. Use SimpleFlag(every=N) to compute every N iterations."""
 
     check_every_group: bool = False

@@ -170,13 +170,13 @@ class LoggingObserver(Observer):
 
 class PatienceObserver(Observer):
     # metrics where higher values indicate improvement
-    _HIGHER_IS_BETTER: t.FrozenSet[str] = frozenset({'obj_ssim', 'probe_ssim'})
+    _HIGHER_IS_BETTER: t.FrozenSet[str] = frozenset({'obj_rel_msssim', 'probe_rel_msssim'})
 
     def __init__(
         self,
         patience_loss: t.Optional[int] = None,
-        patience_obj_ssim: t.Optional[int] = None,
-        patience_probe_ssim: t.Optional[int] = None,
+        patience_obj_rel_msssim: t.Optional[int] = None,
+        patience_probe_rel_msssim: t.Optional[int] = None,
         smoothing: float = 0.1,
         continue_next_engine: bool = True,
     ):
@@ -187,10 +187,10 @@ class PatienceObserver(Observer):
         self._patience: t.Dict[str, int] = {}
         if patience_loss is not None:
             self._patience['total_loss'] = patience_loss
-        if patience_obj_ssim is not None:
-            self._patience['obj_ssim'] = patience_obj_ssim
-        if patience_probe_ssim is not None:
-            self._patience['probe_ssim'] = patience_probe_ssim
+        if patience_obj_rel_msssim is not None:
+            self._patience['obj_rel_msssim'] = patience_obj_rel_msssim
+        if patience_probe_rel_msssim is not None:
+            self._patience['probe_rel_msssim'] = patience_probe_rel_msssim
 
         self._best: t.Dict[str, float] = {}
         self._last_improvement_iter: t.Dict[str, int] = {}
@@ -249,64 +249,63 @@ class PatienceObserver(Observer):
                 raise EarlyTermination(state, self.continue_next_engine)
 
 
-class SSIMObserver(Observer):
-    """Computes obj_ssim and probe_ssim at each calc_ssim flag firing."""
+class RelMsSSIMObserver(Observer):
+    """Computes obj_rel_msssim and probe_rel_msssim at each calc_rel_msssim flag firing."""
 
-    def __init__(self, calc_ssim: 'FlagLike'):
+    def __init__(self, calc_rel_msssim: 'FlagLike'):
         from phaser.types import process_flag, flag_any_true
-        self._calc_ssim_raw = calc_ssim
-        self._calc_ssim_flag = process_flag(calc_ssim)
+        self._calc_rel_msssim_raw = calc_rel_msssim
+        self._calc_rel_msssim_flag = process_flag(calc_rel_msssim)
         self._ssim_enabled: bool = False
-        self._prev_state: t.Optional[ReconsState] = None
+        # CPU-side snapshot: (total_iter, obj_phase, probe_abs) as numpy arrays
+        self._prev_snapshot: t.Optional[t.Tuple[int, 'numpy.ndarray', 'numpy.ndarray']] = None
 
     def init_engine(
         self, init_state: ReconsState, *, recons_name: str,
         plan: EnginePlan, **kwargs: t.Any
     ):
         from phaser.types import flag_any_true
-        self._ssim_enabled = flag_any_true(self._calc_ssim_raw, plan.niter)
-        self._prev_state = None
+        self._ssim_enabled = flag_any_true(self._calc_rel_msssim_raw, plan.niter)
+        self._prev_snapshot = None
 
         if self._ssim_enabled:
-            for k in ('obj_ssim', 'probe_ssim'):
+            for k in ('obj_rel_msssim', 'probe_rel_msssim'):
                 if k not in init_state.progress:
                     init_state.progress[k] = ProgressState()
 
     def update_iteration(self, state: ReconsState, i: int, n: int, errors: t.Dict[str, float]):
         if not self._ssim_enabled:
             return
-        if not self._calc_ssim_flag({'state': state, 'niter': n}):
+        if not self._calc_rel_msssim_flag({'state': state, 'niter': n}):
             return
 
-        from copy import deepcopy
-        from phaser.utils.num import get_array_module
+        from phaser.utils.num import get_array_module, to_numpy
         from phaser.utils.analysis import structural_similarity
 
-        if self._prev_state is not None:
-            xp = get_array_module(state.object.data)
-            total_iter = int(state.iter.total_iter)
-            prev_iter = int(self._prev_state.iter.total_iter)
+        xp = get_array_module(state.object.data)
+        total_iter = int(state.iter.total_iter)
 
-            ssim_o = structural_similarity(
-                xp.angle(state.object.data),
-                xp.angle(self._prev_state.object.data),
-            )
-            state.progress['obj_ssim'].iters.append(total_iter)
-            state.progress['obj_ssim'].values.append(ssim_o)
+        # transfer only the two arrays needed; forces GPU→CPU sync here
+        obj_now   = to_numpy(xp.angle(state.object.data))
+        probe_now = to_numpy(xp.abs(state.probe.data))
 
-            ssim_p = structural_similarity(
-                xp.abs(state.probe.data),
-                xp.abs(self._prev_state.probe.data),
-            )
-            state.progress['probe_ssim'].iters.append(total_iter)
-            state.progress['probe_ssim'].values.append(ssim_p)
+        if self._prev_snapshot is not None:
+            prev_iter, obj_prev, probe_prev = self._prev_snapshot
+
+            ssim_o = structural_similarity(obj_now, obj_prev)
+            state.progress['obj_rel_msssim'].iters.append(total_iter)
+            state.progress['obj_rel_msssim'].values.append(ssim_o)
+
+            ssim_p = structural_similarity(probe_now, probe_prev)
+            state.progress['probe_rel_msssim'].iters.append(total_iter)
+            state.progress['probe_rel_msssim'].values.append(ssim_p)
 
             logging.info(
-                f"SSIM (iters {prev_iter}→{total_iter}): "
+                f"Relative multiscale SSIM (iters {prev_iter}→{total_iter}): "
                 f"obj={ssim_o:.4f}  probe={ssim_p:.4f}"
             )
 
-        self._prev_state = deepcopy(state)
+        self._prev_snapshot = (total_iter, obj_now, probe_now)
 
 
 class SaveObserver(Observer):

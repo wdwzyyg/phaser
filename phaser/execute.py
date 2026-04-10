@@ -15,7 +15,7 @@ from phaser.utils.misc import unwrap
 from .hooks import EngineHook, Hook, ObjectHook, RawData
 from .plan import GradientEnginePlan, ReconsPlan, EnginePlan, ScanHook, ProbeHook, TiltHook
 from .state import Patterns, ReconsState, PartialReconsState, IterState, PreparedRecons
-from .observer import Observer, LoggingObserver, PatienceObserver, SSIMObserver, SaveObserver, ObserverSet
+from .observer import Observer, LoggingObserver, PatienceObserver, RelMsSSIMObserver, SaveObserver, ObserverSet
 
 
 def execute_plan(
@@ -59,16 +59,16 @@ def execute_engine(
 
     extra_observers: t.List[Observer] = []
 
-    if plan.calc_ssim is not False:
-        extra_observers.append(SSIMObserver(plan.calc_ssim))
+    if plan.calc_rel_msssim is not False:
+        extra_observers.append(RelMsSSIMObserver(plan.calc_rel_msssim))
 
     if any(v is not None for v in (
-        plan.early_termination_loss, plan.early_termination_obj_ssim, plan.early_termination_probe_ssim
+        plan.early_termination_loss, plan.early_termination_obj_rel_msssim, plan.early_termination_probe_rel_msssim
     )):
         extra_observers.append(PatienceObserver(
             patience_loss=plan.early_termination_loss,
-            patience_obj_ssim=plan.early_termination_obj_ssim,
-            patience_probe_ssim=plan.early_termination_probe_ssim,
+            patience_obj_rel_msssim=plan.early_termination_obj_rel_msssim,
+            patience_probe_rel_msssim=plan.early_termination_probe_rel_msssim,
             smoothing=plan.early_termination_smoothing,
         ))
 

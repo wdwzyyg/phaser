@@ -297,25 +297,6 @@ Refinement result: {result.message}
     return upsamp_obj[(slice(None), *crop)], ground_truth[tuple(crop)]
 
 
-def _resample_to_shape(im, target_shape: t.Tuple[int, ...], xp: t.Any):
-    """Resample im to target_shape, staying on the input device. first dimension untouched"""
-    xp_name = getattr(xp, '__name__', '')
-
-    if xp_name == 'numpy':
-        from scipy.ndimage import zoom
-        zoom_factors = tuple(s1 / s2 for s1, s2 in zip(target_shape, im.shape))
-        return zoom(im, zoom_factors, order=1)
-
-    if 'cupy' in xp_name:
-        from cupyx.scipy.ndimage import zoom
-        zoom_factors = tuple(s1 / s2 for s1, s2 in zip(target_shape, im.shape))
-        return zoom(im, zoom_factors, order=1)
-
-    # JAX
-    import jax.image
-    return jax.image.resize(im, target_shape, method='linear')
-
-
 def _uniform_filter_spatial(im, size: int, xp: t.Any):
     """
     Separable box filter over the last two spatial dims only (any ndim >= 2).
@@ -379,7 +360,7 @@ def structural_similarity(
 
     Efficient implementation:
       - fused filter pass: all statistics filtered in one call per scale
-      - bilinear downsampling pyramid via _resample_to_shape
+      - bilinear downsampling pyramid via affine_transform
       - fully on-device: only the final scalar crosses the device boundary
 
     Parameters
@@ -398,13 +379,22 @@ def structural_similarity(
     mssim : float
         MS-SSIM value in [0, 1].
     """
+    from phaser.utils.image import affine_transform as _affine_transform
+
+    def _resample(im, target_shape):
+        scale_y = im.shape[-2] / target_shape[-2]
+        scale_x = im.shape[-1] / target_shape[-1]
+        matrix = numpy.array([[scale_y, 0.0], [0.0, scale_x]])
+        offset = numpy.array([0.5 * (scale_y - 1.0), 0.5 * (scale_x - 1.0)])
+        return _affine_transform(im, matrix, offset=offset, output_shape=target_shape[-2:], order=1)
+
     xp = get_array_module(im1, im2)
 
     im1 = im1.astype(numpy.float64)
     im2 = im2.astype(numpy.float64)
 
     if im1.shape != im2.shape:
-        im2 = _resample_to_shape(im2, im1.shape, xp)
+        im2 = _resample(im2, im1.shape)
     if data_range is None:
         data_range = float(im2.max() - im2.min())
 
@@ -436,7 +426,7 @@ def structural_similarity(
 
         if scale < num_scales - 1:
             new_shape = (im1.shape[0], im1.shape[-2] // 2, im1.shape[-1] // 2)
-            im1 = _resample_to_shape(im1, new_shape, xp)
-            im2 = _resample_to_shape(im2, new_shape, xp)
+            im1 = _resample(im1, new_shape)
+            im2 = _resample(im2, new_shape)
 
     return mssim
