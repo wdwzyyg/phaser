@@ -6,6 +6,7 @@ from pathlib import Path
 import functools
 import io
 import logging
+import textwrap
 import typing as t
 
 import pane
@@ -57,6 +58,8 @@ def _format_type(ty: t.Any) -> str:
     origin = t.get_origin(ty)
 
     if origin is None:
+        if ty is type(None) or ty is None:
+            return "None"
         if isinstance(ty, type):
             return ty.__name__
         if isinstance(ty, str):
@@ -65,7 +68,8 @@ def _format_type(ty: t.Any) -> str:
 
     args = t.get_args(ty)
 
-    if origin is UnionType:
+    print(f"origin: {origin} args: {args}")
+    if origin is UnionType or origin is t.Union:
         return ' | '.join(map(_format_type, args))
 
     args = ', '.join(map(_format_type, args))
@@ -144,16 +148,19 @@ class Config(t.Generic[PaneClassT]):
                 default = field.default
 
             # write expression
-            buf.write(
-                t.cast(str, yaml.dump(
-                    {field.in_names[0]: default},
-                    Dumper=Dumper, explicit_start=False,
-                    allow_unicode=True
-                )),
-            )
+            expr = t.cast(str, yaml.dump(
+                {field.in_names[0]: default},
+                Dumper=Dumper, explicit_start=False,
+                allow_unicode=True, default_flow_style=None,
+            )).strip('\n')
+            if expr[0] == '{' and expr[-1] == '}':
+                expr = expr[1:-1]
+            buf.write(expr)
+            buf.write('\n')
             # and docstring
             if (docstring := docstrings.get(field.name)):
-                buf.write(docstring)
+                print(repr(textwrap.dedent(docstring).strip('\n')))
+                buf.write(textwrap.dedent(docstring).strip('\n'))
                 buf.write('\n')
             # and type
             buf.write('type: ' + _format_type(field.type))

@@ -150,6 +150,7 @@ commands: t.List[t.Union[click.Command, t.Union[t.Tuple[str, str, t.Sequence[str
     run, serve, worker,
     # these will be looked up in the cli folder
     ('validate', "Validate reconstruction plan file"),
+    ('process_empad', "Process EMPAD XML metadata"),
 ]
 
 

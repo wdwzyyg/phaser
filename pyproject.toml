@@ -41,6 +41,7 @@ dependencies = [
     "typing_extensions~=4.7",
     "platformdirs>=4.8.0",
     "PyYAML>=6.0",
+    "lxml>=5.0.0",
 ]
 
 [project.optional-dependencies]

@@ -27,6 +27,10 @@ def _get_dir(f: pane.io.FileOrPath) -> t.Optional[Path]:
     return path.parent if path.exists() else None
 
 
+class UnscannedDataset(BaseException):
+    ...
+
+
 class EmpadMetadata(pane.PaneBase, frozen=False, kw_only=True, allow_extra=True):
     file_type: t.Literal['pyMultislicer_metadata', 'empad_metadata'] = 'empad_metadata'
 
@@ -123,6 +127,81 @@ class EmpadMetadata(pane.PaneBase, frozen=False, kw_only=True, allow_extra=True)
 
     def is_simulated(self) -> bool:
         return self.file_type == "pyMultislicer_metadata"
+
+    @staticmethod
+    def from_xml(xml_path: t.Union[str, Path]) -> 'EmpadMetadata':
+        from lxml import etree
+
+        orig_path = Path(xml_path).parent
+        xml = t.cast(etree._ElementTree, etree.parse(str(xml_path)))  # type: ignore
+
+        def get(root, tag: str) -> etree._Element:
+            elem = root.find(tag)  # type: ignore
+            if elem is None:
+                raise ValueError(f"Couldn't find tag '{tag}' in XML metadata.")
+            return elem
+
+        def try_get(root, tag: str) -> t.Optional[etree._Element]:
+            return root.find(tag)  # type: ignore
+
+        root: etree._Element = xml.getroot()
+        timestamp = get(root, 'timestamp')
+        raw_filename = get(root, 'raw_file').attrib['filename']
+        time_unix = float(timestamp.attrib['timestamp'])
+
+        scan_params = get(root, 'scan_parameters')
+        if try_get(scan_params, 'series_count') is not None:
+            # not a 4D stem dataset
+            raise UnscannedDataset()
+
+        background = try_get(root, 'background_image')
+        exposure_time = float(str(get(root, 'exposure_time').text)) * 1e-3  # ms to s
+        post_exposure_time = float(str(get(root, 'post_exposure_time').text)) * 1e-3  # ms to s
+
+        bg_unix = None if background is None else background.attrib.get('timestamp', None)
+        bg_unix = None if bg_unix is None else float(bg_unix)
+        # True if background is <6 hours out of date
+        has_bg = False if bg_unix is None else abs(time_unix - bg_unix) < 60*60*12
+
+        iom = get(root, 'iom_measurements')
+        scan_rotation = float(str(get(iom, 'scan_rotation').text)) * 180. / numpy.pi
+        camera_length = float(str(get(iom, 'nominal_camera_length').text))  # m
+        voltage = float(str(get(iom, 'high_voltage').text))                 # V
+
+        scan_params = get(root, "scan_parameters[@mode='acquire']")
+        scan_shape = (get(scan_params, 'scan_resolution_x'), get(scan_params, 'scan_resolution_y'))
+        scan_shape = tuple(map(lambda elem: int(str(elem.text)), scan_shape))
+        scan_size = float(str(get(scan_params, 'scan_size').text))
+
+        if abs(scan_size - 1.) > 1e-5:
+            print("Warning: scan_size != 1 has not been tested.")
+
+        # all in m
+        fov = get(iom, 'full_scan_field_of_view')
+        scale_factor = float(str(get(fov, 'scale_factor').text))
+        fov = tuple(map(
+            lambda elem: float(str(elem.text)) * scan_size / scale_factor,
+            (get(fov, 'x'), get(fov, 'y'))
+        ))
+        scan_step = tuple(map(lambda v: v / max(scan_shape), fov))
+
+        return EmpadMetadata(
+            name=root.attrib['name'],
+            orig_path=orig_path,
+            raw_filename=raw_filename,
+            time=timestamp.attrib['isoformat'],
+            time_unix=time_unix,
+            bg_unix= bg_unix,
+            has_bg=has_bg,
+            voltage=voltage,
+            camera_length=camera_length,
+            scan_rotation=scan_rotation,
+            scan_shape=t.cast(t.Tuple[int, int], scan_shape),
+            scan_fov=t.cast(t.Tuple[float, float], fov),
+            scan_step=t.cast(t.Tuple[float, float], scan_step),
+            exposure_time=exposure_time,
+            post_exposure_time=post_exposure_time,
+        )
 
 
 def load_4d(path: t.Union[str, Path], scan_shape: t.Optional[t.Tuple[int, int]] = None, *,
