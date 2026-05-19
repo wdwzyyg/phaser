@@ -4,6 +4,7 @@ from pathlib import Path
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 import logging
+import time
 import typing as t
 
 from rich.logging import RichHandler
@@ -74,7 +75,7 @@ def prompt_ask(name, unit=None, default=None, default_str: str = "", console=Non
         console = default_console()
     while True:
         str_val = Prompt.ask(f"{name} \\[{unit}]", default=default_str, console=console)
-        if str_val == default_str:
+        if default_str and str_val == default_str:
             return (default_str, default)
         try:
             val = validate(str_val)
@@ -119,31 +120,35 @@ class FloatParam(Parameter[float]):
 
 @dataclass(init=False)
 class CameraParam(Parameter[float]):
-    """Maps f"{camera_length:0.3f}" to diff_step values"""
-    used: t.Dict[str, float] = field(default_factory=dict)
-    """ Camera length associated with default_val (m)"""
-    default_camera_length: float = 0.4575
+    """Maps f"{camera_length:.3f}" to diff_step values"""
+    used: t.Dict[t.Tuple[str, str], float] = field(default_factory=dict)
+    """Maps f"{voltage:.0f}" to default (camera_length, diff_step) tuple"""
+    defaults: t.Dict[str, t.Tuple[float, float]]
 
-    def __init__(self, diff_step: float, camera_length: float):
+    def __init__(self, defaults: t.Dict[float, t.Tuple[float, float]]):
         self.name = 'Diffraction pixel spacing'
-        self.default_val = diff_step
         self.used = {}
-        self.default_camera_length = camera_length
+        # kV to V
+        self.defaults = { f"{k*1e3:.0f}": v for (k, v) in defaults.items() }
 
     def ask(self, metadata: EmpadMetadata, console: t.Optional[Console] = None) -> float:
         if not console:
             console = default_console()
         camera_length = metadata.camera_length
-        camera_length_str = f"{camera_length:0.3f}"
-        default = self.used.get(camera_length_str, None) 
-        if default is None and self.default_val is not None and camera_length is not None:
+        camera_length_str = f"{camera_length:.3f}"
+        voltage_str = f"{metadata.voltage:.0f}"
+        if camera_length is not None:
+            console.print(f"Camera length: {camera_length * 1e3:.0f} mm")
+
+        default = self.used.get((voltage_str, camera_length_str), None) 
+        if default is None and camera_length is not None and (t := self.defaults.get(voltage_str)) is not None:
+            (default_camera_length, default_val) = t
             # diff_step scales inversely with camera length
-            default = self.default_val * self.default_camera_length / camera_length
-            console.print(f"Camera length: {camera_length * 1e3 :.0f} mm")
+            default = default_val * default_camera_length / camera_length
 
         default_str = f"{default:.03f}" if default is not None else ""
         (val_str, val) = prompt_ask(self.name, "mrad/px", default, default_str, console)
-        self.used[camera_length_str] = val
+        self.used[(voltage_str, camera_length_str)] = val
         return val
 
 
@@ -179,7 +184,7 @@ def make_params(config: ProcessEmpadConfig) -> t.Sequence[t.Tuple[str, Parameter
         ('conv_angle', FloatParam("Convergence angle", config.conv_angle, "mrad", f"{config.conv_angle:.1f}")),
         ('defocus', FloatParam("Defocus (CW is +)", 0.0, "nm", "0.0", 1e-9)), # nm to m
         ('beam_current', FloatParam("Approx. probe current", config.probe_current, "pA", f"{config.probe_current:.1f}", 1e-12)),  # pA to A
-        ('diff_step', CameraParam(0.424665, 0.689)),  # TODO
+        ('diff_step', CameraParam(config.diff_step)),
         ('adu', AduParam(config.adu[1], config.adu[0] * 1e3) if config.adu is not None else AduParam()),
         ('author', OptStringParam("Author", None)),
     ]
@@ -227,7 +232,7 @@ def process_dir(path: t.Union[str, Path], config: ProcessEmpadConfig,
 
             metadata.notes = Prompt.ask("Notes", default=None, console=console)
 
-        metadata.write_json(output_path, indent=4, sort_keys=True)
+        metadata.write_json(output_path, indent=4)
         console.print(f"Wrote metadata to '{output_path}'.")
 
     console.print("Processed all files.")
@@ -255,6 +260,7 @@ def process_empad(
             # failed to write
             console.print(f"[error]Config file already exists at '{config.path()}'.")
             raise Exit(1)
+        console.print("Wrote config file!")
         return
 
     config = config.get()
@@ -264,12 +270,17 @@ def process_empad(
         folder = Path('.')
     path = Path(folder).resolve()
 
-    console.print(f"Processing dir {path}")
+    console.print(f"Processing dir '{path}'")
     process_dir(path, config, params, console, prompt)
 
     if not watch:
         return
 
+    while True:
+        time.sleep(2.)
+        process_dir(path, config, params, console, prompt)
+
+    # TODO: weird bugs with inotify
     if 'linux' not in sys.platform:
         console.print("[error]--watch is supported on Linux only.")
         raise Exit(1)
@@ -286,8 +297,9 @@ def process_empad(
     gen = notifier.event_gen(yield_nones=False)
     for (_, event_types, _path, filename) in t.cast(t.Iterator[t.Tuple[t.Any, t.List[str], t.Any, str]], gen):
         if not (any(t in event_types for t in ('IN_CLOSE_WRITE', 'IN_CLOSE_NOWRITE'))
-                and Path(filename).match('scan*.raw')):
+                and Path(filename).match('*.xml')):
             continue
 
-        print("Found changes, reprocessing.")
+        console.print("Found changes, reprocessing.")
+        time.sleep(1e-1)
         process_dir(path, config, params, console, prompt)

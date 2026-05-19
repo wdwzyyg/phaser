@@ -99,20 +99,25 @@ class Config(t.Generic[PaneClassT]):
     def get(self) -> PaneClassT:
         logger = logging.getLogger()
         path = self.path()
-        logger.info(f"Configuration path: {path}")
+        logger.info(f"Configuration path: '{path}'")
 
         if not path.exists():
             logger.info("Configuration file not found, using default")
             return self.default()
 
         try:
-            return pane.from_yaml(path, self.ty)
+            config = pane.from_yaml_all(path, self.ty)
         except pane.ConvertError as e:
             e.add_note("Invalid configuration file")
             raise
         except Exception as e:
             e.add_note("Failed to read configuration file")
             raise
+        if not len(config):
+            return self.default()
+        if len(config) > 1:
+            raise ValueError("Invalid configuration file (multiple YAML documents)")
+        return config[0]
 
     def write_default(self) -> bool:
         """
