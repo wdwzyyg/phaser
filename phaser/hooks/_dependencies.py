@@ -36,7 +36,7 @@ def check_dependencies(dependencies: t.Sequence[str], hook: str):
             dep.check()
         except Exception as e:
             raise RuntimeError(
-                f"Missing dependency '{dependency}' requried by hook '{hook}'.\n"
+                f"Missing dependency '{dependency}' required by hook '{hook}'.\n"
                 f"To install: {dep.install_instructions()}"
             ) from e
 

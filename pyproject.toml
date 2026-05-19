@@ -39,6 +39,8 @@ dependencies = [
     "optree>=0.13.0",
     "py-pane==0.11.5",
     "typing_extensions~=4.7",
+    "platformdirs>=4.8.0",
+    "PyYAML>=6.0",
 ]
 
 [project.optional-dependencies]

@@ -1,20 +1,64 @@
+import abc
+import importlib
 from pathlib import Path
 import sys
 import typing as t
 
 import click
 
+class Dependency(abc.ABC):
+    @abc.abstractmethod
+    def check(self):
+        ...
+
+    @abc.abstractmethod
+    def install_instructions(self) -> str:
+        ...
+
+
+class ImportDependency(Dependency):
+    def __init__(self, ref: str, install: str) -> None:
+        self.ref = ref
+        self.install = install
+
+    def check(self):
+        importlib.import_module(self.ref)
+
+    def install_instructions(self) -> str:
+        return self.install
+
+
+def check_dependencies(command: str, dependencies: t.Sequence[str]):
+    for dependency in dependencies:
+        if (dep := _DEPENDENCIES.get(dependency)) is None:
+            raise RuntimeError(f"Unknown dependency '{dependency}'. This is likely a bug in the hook declaration.")
+
+        try:
+            dep.check()
+        except Exception as e:
+            raise RuntimeError(
+                f"Missing dependency '{dependency}' required for subcommand '{command}'.\n"
+                f"To install: {dep.install_instructions()}"
+            ) from e
+
 
 class MainCommand(click.MultiCommand):
-    def __init__(self, commands: t.Iterable[t.Union[click.Command, t.Tuple[str, str]]], **kwargs):
+    def __init__(self, commands: t.Iterable[
+        t.Union[click.Command, t.Tuple[str, str], t.Tuple[str, str, t.Sequence[str]]]
+    ], **kwargs):
         super().__init__(**kwargs)
         # name: command or short_help
-        self.commands: t.Dict[str, t.Union[click.Command, str, None]]
-
-        self.commands = dict(
-            (t.cast(str, c.name), c) if isinstance(c, click.Command) else (c[0], c[1])
-            for c in commands
-        )
+        self.commands: t.Dict[str, t.Union[click.Command, str, None]] = {}
+        self.dependencies: t.Dict[str, t.Sequence[str]] = {}
+        for c in commands:
+            if isinstance(c, click.Command):
+                name = str(c.name)
+                self.commands[name] = c
+                self.dependencies[name] = ()
+                continue
+            self.commands[c[0]] = c[1]
+            if len(c) > 2:
+                self.dependencies[c[0]] = c[2]
 
     def list_commands(self, ctx: click.Context):
         return list(self.commands.keys())
@@ -43,8 +87,9 @@ class MainCommand(click.MultiCommand):
         if isinstance(val, click.BaseCommand):
             return val
 
+        check_dependencies(name, self.dependencies.get(name, ()))
+
         # for now, assume `validate` command is `cli.validate:validate`
-        # TODO, incorporate some feature checks here
         module = func = name
         mod = __import__(module, globals(), fromlist=[func], level=1)
         return getattr(mod, func)
@@ -97,7 +142,11 @@ def worker(url: str, quiet: bool = False):
     run_worker(url, quiet=quiet)
 
 
-commands: t.List[t.Union[click.Command, t.Tuple[str, str]]] = [
+_DEPENDENCIES = {
+    'rsciio': ImportDependency('rsciio', "'pip install rosettasciio' or 'conda install rosettasciio'"),
+}
+
+commands: t.List[t.Union[click.Command, t.Union[t.Tuple[str, str, t.Sequence[str]], t.Tuple[str, str]]]] = [
     run, serve, worker,
     # these will be looked up in the cli folder
     ('validate', "Validate reconstruction plan file"),
