@@ -199,27 +199,89 @@ def split(
     return torch.split(arr, arr.shape[axis] // sections, axis)
 
 
+def _pad_idxs_edge(idxs: torch.Tensor, left: int, right: int, size: int) -> t.Tuple[torch.Tensor, torch.Tensor]:
+    return (idxs.new_zeros(left), idxs.new_full((right,), size - 1))
+
+
+def _pad_idxs_wrap(idxs: torch.Tensor, left: int, right: int, size: int) -> t.Tuple[torch.Tensor, torch.Tensor]:
+    left_idx = torch.arange(-left, 0, dtype=idxs.dtype, device=idxs.device) % size
+    right_idx = torch.arange(size, size + right, dtype=idxs.dtype, device=idxs.device) % size
+    return (left_idx, right_idx)
+
+
+def _pad_idxs_reflect(idxs: torch.Tensor, left: int, right: int, size: int) -> t.Tuple[torch.Tensor, torch.Tensor]:
+    if size == 1:
+        return (idxs.new_zeros(left), idxs.new_zeros(right))
+    period = 2 * (size - 1)
+    def fold(i: torch.Tensor) -> torch.Tensor:
+        i = i % period
+        return (size - 1) - ((i - (size - 1)).abs())
+    left_idx = fold(torch.arange(left, 0, -1, dtype=idxs.dtype, device=idxs.device))
+    right_idx = fold(torch.arange(size, size + right, dtype=idxs.dtype, device=idxs.device))
+    return (left_idx, right_idx)
+
+
+def _pad_idxs_symmetric(idxs: torch.Tensor, left: int, right: int, size: int) -> t.Tuple[torch.Tensor, torch.Tensor]:
+    period = 2 * size
+    def fold(i: torch.Tensor) -> torch.Tensor:
+        i = i % period
+        return torch.where(i < size, i, period - 1 - i)
+    left_idx = fold(torch.arange(-left, 0, dtype=idxs.dtype, device=idxs.device) % period)
+    right_idx = fold(torch.arange(size, size + right, dtype=idxs.dtype, device=idxs.device))
+    return (left_idx, right_idx)
+
+
+_FAST_PAD_MODES: t.FrozenSet[str] = frozenset(('constant', 'edge', 'reflect', 'wrap'))
+_PAD_MODES: t.FrozenSet[str] = _FAST_PAD_MODES | frozenset(('symmetric',))
+_MAKE_PAD_IDXS: t.Dict[_PadMode, t.Callable[[torch.Tensor, int, int, int], t.Tuple[torch.Tensor, torch.Tensor]]] = {
+    'edge':      _pad_idxs_edge,
+    'wrap':      _pad_idxs_wrap,
+    'reflect':   _pad_idxs_reflect,
+    'symmetric': _pad_idxs_symmetric,
+}
+
+
 def pad(
     arr: torch.Tensor, pad_width: t.Union[int, t.Tuple[int, int], t.Sequence[t.Tuple[int, int]]], /, *,
     mode: _PadMode = 'constant', cval: float = 0.
 ) -> torch.Tensor:
-    if mode not in ('constant', 'edge', 'reflect', 'wrap'):
+    if mode not in _PAD_MODES:
         raise ValueError(f"Unsupported padding mode '{mode}'")
 
     pad = (pad_width, pad_width) if isinstance(pad_width, int) else pad_width
 
     if isinstance(pad[0], int):
-        pad = (pad,)
+        pad = (t.cast(t.Tuple[int, int], pad),)
 
     if len(pad) == 1:
         pad = tuple(pad) * arr.ndim
     elif len(pad) != arr.ndim:
         raise ValueError(f"Invalid `pad_width` '{pad_width}'.")
 
-    pad = tuple(itertools.chain.from_iterable(t.cast(t.Sequence[t.Tuple[int, int]], reversed(pad))))
+    # check for fast path (F.pad)
+    # checks supported mode, dim <= 3, pad lengths all less than array size
+    # constant padding has no restrictions
+    if mode == 'constant' or (
+        mode in _FAST_PAD_MODES
+        and arr.ndim <= 3
+        and all(p <= s - 1 if isinstance(p, int) else all(p1 <= s - 1 for p1 in p) for (p, s) in zip(pad, arr.shape))
+    ):
+        pad = tuple(itertools.chain.from_iterable(t.cast(t.Sequence[t.Tuple[int, int]], reversed(pad))))
+        kwargs = {'value': cval} if mode == 'constant' else {}
+        return _MockTensor(F.pad(arr.reshape(1, *arr.shape), pad, mode=_PAD_MODE_MAP[mode], **kwargs)[0])
 
-    kwargs = {'value': cval} if mode == 'constant' else {}
-    return _MockTensor(F.pad(arr, pad, mode=_PAD_MODE_MAP[mode], **kwargs))
+    # slow path
+    for dim, (p, size) in enumerate(zip(pad, arr.shape)):
+        (left, right) = (p, p) if isinstance(p, int) else p
+        if left == 0 and right == 0:
+            continue
+
+        idxs = torch.arange(size, dtype=torch.int64, device=arr.device)
+        (left_idx, right_idx) = _MAKE_PAD_IDXS[mode](idxs, left, right, size)
+        idxs = torch.cat([left_idx, idxs, right_idx]).to(arr.device)
+        arr = arr.index_select(dim, idxs)
+
+    return _MockTensor(arr)
 
 
 def unwrap(arr: torch.Tensor, discont: t.Optional[float] = None, axis: int = -1, *,
@@ -406,42 +468,41 @@ def _map_coordinates_constant(
     return result.type(arr.dtype)
 
 
-_INTERP_TO_TORCH_PAD: t.Dict[_InterpBoundaryMode, str] = {
-    'nearest': 'replicate',
-    'wrap': 'circular',
-    'grid-wrap': 'circular',
-    'constant': 'constant',
-    'grid-constant': 'constant',
+# convert scipy boundary mode to numpy.pad mode
+_INTERP_TO_PAD: t.Dict[_InterpBoundaryMode, str] = {
+    'reflect': 'symmetric',
     'mirror': 'reflect',
+    'nearest': 'edge',
+    'grid-mirror': 'reflect',
+    'grid-wrap': 'wrap',
+    'grid-constant': 'constant',
 }
 
 
-def _convolve1d(
+def convolve1d(
     arr: torch.Tensor, weights: torch.Tensor, axis: int, *,
     mode: _InterpBoundaryMode, cval: float = 0.
 ) -> torch.Tensor:
-    pad_mode = _INTERP_TO_TORCH_PAD.get(mode)
-    if pad_mode is None:
-        raise ValueError(f"Pad mode '{mode}' not implemented for torch backend")
-
-    # reorder to last axis
-    reorder = axis != arr.ndim - 1
-    if reorder:
-        arr = torch.moveaxis(arr, axis, -1)
-    leading_shape = arr.shape[:-1]
-    arr = arr.reshape((-1, arr.shape[-1]))
     r = len(weights) // 2
+    pad_mode = t.cast(_PadMode, _INTERP_TO_PAD.get(mode, mode))
 
-    # torch's conv1d is actually a correlation
-    weights = weights.flip(0)
+    # reorder to last axis, pad
+    arr = torch.moveaxis(arr, axis, -1)
+    out_shape_t = arr.shape
+    # pad
+    arr = pad(
+        arr,
+        ((0, 0),) * (arr.ndim-1) + ((len(weights) - r - 1, r),),
+        mode=pad_mode, cval=cval
+    )
 
-    # TODO: this will fail for some pads where weights is large, investigate further
-    arr = F.pad(arr, (len(weights) - r - 1, r), mode=pad_mode, value=cval)
+    # convolve
     arr = F.conv1d(
-        arr[:, None, :], weights[None, None, :]
-    )[:, 0].reshape((*leading_shape, -1))
+        arr.reshape((-1, 1, arr.shape[-1])),
+        weights.flip(0).to(arr.dtype)[None, None, :]
+    ).reshape(out_shape_t)
 
-    return torch.moveaxis(arr, -1, axis) if reorder else arr
+    return torch.moveaxis(arr, -1, axis)
 
 
 def get_devices() -> t.Tuple[torch.device, ...]:
