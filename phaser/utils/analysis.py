@@ -4,7 +4,7 @@ import numpy
 from numpy.typing import ArrayLike, NDArray
 import warnings
 
-from phaser.utils.num import fft2, ifft2, abs2, Sampling, get_array_module, at, to_numpy, NumT
+from phaser.utils.num import fft2, ifft2, abs2, Sampling, get_array_module, at, to_numpy, NumT, xp_is_jax
 from phaser.utils.object import ObjectSampling
 from phaser.utils.image import remove_linear_ramp, translation_matrix, rotation_matrix
 from phaser.state import ObjectState
@@ -296,7 +296,7 @@ Refinement result: {result.message}
         return upsamp_obj[(slice(None), *crop)], ground_truth[tuple(crop)], crop
     return upsamp_obj[(slice(None), *crop)], ground_truth[tuple(crop)]
 
-
+from phaser.utils.num import get_scipy_module
 def _uniform_filter_spatial(im, size: int, xp: t.Any):
     """
     Separable box filter over the last two spatial dims only (any ndim >= 2).
@@ -311,37 +311,34 @@ def _uniform_filter_spatial(im, size: int, xp: t.Any):
     xp_name = getattr(xp, '__name__', '')
     sizes = [1] * (im.ndim - 2) + [size, size]
 
-    if xp_name == 'numpy':
-        from scipy.ndimage import uniform_filter
-        return uniform_filter(im, sizes)
+    if xp_name == 'numpy' or 'cupy' in xp_name:
+        scipy = get_scipy_module(im)
+        return scipy.ndimage.uniform_filter(im, sizes)
 
-    if 'cupy' in xp_name:
-        from cupyx.scipy.ndimage import uniform_filter
-        return uniform_filter(im, sizes)
+    if xp_is_jax(xp):
+        # JAX or other: cumsum box filter along axes -2 and -1 only (XLA-friendly)
+        def _along_axis(arr, axis: int):
+            pad = size // 2
+            pad_config = [(0, 0)] * arr.ndim
+            pad_config[axis] = (pad, pad)
+            padded = xp.pad(arr, pad_config, mode='reflect')
+            zero_shape = list(padded.shape)
+            zero_shape[axis] = 1
+            cs = xp.concatenate(
+                [xp.zeros(zero_shape, dtype=padded.dtype), xp.cumsum(padded, axis=axis)],
+                axis=axis,
+            )
+            n = arr.shape[axis]
+            sl_end = [slice(None)] * arr.ndim
+            sl_end[axis] = slice(size, size + n)
+            sl_beg = [slice(None)] * arr.ndim
+            sl_beg[axis] = slice(0, n)
+            return (cs[tuple(sl_end)] - cs[tuple(sl_beg)]) / size
 
-    # JAX or other: cumsum box filter along axes -2 and -1 only (XLA-friendly)
-    def _along_axis(arr, axis: int):
-        pad = size // 2
-        pad_config = [(0, 0)] * arr.ndim
-        pad_config[axis] = (pad, pad)
-        padded = xp.pad(arr, pad_config, mode='reflect')
-        zero_shape = list(padded.shape)
-        zero_shape[axis] = 1
-        cs = xp.concatenate(
-            [xp.zeros(zero_shape, dtype=padded.dtype), xp.cumsum(padded, axis=axis)],
-            axis=axis,
-        )
-        n = arr.shape[axis]
-        sl_end = [slice(None)] * arr.ndim
-        sl_end[axis] = slice(size, size + n)
-        sl_beg = [slice(None)] * arr.ndim
-        sl_beg[axis] = slice(0, n)
-        return (cs[tuple(sl_end)] - cs[tuple(sl_beg)]) / size
-
-    return _along_axis(_along_axis(im, -2), -1)
+        return _along_axis(_along_axis(im, -2), -1)
 
 
-def structural_similarity(
+def multiscale_structural_similarity(
     im1,
     im2,
     data_range=None,
@@ -379,14 +376,14 @@ def structural_similarity(
     mssim : float
         MS-SSIM value in [0, 1].
     """
-    from phaser.utils.image import affine_transform as _affine_transform
+    from phaser.utils.image import affine_transform
 
     def _resample(im, target_shape):
         scale_y = im.shape[-2] / target_shape[-2]
         scale_x = im.shape[-1] / target_shape[-1]
         matrix = numpy.array([[scale_y, 0.0], [0.0, scale_x]])
         offset = numpy.array([0.5 * (scale_y - 1.0), 0.5 * (scale_x - 1.0)])
-        return _affine_transform(im, matrix, offset=offset, output_shape=target_shape[-2:], order=1)
+        return affine_transform(im, matrix, offset=offset, output_shape=target_shape[-2:], order=1)
 
     xp = get_array_module(im1, im2)
 

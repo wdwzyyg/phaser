@@ -194,6 +194,8 @@ class PatienceObserver(Observer):
 
         self._best: t.Dict[str, float] = {}
         self._last_improvement_iter: t.Dict[str, int] = {}
+        self._ssim_eval_count: t.Dict[str, int] = {}
+        self._last_improvement_eval: t.Dict[str, int] = {}
         self._smoothed: t.Dict[str, float] = {}
 
     def init_engine(
@@ -202,6 +204,8 @@ class PatienceObserver(Observer):
     ):
         self._best = {}
         self._last_improvement_iter = {}
+        self._ssim_eval_count = {}
+        self._last_improvement_eval = {}
         self._smoothed = {}
 
     def update_iteration(self, state: ReconsState, i: int, n: int, errors: t.Dict[str, float]):
@@ -237,16 +241,30 @@ class PatienceObserver(Observer):
                 or (not higher_is_better and value < self._best[key])
             )
 
-            if improved:
-                self._best[key] = value
-                self._last_improvement_iter[key] = current_iter
-
-            iters_without_improvement = current_iter - self._last_improvement_iter.get(key, current_iter)
-            if iters_without_improvement >= patience:
-                logging.info(
-                    f"Early termination: {key} no improvement for {iters_without_improvement} iterations"
-                )
-                raise EarlyTermination(state, self.continue_next_engine)
+            if key == 'total_loss':
+                if improved:
+                    self._best[key] = value
+                    self._last_improvement_iter[key] = current_iter
+                iters_without_improvement = current_iter - self._last_improvement_iter.get(key, current_iter)
+                if iters_without_improvement >= patience:
+                    logging.info(
+                        f"Early termination: {key} no improvement for {iters_without_improvement} iterations"
+                    )
+                    raise EarlyTermination(state, self.continue_next_engine)
+            elif key in self._HIGHER_IS_BETTER:
+                self._ssim_eval_count[key] = self._ssim_eval_count.get(key, 0) + 1
+                current_eval = self._ssim_eval_count[key]
+                if improved:
+                    self._best[key] = value
+                    self._last_improvement_eval[key] = current_eval
+                evals_without_improvement = current_eval - self._last_improvement_eval.get(key, current_eval)
+                if evals_without_improvement >= patience:
+                    logging.info(
+                        f"Early termination: {key} no improvement for {evals_without_improvement} SSIM evaluations"
+                    )
+                    raise EarlyTermination(state, self.continue_next_engine)
+            else:
+                raise NotImplementedError(f"Patience check not implemented for metric: {key!r}")
 
 
 class RelMsSSIMObserver(Observer):
@@ -280,7 +298,7 @@ class RelMsSSIMObserver(Observer):
             return
 
         from phaser.utils.num import get_array_module, to_numpy
-        from phaser.utils.analysis import structural_similarity
+        from phaser.utils.analysis import multiscale_structural_similarity
 
         xp = get_array_module(state.object.data)
         total_iter = int(state.iter.total_iter)
@@ -292,11 +310,11 @@ class RelMsSSIMObserver(Observer):
         if self._prev_snapshot is not None:
             prev_iter, obj_prev, probe_prev = self._prev_snapshot
 
-            ssim_o = structural_similarity(obj_now, obj_prev)
+            ssim_o = multiscale_structural_similarity(obj_now, obj_prev)
             state.progress['obj_rel_msssim'].iters.append(total_iter)
             state.progress['obj_rel_msssim'].values.append(ssim_o)
 
-            ssim_p = structural_similarity(probe_now, probe_prev)
+            ssim_p = multiscale_structural_similarity(probe_now, probe_prev)
             state.progress['probe_rel_msssim'].iters.append(total_iter)
             state.progress['probe_rel_msssim'].values.append(ssim_p)
 
