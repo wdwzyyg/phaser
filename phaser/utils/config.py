@@ -68,7 +68,6 @@ def _format_type(ty: t.Any) -> str:
 
     args = t.get_args(ty)
 
-    print(f"origin: {origin} args: {args}")
     if origin is UnionType or origin is t.Union:
         return ' | '.join(map(_format_type, args))
 
@@ -164,7 +163,6 @@ class Config(t.Generic[PaneClassT]):
             buf.write('\n')
             # and docstring
             if (docstring := docstrings.get(field.name)):
-                print(repr(textwrap.dedent(docstring).strip('\n')))
                 buf.write(textwrap.dedent(docstring).strip('\n'))
                 buf.write('\n')
             # and type
