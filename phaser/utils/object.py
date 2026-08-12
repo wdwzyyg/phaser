@@ -237,6 +237,37 @@ class ObjectSampling:
             xp.array_equal(self.corner, other.corner)
         )
 
+    def crop(self, min: ArrayLike | None = None, max: ArrayLike | None = None, pad: ArrayLike = 0.) -> t.Self:
+        """
+        Crop the sampling to the given region.
+
+        Can be used in conjunction with ObjectSampling.resample to crop reconstruction objects.
+        """
+        if min is None:
+            min_i, min_j = 0, 0
+        else:
+            min_i, min_j = numpy.maximum(
+                numpy.ceil(self._pos_to_object_idx(numpy.asarray(min) - pad, (0, 0))).astype(numpy.int_),
+                0,
+            )
+        if max is None:
+            max_i, max_j = self.shape
+        else:
+            max_i, max_j = numpy.minimum(
+                numpy.floor(self._pos_to_object_idx(numpy.asarray(max) + pad, (0, 0))).astype(numpy.int_) + 1,
+                self.shape
+            )
+
+        corner = self.corner + self.sampling * (min_i, min_j)
+        max_corner = self.corner + self.sampling * (max_i - 1, max_j - 1)
+        region_min = None if self.region_min is None else numpy.maximum(self.region_min, corner)
+        region_max = None if self.region_max is None else numpy.minimum(self.region_max, max_corner)
+
+        return self.__class__(
+            (max_i - min_i, max_j - min_j), self.sampling, corner,
+            region_min=region_min, region_max=region_max
+        )
+
     @staticmethod
     def _scan_extent(scan_positions: NDArray[numpy.floating]) -> t.Tuple[NDArray[numpy.float64], NDArray[numpy.float64]]:
         xp = get_array_module(scan_positions)
