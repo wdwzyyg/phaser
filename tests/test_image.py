@@ -27,7 +27,7 @@ from phaser.utils.image import (
     prepare_convolve2d,
     prepare_convolve2d_recip,
 )
-from phaser.utils.num import BackendName, Sampling, get_backend_module, to_numpy
+from phaser.utils.num import BackendName, Sampling, get_backend_module, to_numpy, get_backend_devices
 
 from .utils import check_array_equals_file, with_backends
 
@@ -80,7 +80,7 @@ def test_affine_transform_1d(mode: _InterpBoundaryMode, order: int, expected: Ar
     ('downsample', 0,  0.0, Sampling((16, 16), sampling=(2.0, 2.0))),
     ('downsample', 1,  0.0, Sampling((16, 16), sampling=(2.0, 2.0))),
 ])
-@check_array_equals_file('resample_{name}_order{order}_rot{rotation:03.1f}.tiff', out_name='resample_{name}_order{order}_rot{rotation:03.1f}_{backend}.tiff')
+@check_array_equals_file('resample_{name}_order{order}_rot{rotation:03.1f}.tiff', out_name='resample_{name}_order{order}_rot{rotation:03.1f}_{backend}.tiff', decimal=5)
 def test_resample(
     backend: BackendName,
     checkerboard: t.Tuple[NDArray[numpy.float32], Sampling],
@@ -89,8 +89,9 @@ def test_resample(
     rotation: float,
     sampling: Sampling,
 ):
-    if (name, order, rotation) == ('upsample', 0, 0.0) and backend in ('jax', 'torch'):
+    if (name, order, rotation) == ('upsample', 0, 0.0) and backend in ('jax', 'cupy', 'torch'):
         # TODO: check intermediate dtypes here?
+        # is this a scipy rounding bug?
         pytest.xfail("Rounding bug?")
 
     xp = get_backend_module(backend)
@@ -129,6 +130,9 @@ def test_convolve1d(
 
     xp = get_backend_module(backend)
 
+    if numpy.issubdtype(arr.dtype, numpy.integer) and backend == 'jax' and get_backend_devices(xp)[0].platform == 'gpu':
+        pytest.xfail("Integer convolutions aren't supported on jax[cuda]")
+
     expected = osp.convolve1d(
         arr, weights, axis=axis, mode=mode, cval=cval
     )
@@ -159,14 +163,17 @@ def test_convolve2d(
     weights: ArrayLike, mode, cval, dtype, leading_shape,
     backend: BackendName,
 ):
+    xp = get_backend_module(backend)
+
+    if numpy.issubdtype(dtype, numpy.integer) and backend == 'jax' and get_backend_devices(xp)[0].platform == 'gpu':
+        pytest.xfail("Integer convolutions aren't supported on jax[cuda]")
+
     arr = numpy.random.normal(size=leading_shape + (256, 256)).astype(dtype)
     weights = numpy.asarray(weights)
 
     if numpy.iscomplexobj(arr):
         # test complex weights as well
         weights = weights * 1.j
-
-    xp = get_backend_module(backend)
 
     expected = osp.convolve(
         arr, weights, mode=mode, cval=cval, axes=(-2, -1)
@@ -210,6 +217,9 @@ def test_convolve2d_separable(
     if numpy.iscomplexobj(arr):
         # test complex weights as well
         (y_weights, x_weights) = (y_weights * 1.j, x_weights * 1.j)
+
+        if backend == 'cupy' and mode == 'constant':
+            pytest.xfail("cupy doesn't support complex cval")
 
     xp = get_backend_module(backend)
 

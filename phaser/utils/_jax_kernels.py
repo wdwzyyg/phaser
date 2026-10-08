@@ -248,7 +248,7 @@ def to_device(device: t.Union[str, Device]) -> Device:
 
 def max_supported_float(device: t.Optional[Device]):
     if device is None:
-        device = _DEFAULT_DEVICE
+        device = get_default_device()
     elif isinstance(device, jax.sharding.Sharding):
         device = next(iter(device.addressable_devices))
     elif not isinstance(device, jax.Device):

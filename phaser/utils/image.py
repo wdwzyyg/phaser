@@ -162,6 +162,10 @@ _InterpBoundaryMode: t.TypeAlias = t.Literal['constant', 'nearest', 'mirror', 'r
 _FilterBoundaryMode: t.TypeAlias = t.Literal['reflect', 'grid-wrap']
 _RecipBoundaryMode: t.TypeAlias = t.Union[_FilterBoundaryMode, t.Literal['reflect_dct', 'reflect_adjoint']]
 
+_SCIPY_MODE_REWRITES: t.Dict[str, _InterpBoundaryMode] = {
+    'grid-mirror': 'reflect', 'grid-constant': 'constant', 'grid-wrap': 'wrap',
+}
+
 
 def to_affine_matrix(arr: ArrayLike, ndim: int = 2) -> NDArray[numpy.floating]:
     arr = numpy.asarray(arr)
@@ -318,9 +322,10 @@ def convolve1d(
         ))
 
     scipy = get_scipy_module(arr, weights)
+    mode = _SCIPY_MODE_REWRITES.get(mode, mode)
 
     return scipy.ndimage.convolve1d(
-        arr, weights, axis, mode=mode, cval=cval
+        arr, weights, axis, mode=mode, cval=cval if isinstance(cval, (complex, float, int)) else cval.tolist()
     )
 
 
@@ -429,6 +434,7 @@ def convolve2d(
         )
 
     scipy = get_scipy_module(arr, weights)
+    mode = _SCIPY_MODE_REWRITES.get(mode, mode)
 
     output = xp.empty_like(arr)
     # we can't use the axes parameter, we support too old of scipy
