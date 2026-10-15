@@ -27,13 +27,18 @@ def calc_tilt(path: t.Union[str, Path]):
 
     path = Path(path).resolve()
     meta = EmpadMetadata.from_json(path)
+    if meta.diff_step is None:
+        raise ValueError("'diff_step' is missing from the metadata. Run 'process_empad' with prompts, or add it to the JSON.")
 
     exp_path = meta.path or Path('.')
     raw_path = exp_path / (meta.raw_filename or "scan_x128_y128.raw")
     if not raw_path.exists():
         raise ValueError(f"Can't find raw data at path '{raw_path}'")
 
-    raw = load_4d(raw_path)
+    # [x, y] -> [y, x]
+    scan_shape = t.cast(t.Tuple[int, int], tuple(reversed(meta.scan_shape)))
+    raw = load_4d(raw_path, scan_shape=scan_shape, flips=meta.det_flips,
+                  empad_version=meta.empad_version or 1)
 
     params = {
         'det': 'bf',

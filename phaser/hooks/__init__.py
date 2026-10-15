@@ -39,6 +39,7 @@ class RawData(t.TypedDict):
 class LoadEmpadProps(Dataclass):
     path: Path
 
+    empad_version: int | None = None
     diff_step: float | None = None
     kv: float | None = None
     adu: float | None = None
@@ -223,6 +224,13 @@ class ApplyMtfProps(Dataclass):
     multiplying in the Fourier domain ('recip')."""
 
 
+class SetDetectorMaskProps(Dataclass):
+    path: Path
+    """Path to detector mask"""
+    invert: bool = False
+    """Whether to invert detector mask"""
+
+
 class PostLoadHook(Hook[RawData, RawData]):
     known: t.ClassVar = {
         'crop_data': ('phaser.hooks.preprocessing:crop_data', CropDataProps),
@@ -231,6 +239,7 @@ class PostLoadHook(Hook[RawData, RawData]):
         'offset': ('phaser.hooks.preprocessing:offset_patterns', OffsetProps),
         'bin': ('phaser.hooks.preprocessing:bin_patterns', BinProps),
         'apply_mtf': ('phaser.hooks.preprocessing:apply_mtf', ApplyMtfProps),
+        'set_mask': ('phaser.hooks.preprocessing:set_detector_mask', SetDetectorMaskProps),
     }
 
 

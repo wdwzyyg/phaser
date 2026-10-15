@@ -1,4 +1,5 @@
 
+from datetime import datetime
 from pathlib import Path
 import re
 import typing as t
@@ -187,6 +188,7 @@ class EmpadMetadata(pane.PaneBase, frozen=False, kw_only=True, allow_extra=True)
 
         return EmpadMetadata(
             name=root.attrib['name'],
+            empad_version=1,
             orig_path=orig_path,
             raw_filename=raw_filename,
             time=timestamp.attrib['isoformat'],
@@ -203,9 +205,83 @@ class EmpadMetadata(pane.PaneBase, frozen=False, kw_only=True, allow_extra=True)
             post_exposure_time=post_exposure_time,
         )
 
+    @staticmethod
+    def from_toml(toml_path: t.Union[str, Path]) -> 'EmpadMetadata':
+        try:
+            import tomllib
+        except ImportError:
+            import tomli as tomllib  # python < 3.11
+
+        orig_path = Path(toml_path).parent
+        with open(toml_path, 'rb') as f:
+            toml = tomllib.load(f)
+
+        def get(root: t.Dict[str, t.Any], key: str) -> t.Any:
+            for k in key.split('.'):
+                if not isinstance(root, dict) or k not in root:
+                    raise ValueError(f"Couldn't find key '{key}' in TOML metadata.")
+                root = root[k]
+            return root
+
+        def try_get(root: t.Dict[str, t.Any], key: str) -> t.Optional[t.Any]:
+            try:
+                return get(root, key)
+            except ValueError:
+                return None
+
+        acquisition = get(toml, 'acquisition')
+        scan = get(toml, 'scan')
+        if scan.get('scan_service') != 'stem_raster':
+            # not a 4D stem dataset
+            raise UnscannedDataset()
+
+        timestamp = str(get(acquisition, 'timestamp'))
+        time_unix = datetime.fromisoformat(timestamp).timestamp()
+        bg_time = try_get(toml, 'dark_reference.timestamp')
+        bg_unix = None if bg_time is None else datetime.fromisoformat(str(bg_time)).timestamp()
+        has_bg = try_get(scan, 'dark_suitable')
+
+        optics = get(toml, 'microscope.optics')
+        scan_shape = (int(get(scan, 'width')), int(get(scan, 'height')))
+
+        # 'raw_file.filename' doesn't match the file on disk, so it isn't used
+        raw_files = list(filter(lambda f: not f.name.startswith('.'), orig_path.glob('*.raw')))
+        if len(raw_files) == 1:
+            raw_filename = raw_files[0].name
+        else:
+            raw_filename = f"scan_x{scan_shape[0]}_y{scan_shape[1]}.raw"
+        # all in m
+        fov = (float(get(optics, 'scan_fov_x')), float(get(optics, 'scan_fov_y')))
+        scan_step = (float(get(optics, 'scan_pixel_size_x')), float(get(optics, 'scan_pixel_size_y')))
+
+        conv_angle = try_get(toml, 'microscope.illumination.convergence_angle')
+
+        return EmpadMetadata(
+            name=str(get(acquisition, 'name')),
+            empad_version=2,
+            orig_path=orig_path,
+            raw_filename=raw_filename,
+            author=acquisition.get('operator_name') or None,
+            time=timestamp,
+            time_unix=time_unix,
+            bg_unix=bg_unix,
+            has_bg=None if has_bg is None else bool(has_bg),
+            voltage=float(get(toml, 'microscope.high_tension.voltage')),  # V
+            conv_angle=None if conv_angle is None else float(conv_angle) * 1e3,  # rad to mrad
+            camera_length=float(get(optics, 'camera_length')),  # m
+            # TODO: units unresolved, assumed to be degrees
+            scan_rotation=float(get(optics, 'scan_rotation')),
+            scan_shape=scan_shape,
+            scan_fov=fov,
+            scan_step=scan_step,
+            exposure_time=float(get(scan, 'exposure_time_s')),
+            notes=acquisition.get('notes') or None,
+        )
+
 
 def load_4d(path: t.Union[str, Path], scan_shape: t.Optional[t.Tuple[int, int]] = None, *,
-            memmap: bool = False, flips: t.Optional[t.Tuple[bool, bool, bool]] = None) -> NDArray[numpy.float32]:
+            memmap: bool = False, flips: t.Optional[t.Tuple[bool, bool, bool]] = None,
+            empad_version: int = 1) -> NDArray[numpy.float32]:
     """
     Load a raw EMPAD dataset into memory.
 
@@ -220,10 +296,15 @@ def load_4d(path: t.Union[str, Path], scan_shape: t.Optional[t.Tuple[int, int]] 
      - `memmap`: If specified, memmap the file as opposed to loading it eagerly.
      - `flips`: Flips to apply to the diffraction patterns, `(flip_y, flip_x, transpose)`.
        Defaults to `(True, False, False)` (appears to be the most common orientation).
+     - `empad_version`: Version of empad dataset. Defaults to v1.
 
     Returns a numpy array (or `numpy.memmap`)
     """
     path = Path(path)
+
+    if empad_version not in (1, 2):
+        raise ValueError(f"Unsupported empad file version '{empad_version}'."
+                         " Currently, '1' and '2' are supported.")
 
     if scan_shape is None:
         match = re.search(r"x(\d+)_y(\d+)", path.name)
@@ -239,31 +320,38 @@ def load_4d(path: t.Union[str, Path], scan_shape: t.Optional[t.Tuple[int, int]] 
     else:
         a = numpy.fromfile(path, dtype=numpy.float32)
 
-    if not a.size % (130*128) == 0:
-        raise ValueError(f"File not divisible by 130x128 (size={a.size}).")
-    a.shape = (-1, 130, 128)
+    n_pad = 2 if empad_version == 1 else 0
+    if not flips:
+        # typical orientation on v1 and v2
+        flips = (True, False, False) if empad_version == 1 else (False, False, False)
+
+    if not a.size % ((128 + n_pad)*128) == 0:
+        raise ValueError(f"File not divisible by {128 + n_pad}x128 (size={a.size}).")
+    a = a.reshape(-1, 128 + n_pad, 128)
 
     if a.shape[0] != n_x * n_y:
         raise ValueError(f"Got {a.shape[0]} probes, expected {n_x}x{n_y} = {n_x * n_y}.")
-    a.shape = (n_y, n_x, *a.shape[1:])
+    a = a.reshape(n_y, n_x, *a.shape[1:])
 
-    a = a[..., :128, :]  # crop junk rows
-    return apply_flips(a, flips or (True, False, False))  # defaults to typical EMPAD orientation
+    if n_pad:
+        a = a[..., :128, :]  # crop junk rows
+
+    return apply_flips(a, flips)
 
 
 @t.overload
 def save_4d(arr: NDArray[numpy.float32], *, path: t.Union[str, Path], folder: None = None, name: None = None,
-            flips: t.Optional[t.Tuple[bool, bool, bool]] = None):
+            flips: t.Optional[t.Tuple[bool, bool, bool]] = None, empad_version: int = 1):
     ...
 
 @t.overload
 def save_4d(arr: NDArray[numpy.float32], *, path: None = None, folder: t.Union[str, Path], name: t.Optional[str] = None,
-            flips: t.Optional[t.Tuple[bool, bool, bool]] = None):
+            flips: t.Optional[t.Tuple[bool, bool, bool]] = None, empad_version: int = 1):
     ...
 
 def save_4d(arr: NDArray[numpy.float32], *, path: t.Union[str, Path, None] = None,
             folder: t.Union[str, Path, None] = None, name: t.Optional[str] = None,
-            flips: t.Optional[t.Tuple[bool, bool, bool]] = None):
+            flips: t.Optional[t.Tuple[bool, bool, bool]] = None, empad_version: int = 1):
     """
     Save a raw EMPAD dataset.
 
@@ -282,6 +370,9 @@ def save_4d(arr: NDArray[numpy.float32], *, path: t.Union[str, Path, None] = Non
      - `flips`: Flips to apply to the diffraction patterns, `(flip_y, flip_x, transpose)`.
        Defaults to `(True, False, False)` (appears to be the most common orientation).
     """
+    if empad_version not in (1, 2):
+        raise ValueError(f"Unsupported empad file version '{empad_version}'."
+                         " Currently, '1' and '2' are supported.")
 
     try:
         assert len(arr.shape) == 4
@@ -300,11 +391,16 @@ def save_4d(arr: NDArray[numpy.float32], *, path: t.Union[str, Path, None] = Non
     else:
         raise ValueError("Must specify either 'path' or 'folder'")
 
+    n_pad = 2 if empad_version == 1 else 0
+    if not flips:
+        # typical orientation on v1 and v2
+        flips = (True, False, False) if empad_version == 1 else (False, False, False)
+
     out_shape = list(arr.shape)
-    out_shape[2] = 130  # dead rows
+    out_shape[2] = 128 + n_pad  # dead rows
 
     out = numpy.zeros(out_shape, dtype=numpy.float32)
-    out[..., :128, :] = apply_flips(to_numpy(arr.astype(numpy.float32)), flips or (True, False, False))
+    out[..., :128, :] = apply_flips(to_numpy(arr.astype(numpy.float32)), flips)
 
     with open(path, 'wb') as f:
         out.tofile(f)
