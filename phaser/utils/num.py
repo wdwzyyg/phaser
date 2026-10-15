@@ -88,10 +88,12 @@ class _BackendLoader:
 
     def _load(self, name: BackendName):
         try:
+            logger.debug(f"Loading backend '{name}'...")
             self.inner[name] = _LOAD_FNS[name]()
             for cb in self.cbs.pop(name, ()):
                 cb()
-        except ImportError:
+        except ImportError as e:
+            logger.debug(f"Failed to load backend '{name}'", exc_info=True)
             self.inner[name] = None
 
     def _schedule_on_load(self, backend: BackendName, fn: t.Callable[[], t.Any]):
