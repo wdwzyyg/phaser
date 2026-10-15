@@ -67,7 +67,7 @@ class NionMetadata(pane.PaneBase, frozen=False, kw_only=True, allow_extra=True):
     properties: Properties
 
 
-def load_4d(path: t.Union[str, Path], scan_shape: t.Optional[t.Union[t.Tuple[int, int], t.Tuple[float, float]]] = None, *,
+def load_4d(path: t.Union[str, Path], scan_shape: t.Tuple[int, int], *,
             memmap: bool = False, flips: t.Optional[t.Tuple[bool, bool, bool]] = None) -> NDArray[numpy.float32]:
     """
     Load a raw nion dataset into memory.
@@ -88,7 +88,7 @@ def load_4d(path: t.Union[str, Path], scan_shape: t.Optional[t.Union[t.Tuple[int
     """
     path = Path(path)
 
-    scan_shape = tuple(map(int, scan_shape))
+    scan_shape = t.cast(tuple[int, int], tuple(map(int, scan_shape)))
 
     n_y, n_x = scan_shape
 

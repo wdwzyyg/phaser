@@ -34,7 +34,6 @@ from .server import (
     raise_on_shutdown,
     server,
 )
-from .slurm import SlurmError
 from .types import (
     ClientMessage,
     ErrorMessage,
@@ -218,6 +217,8 @@ async def slurm_profiles():
 
 
 async def _start_slurm_worker(worker_id: WorkerID, body: t.Union[str, bytes]):
+    from .slurm import SlurmError
+
     if sys.platform not in ('linux', 'darwin'):
         abort(Response(f"Slurm not supported on platform '{sys.platform}'", 400))
     try:

@@ -34,7 +34,6 @@ def load_gatan(args: None, props: LoadGatanProps) -> RawData:
     voltage = props.kv * 1e3 if props.kv is not None else metadata.voltage
     diff_step = props.diff_step or metadata.diff_step
     scan_shape = metadata.scan_shape
-    
 
     print(f"Scan shape: {scan_shape}, Step size: {metadata.scan_step}")
     adu = 1 #props.adu or meta.adu
@@ -55,11 +54,9 @@ def load_gatan(args: None, props: LoadGatanProps) -> RawData:
         'affine': metadata.scan_correction[::-1, ::-1] if metadata.scan_correction is not None else None,
     }
 
-
-
-    if metadata.voltage is None:
+    if voltage is None:
         raise ValueError("'kv'/'voltage' must be specified by metadata or passed to 'raw_data'")
-    if metadata.diff_step is None:
+    if diff_step is None:
         raise ValueError("'diff_step' must be specified by metadata or passed to 'raw_data'")
 
     wavelength = Electron(voltage).wavelength

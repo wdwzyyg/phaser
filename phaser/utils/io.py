@@ -65,7 +65,7 @@ def open_hdf5(file: HdfLike, mode: str = 'r', **kwargs: t.Any) -> h5py.File:
 
     if isinstance(file, h5py.File):
         requested_write = mode in ('r+', 'w', 'w-', 'x', 'a')
-        have_write = mode in ('r+', 'w', 'w-', 'x', 'a')
+        have_write = file.mode in ('r+', 'w', 'w-', 'x', 'a')
         if requested_write and not have_write:
             raise ValueError(f"Requested writable file but passed read-only file '{file}'.")
         return file

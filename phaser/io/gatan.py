@@ -54,7 +54,7 @@ class GatanMetadata(pane.PaneBase, frozen=False, kw_only=True, allow_extra=True)
              'defocus': 1.0e-10,
              'camera_length': 0.0,
              'diff_step': 0.0,
-             'e-scaling': 1.0,
+             'e_scaling': 1.0,
              'background_offset': 0.0,
              'scan_rotation': 0.0,
              'detector_shape': [0, 0],
@@ -212,7 +212,7 @@ class GatanMetadata(pane.PaneBase, frozen=False, kw_only=True, allow_extra=True)
         return self.file_type == "pyMultislicer_metadata"
 
 
-def load_4d(path: t.Union[str, Path], scan_shape: t.Optional[t.Tuple[int, int]] = None,
+def load_4d(path: t.Union[str, Path], scan_shape: t.Tuple[int, int],
             memmap: bool = False) -> NDArray[numpy.float32]:
     """
     Load a gatan dm4 dataset into memory.
@@ -242,57 +242,3 @@ def load_4d(path: t.Union[str, Path], scan_shape: t.Optional[t.Tuple[int, int]] 
         raise ValueError(f"Got {a.shape[0]*a.shape[1]} probes, expected {n_x}x{n_y} = {n_x * n_y}.")
     
     return a.astype(numpy.float32)
-
-
-@t.overload
-def save_4d(arr: NDArray[numpy.float32], *, path: t.Union[str, Path], folder: None = None, name: None = None):
-    ...
-
-@t.overload
-def save_4d(arr: NDArray[numpy.float32], *, path: None = None, folder: t.Union[str, Path], name: t.Optional[str] = None):
-    ...
-
-def save_4d(arr: NDArray[numpy.float32], *, path: t.Union[str, Path, None] = None,
-            folder: t.Union[str, Path, None] = None, name: t.Optional[str] = None): #):
-    """
-    Save a raw EMPAD dataset.
-
-    Either `path` or `folder` can be specified. If `folder` is specified,
-    `name` will be used as a format string to determine the filename.
-    `path` and `folder` cannot be specified simultaneously.
-
-    Patterns are not fftshifted or normalized upon saving.
-
-    Parameters:
-     - `arr`: Array to save
-     - `path`: Path to save dataset to.
-     - `folder`: Folder to save dataset inside.
-     - `name`: When `folder` is specified, format to use to determine filename. Defaults to `"scan_x{x}_y{y}.raw"`.
-       Will be formatted using the scan shape `{'x': n_x, 'y': n_y}`.
-    """
-
-    try:
-        assert len(arr.shape) == 4
-        assert arr.shape[2:] == (128, 128)
-    except AssertionError as e:
-        raise ValueError("Invalid data format") from e
-
-    if folder is not None:
-        if path is not None:
-            raise ValueError("Cannot specify both 'path' and 'folder'")
-
-        n_y, n_x = arr.shape[:2]
-        path = Path(folder) / (name or "scan_x{x}_y{y}.raw").format(x=n_x, y=n_y)
-    elif path is not None:
-        path = Path(path)
-    else:
-        raise ValueError("Must specify either 'path' or 'folder'")
-
-    out_shape = list(arr.shape)
-    out_shape[2] = 130  # dead rows
-
-    out = numpy.zeros(out_shape, dtype=numpy.float32)
-    out[..., 127::-1, :] = arr.astype(numpy.float32)
-
-    with open(path, 'wb') as f:
-        out.tofile(f)
