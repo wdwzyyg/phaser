@@ -632,11 +632,12 @@ def ifft2(a: ArrayLike, *, shift: bool = True) -> NDArray[numpy.complexfloating]
     Follows our convention of centering real space and normalizing intensities (when `shift` is `True`).
     """
     xp = get_array_module(a)
-    if shift:
-        if xp_is_torch(xp):
-            return xp.fft.fftshift(xp.fft.ifft2(a, norm='ortho'), dim=(-2, -1))  # type: ignore
-        return xp.fft.fftshift(xp.fft.ifft2(a, norm='ortho'), axes=(-2, -1))
-    return xp.fft.ifft2(a, norm='ortho')
+    if not shift:
+        # tends to be faster
+        return xp.conj(xp.fft.fft2(xp.conj(a), norm='ortho'))
+    if xp_is_torch(xp):
+        return xp.fft.fftshift(xp.fft.ifft2(a, norm='ortho'), dim=(-2, -1))  # type: ignore
+    return xp.fft.fftshift(xp.fft.ifft2(a, norm='ortho'), axes=(-2, -1))
 
 
 @t.overload
