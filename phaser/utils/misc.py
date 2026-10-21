@@ -1,3 +1,5 @@
+"""Random number generation, index groupings, and miscellaneous helpers."""
+
 import functools
 import math
 import typing as t
@@ -60,7 +62,7 @@ def create_rng(seed: object = None, entropy: object = None) -> Generator:
 
 def create_rng_group(n: int, seed: object = None, entropy: object = None) -> tuple[Generator, ...]:
     """
-    Create a group of `n` distinct `PCG64` `BitGenerator`s using the initial seed (if specified),
+    Create a group of `n` distinct `PCG64` `Generator`s using the initial seed (if specified),
     and some additional entropy.
 
     If `seed` is an existing `Generator` or `BitGenerator`, its underlying seed
@@ -97,13 +99,16 @@ def shuffled(vals: t.Sequence[T], seed: t.Any = None, i: int = 0) -> t.Iterator[
 
 def create_sparse_groupings(shape: int | t.Iterable[int] | NDArray[numpy.floating], max_grouping: int = 8,
                             seed: t.Any = None, i: int = 0) -> list[NDArray[numpy.int64]]:
-    """
-    Randomly partition the indices of `shape` into groups of maximum size `max_grouping`.
+    """Randomly partition the indices of an array of shape `shape` into groups of at most `max_grouping`.
 
-    Returns a list of `ceil(n / max_grouping)` groups, of sizes `ceil(n/k)` and `floor(n/k)`.
-    Each group can be used to index an array `arr` of shape `shape`: `arr[tuple(group)]`.
+    Args:
+        shape: Array shape, or an array of positions `(..., ndim)` whose leading shape is used.
+        seed: Random seed.
+        i: Index mixed into `seed`, to vary the partition.
 
-    `seed` and `i` are used to randomize the group assignment.
+    Returns:
+        List of `ceil(n / max_grouping)` index arrays of shape `(len(shape), size)`, with sizes
+            differing by at most 1. Group `g` indexes an array as `arr[tuple(g)]`.
     """
     if isinstance(shape, int):
         shape = (shape,)
@@ -121,14 +126,16 @@ def create_sparse_groupings(shape: int | t.Iterable[int] | NDArray[numpy.floatin
 
 def create_compact_groupings(positions: NDArray[numpy.floating], max_grouping: int = 8,
                              seed: t.Any = None, i: int = 0) -> list[NDArray[numpy.int64]]:
-    """
-    Partition the indices of `positions` into groups of maximum size `max_grouping`,
-    such that each group is spatially compact.
+    """Partition the indices of `positions` into spatially compact groups of at most `max_grouping`.
 
-    Returns a list of `ceil(n / max_grouping)` groups, of sizes `ceil(n/k)` and `floor(n/k)`.
-    Each group can be used to index an array `arr` of shape `shape`: `arr[tuple(group)]`
+    Args:
+        positions: Positions `(..., ndim)`.
+        seed: Unused.
+        i: Unused.
 
-    The current algorithm is deterministic, so `seed` and `i` are not used.
+    Returns:
+        List of `ceil(n / max_grouping)` index arrays of shape `(positions.ndim - 1, size)`,
+            with sizes differing by at most 1. Group `g` indexes `positions` as `positions[tuple(g)]`.
     """
     # this is slop
 
@@ -409,6 +416,10 @@ def _compact_polish_groups(points, group_of_point, n_groups, total_sq_norm):
 
 
 def mask_fraction_of_groups(n_groups: int, fraction: float) -> NDArray[numpy.bool_]:
+    """Return a boolean mask of length `n_groups` selecting evenly spaced groups.
+
+    At least `max(1, ceil(n_groups * fraction))` groups are selected.
+    """
     n_required = max(1, math.ceil(n_groups * fraction))
     if n_required >= n_groups:
         return numpy.ones(n_groups, dtype=numpy.bool_)
@@ -421,6 +432,8 @@ def mask_fraction_of_groups(n_groups: int, fraction: float) -> NDArray[numpy.boo
 
 
 class FloatKey(float):
+    """Float that hashes and compares by its value rounded to 5 decimal places."""
+
     def __hash__(self):
         return float.__hash__(round(self, 5))
 
@@ -430,12 +443,21 @@ class FloatKey(float):
 
 
 def unwrap(val: T | None) -> T:
+    """Return `val`, asserting that it is not `None`."""
     assert val is not None
     return val
 
 
 def freeze(obj: object) -> t.Any:
-    """Attempt to freeze an object, making it immutable."""
+    """Attempt to freeze an object, making it immutable.
+
+    Mappings become `frozendict`, sets `frozenset`, other sequences `tuple`, and numpy
+    arrays and scalars nested tuples and Python scalars.
+
+    Raises:
+        ValueError: If `obj` is self-referential.
+        TypeError: If `obj` contains an unhashable object of unknown type.
+    """
     return _freeze(obj, set())
 
 

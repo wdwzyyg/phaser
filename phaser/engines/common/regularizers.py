@@ -1,3 +1,5 @@
+"""Regularizers for reconstructions."""
+
 from functools import partial
 import logging
 from math import prod
@@ -19,6 +21,11 @@ from phaser.hooks.regularization import (
 
 
 class ClampObjectAmplitude:
+    """Clamp object amplitude to `[min, max]`, preserving phase.
+
+    `props.amplitude` is `[min, max]`, or a single value taken as `max`.
+    """
+
     def __init__(self, args: None, props: ClampObjectAmplitudeProps):
         self.min: t.Optional[float]
         self.max: t.Optional[float]
@@ -47,6 +54,7 @@ def clamp_amplitude(
     min: t.Union[float, numpy.floating, None],
     max: t.Union[float, numpy.floating, None]
 ) -> NDArray[numpy.complexfloating]:
+    """Clamp the amplitude of `obj` to `[min, max]`, preserving phase. `None` leaves that bound open."""
     xp = get_array_module(obj)
 
     obj_amp = xp.abs(obj)
@@ -65,6 +73,8 @@ def clamp_amplitude(
     return obj * scale
 
 class LimitProbeSupport:
+    """Limit the reciprocal-space support of the probe to within `max_angle` [mrad] of the optic axis."""
+
     def __init__(self, args: None, props: LimitProbeSupportProps):
         self.max_angle = props.max_angle
 
@@ -87,6 +97,8 @@ class LimitProbeSupport:
 
 
 class RemovePhaseRamp:
+    """Remove the linear ramp from the object phase, fit within the object region of interest."""
+
     def __init__(self, args: None, props: t.Any):
         ...
 
@@ -108,9 +120,7 @@ class RemovePhaseRamp:
 
 @partial(jit, donate_argnames=('obj',), cupy_fuse=True)
 def non_neg_phase(obj: NDArray[numpy.complexfloating], weight: t.Union[float, numpy.floating]) -> NDArray[numpy.complexfloating]:
-    """
-    weight: between 0-1
-    """
+    r"""Return `obj` with phase $\phi \to w \max(\phi, 0) + (1 - w) \phi$, where `weight` $w$ is in `[0, 1]`."""
     xp = get_array_module(obj)
     obj_phase = xp.angle(obj)
     obj_phase = weight * xp.maximum(obj_phase, 0) + (1-weight) * obj_phase
@@ -119,6 +129,11 @@ def non_neg_phase(obj: NDArray[numpy.complexfloating], weight: t.Union[float, nu
 
 
 class NonNegObjectPhase:
+    r"""Push object phase towards non-negativity.
+
+    Sends $\phi \to w \max(\phi, 0) + (1 - w) \phi$, with weight $w$.
+    """
+
     def __init__(self, args: None, props: NonNegObjectPhaseProps):
         self.weight: float = props.weight
 
@@ -134,6 +149,13 @@ class NonNegObjectPhase:
 
 
 class RegularizeLayers:
+    """Apply a Gaussian blur to the object along the slice axis.
+
+    Uses a real-space kernel of standard deviation `sigma` [angstrom]. The blur is applied
+    to the log of the object (i.e. the object potential rather than the transmission
+    function). No-op for fewer than two slices.
+    """
+
     def __init__(self, args: None, props: RegularizeLayersProps):
         self.weight = props.weight
         self.sigma = props.sigma
@@ -174,6 +196,8 @@ class RegularizeLayers:
 
 
 class ObjLowPass:
+    """Low-pass filter the object, keeping spatial frequencies up to `max_freq` [1/pixel]."""
+
     def __init__(self, args: None, props: ObjLowPassProps):
         self.logger = logging.getLogger(__name__)
         self.max_freq = props.max_freq
@@ -203,6 +227,13 @@ class ObjLowPass:
 
 
 class ObjGaussian:
+    r"""Apply a Gaussian blur in the plane of the object.
+
+    Uses a Fourier filter of standard deviation `sigma` [angstrom] with weight $w$.
+
+    Fourier filter is $1 - w (1 - e^{-2 \pi^2 \sigma^2 k^2})$.
+    """
+
     def __init__(self, args: None, props: GaussianProps):
         self.sigma = props.sigma
         self.weight = props.weight
@@ -234,6 +265,8 @@ class ObjGaussian:
 
 
 class ObjL1:
+    r"""Object L1 cost, $\lambda \sum |O - 1|$."""
+
     def __init__(self, args: None, props: CostRegularizerProps):
         self.cost: float = props.cost
 
@@ -255,6 +288,8 @@ class ObjL1:
 
 
 class ObjL2:
+    r"""Object L2 cost, $\lambda \sum |O - 1|^2$."""
+
     def __init__(self, args: None, props: CostRegularizerProps):
         self.cost: Float = props.cost
 
@@ -277,6 +312,8 @@ class ObjL2:
 
 
 class ObjPhaseL1:
+    r"""Object phase L1 cost, $\lambda \sum |\arg O|$."""
+
     def __init__(self, args: None, props: CostRegularizerProps):
         self.cost: float = props.cost
 
@@ -298,6 +335,8 @@ class ObjPhaseL1:
 
 
 class ObjRecipL1:
+    r"""Cost on the Fourier-space amplitude of the slice-product object, $\lambda \sum |\mathcal{F}[\prod_z O_z]|$."""
+
     def __init__(self, args: None, props: CostRegularizerProps):
         self.cost: float = props.cost
 
@@ -325,6 +364,11 @@ class ObjRecipL1:
 
 
 class ObjTotalVariation:
+    r"""Isotropic total-variation cost on the object.
+
+    Calculated as $\lambda \sum \sqrt{|\partial_y O|^2 + |\partial_x O|^2 + \epsilon}$ using finite differences.
+    """
+
     def __init__(self, args: None, props: TVRegularizerProps):
         self.cost: float = props.cost
         self.eps: float = props.eps
@@ -357,6 +401,11 @@ class ObjTotalVariation:
 
 
 class ObjTikhonov:
+    r"""Tikhonov (squared-gradient) cost on the object.
+
+    Calculated as $\lambda \sum (|\partial_y O|^2 + |\partial_x O|^2)$ using finite differences.
+    """
+
     def __init__(self, args: None, props: CostRegularizerProps):
         self.cost: float = props.cost
 
@@ -383,6 +432,8 @@ class ObjTikhonov:
 
 
 class LayersTotalVariation:
+    r"""Total-variation cost between adjacent object slices, $\lambda \sum |\partial_z O|$."""
+
     def __init__(self, args: None, props: CostRegularizerProps):
         self.cost: float = props.cost
 
@@ -409,6 +460,8 @@ class LayersTotalVariation:
 
 
 class LayersTikhonov:
+    r"""Tikhonov cost between adjacent object slices, $\lambda \sum |\partial_z O|^2$."""
+
     def __init__(self, args: None, props: CostRegularizerProps):
         self.cost: float = props.cost
 
@@ -435,6 +488,11 @@ class LayersTikhonov:
 
 
 class ProbePhaseTikhonov:
+    r"""Tikhonov cost on the phase of the probe's Fourier transform, $\lambda \sum (|\partial_y \phi|^2 + |\partial_x \phi|^2)$.
+
+    Not scaled by group fraction.
+    """
+
     def __init__(self, args: None, props: CostRegularizerProps):
         self.cost: float = props.cost
 
@@ -462,6 +520,11 @@ class ProbePhaseTikhonov:
 
 
 class ProbeRecipTikhonov:
+    r"""Tikhonov cost on the probe's Fourier transform, $\lambda \sum (|\partial_y \tilde{P}|^2 + |\partial_x \tilde{P}|^2)$, with $\tilde{P} = \mathcal{F}[P]$.
+
+    Not scaled by group fraction.
+    """
+
     def __init__(self, args: None, props: CostRegularizerProps):
         self.cost: float = props.cost
 
@@ -488,6 +551,11 @@ class ProbeRecipTikhonov:
 
 
 class ProbeRecipTotalVariation:
+    r"""Isotropic total-variation cost on the probe's Fourier transform.
+
+    Not scaled by group fraction.
+    """
+
     def __init__(self, args: None, props: TVRegularizerProps):
         self.cost: float = props.cost
         self.eps: float = props.eps
@@ -513,6 +581,12 @@ class ProbeRecipTotalVariation:
 
 
 class UnstructuredGaussian:
+    """Blend a per-scan-position quantity with a Gaussian blur of standard deviation `sigma` [angstrom], by `weight`.
+
+    The quantity is the attribute of the state at dotted path `attr_path` (e.g. `scan.tilt`).
+    It is resampled onto the object grid by nearest scan position, blurred, then sampled back.
+    """
+
     def __init__(self, args: None, props: UnstructuredGaussianProps):
         self.weight = props.weight
         self.sigma = props.sigma
@@ -534,11 +608,13 @@ class UnstructuredGaussian:
         return xp.exp(- (2 * numpy.pi**2 * self.sigma**2) * k2)
 
     def getattr_nested(self, obj: t.Any, attr_path: str) -> t.Any:
+        """Return the attribute of `obj` at dotted path `attr_path`."""
         for attr in attr_path.split('.'):
             obj = getattr(obj, attr)
         return obj
 
     def setattr_nested(self, obj: t.Any, attr_path: str, value: t.Any):
+        """Set the attribute of `obj` at dotted path `attr_path`."""
         *parents, last = attr_path.split('.')
         for attr in parents:
             obj = getattr(obj, attr)
@@ -584,6 +660,7 @@ class UnstructuredGaussian:
 
 
 def img_grad(img: numpy.ndarray) -> t.Tuple[numpy.ndarray, numpy.ndarray]:
+    """Return the forward-difference gradients `(g_y, g_x)` over the last two axes, with zero at the far edge."""
     xp = get_array_module(img)
     return (
         xp.diff(img, axis=-2, append=img[..., -1:, :]),

@@ -1,3 +1,5 @@
+"""Tilt initialization hooks."""
+
 import numpy
 from numpy.typing import NDArray
 from pathlib import Path
@@ -7,11 +9,7 @@ from . import GlobalTiltProps, CustomTiltProps, TiltHookArgs
 
 
 def generate_global_tilt(args: TiltHookArgs, props: GlobalTiltProps) -> NDArray[numpy.floating]:
-    """
-    Generate uniform simulated tilt array.
-
-    Returns an array of shape (ny*nx, 2) where every row is [ty, tx].
-    """
+    """Return a uniform tilt array of shape `(ny, nx, 2)` [mrad]."""
     xp = cast_array_module(args['xp'])
 
     ty, tx = props.tilt
@@ -28,6 +26,10 @@ def load_custom_tilt(args: TiltHookArgs, props: CustomTiltProps) -> NDArray[nump
 
     The loaded array can have shape (ny, nx, 2) matching props.shape,
     or shape (N, 2) where N == ny*nx, which will be reshaped accordingly.
+
+    Raises:
+        FileNotFoundError: If the file does not exist.
+        ValueError: If the array shape does not match the scan.
     """
     xp = cast_array_module(args['xp'])
 

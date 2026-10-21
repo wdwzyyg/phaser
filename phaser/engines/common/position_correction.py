@@ -1,3 +1,6 @@
+"""Position correction algorithms for conventional solvers."""
+
+
 import typing as t
 
 import numpy
@@ -11,6 +14,8 @@ from phaser.state import ReconsState
 
 
 class SteepestDescentPositionSolver(PositionSolver[None]):
+    """Steepest descent position solver."""
+
     def __init__(self, args: None, props: SteepestDescentPositionSolverProps):
         self.step_size = props.step_size
         self.max_step_size = props.step_size
@@ -35,6 +40,8 @@ class SteepestDescentPositionSolver(PositionSolver[None]):
 
 
 class MomentumPositionSolver(PositionSolver[NDArray[numpy.floating]]):
+    """Momentum position solver."""
+
     def __init__(self, args: None, props: MomentumPositionSolverProps):
         self.step_size = props.step_size
         self.max_step_size = props.max_step_size
