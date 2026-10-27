@@ -162,6 +162,15 @@ class TVRegularizerProps(Dataclass):
     """Smoothing term that keeps the gradient finite."""
 
 
+class ProbeDiffProps(Dataclass):
+    """Properties for a regularizer penalizing an n-th difference of the probe's Fourier transform."""
+
+    cost: float
+    """Regularization strength."""
+    order: int = 2
+    """Order `n` of the difference of the complex probe to penalize (1 is equivalent to `probe_recip_tikh`)."""
+
+
 class CostRegularizerHook(Hook[None, CostRegularizer]):
     """Hook that creates a [`CostRegularizer`][phaser.hooks.regularization.CostRegularizer]."""
 
@@ -181,4 +190,5 @@ class CostRegularizerHook(Hook[None, CostRegularizer]):
         'probe_recip_tv': ('phaser.engines.common.regularizers:ProbeRecipTotalVariation', TVRegularizerProps),
         'probe_recip_tikh': ('phaser.engines.common.regularizers:ProbeRecipTikhonov', CostRegularizerProps),
         'probe_recip_tikhonov': ('phaser.engines.common.regularizers:ProbeRecipTikhonov', CostRegularizerProps),
+        'probe_recip_diff': ('phaser.engines.common.regularizers:ProbeRecipDiff', ProbeDiffProps),
     }

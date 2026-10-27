@@ -16,7 +16,7 @@ from phaser.state import ReconsState
 from phaser.hooks.regularization import (
     ClampObjectAmplitudeProps, LimitProbeSupportProps, NonNegObjectPhaseProps,
     RegularizeLayersProps, ObjLowPassProps, GaussianProps,
-    CostRegularizerProps, TVRegularizerProps, UnstructuredGaussianProps
+    CostRegularizerProps, TVRegularizerProps, UnstructuredGaussianProps, ProbeDiffProps
 )
 
 
@@ -578,6 +578,41 @@ class ProbeRecipTotalVariation:
         cost_scale = 1.0
 
         return (cost * cost_scale * self.cost, state)
+
+
+class ProbeRecipDiff:
+    r"""`order`-th difference cost on the probe's Fourier transform.
+
+    Penalizes $\sum |\Delta^n P|^2$ along both axes of the complex, centered reciprocal-space probe.
+    In real space this weights the probe intensity by $(2 \sin(\pi x / N))^{2n} + (2 \sin(\pi y / N))^{2n}$,
+    i.e. a localization prior that grows like $r^{2n}$. `order=1` is equivalent to `probe_recip_tikh`.
+
+    Not scaled by group fraction.
+    """
+
+    def __init__(self, args: None, props: ProbeDiffProps):
+        self.cost: float = props.cost
+        self.order: int = props.order
+        if self.order < 1:
+            raise ValueError(f"Difference order must be >= 1 (got {self.order})")
+
+    @staticmethod
+    def name() -> str:
+        return 'probe_recip_diff'
+
+    def init_state(self, sim: ReconsState) -> None:
+        return None
+
+    def calc_loss_group(
+        self, group: NDArray[numpy.integer], sim: ReconsState, state: None
+    ) -> t.Tuple[Float, None]:
+        xp = get_array_module(sim.probe.data)
+        probe_recip = xp.fft.fftshift(fft2(sim.probe.data), axes=(-1, -2))
+        cost = (
+            xp.sum(abs2(xp.diff(probe_recip, n=self.order, axis=-1))) +
+            xp.sum(abs2(xp.diff(probe_recip, n=self.order, axis=-2)))
+        )
+        return (cost * self.cost, state)
 
 
 class UnstructuredGaussian:
